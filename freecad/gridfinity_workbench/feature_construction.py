@@ -1024,6 +1024,7 @@ def make_complex_bin_base(
         click_width = x_vert_width + 2 * obj.ClickThickness
         click_length = obj.ClickLength
         click_center_y = obj.yGridSize / 4 + obj.ClickOffset
+        click_top_y = click_center_y + click_length / 2
         click_notch = Part.makeBox(
             click_width,
             click_length,
@@ -1036,6 +1037,55 @@ def make_complex_bin_base(
     fuse_total = utils.copy_in_layout(assembly, layout, obj.xGridSize, obj.yGridSize)
 
     return fuse_total.translate(
+        fc.Vector(obj.xGridSize / 2 - obj.xLocationOffset, obj.yGridSize / 2 - obj.yLocationOffset),
+    )
+
+
+def make_click_spring_right(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape:
+    """Create one right-side click spring pipe per grid cell."""
+    x_vert_width = (obj.xGridSize - obj.Clearance * 2) - 2 * obj.BaseProfileTopChamfer
+
+    click_length = obj.ClickLength
+    click_center_y = obj.yGridSize / 4 + obj.ClickOffset
+    click_top_y = click_center_y + click_length / 2
+
+    step = click_length / 3
+    x0 = x_vert_width / 2 - (obj.BaseplateTopLedgeWidth - obj.Clearance)
+    x1 = x0 - obj.ClickOffset
+    x2 = x1
+    x3 = x2 + obj.ClickOffset
+    y0 = click_top_y
+    y1 = y0 - step
+    y2 = y1 - step
+    y3 = y2 - step
+
+    # Keep profile centered on z=0 as requested.
+    z_mid = 0 * unitmm
+
+    path_points = [
+        fc.Vector(x0, y0, z_mid),
+        fc.Vector(x1, y1, z_mid),
+        fc.Vector(x2, y2, z_mid),
+        fc.Vector(x3, y3, z_mid),
+    ]
+    spine = Part.Wire(Part.makePolygon(path_points))
+
+    z1 = obj.BaseProfileBottomChamfer + obj.BaseProfileVerticalSection
+    x2 = x0 + obj.ClickThickness
+    z2 = z1 + obj.ClickThickness
+    profile_points = [
+        fc.Vector(x0, y0, z_mid),
+        fc.Vector(x0, y0, z1),
+        fc.Vector(x2, y0, z2),
+        fc.Vector(x2, y0, z_mid),
+        fc.Vector(x0, y0, z_mid),
+    ]
+    profile = Part.Wire(Part.makePolygon(profile_points))
+
+    # Fixed orientation mode (isFrenet=False).
+    spring = spine.makePipeShell([profile], True, False)
+    spring = utils.copy_in_layout(spring, layout, obj.xGridSize, obj.yGridSize)
+    return spring.translate(
         fc.Vector(obj.xGridSize / 2 - obj.xLocationOffset, obj.yGridSize / 2 - obj.yLocationOffset),
     )
 
