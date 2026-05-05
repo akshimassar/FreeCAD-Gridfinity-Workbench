@@ -538,7 +538,6 @@ def compartments_properties(obj: fc.DocumentObject, x_div_default: int, y_div_de
             "Height of the bin minus the bottom unit, "
             "the amount of the bin that can be effectively used"
         ),
-        read_only=True,
     )
 
 
@@ -723,7 +722,6 @@ def eco_compartments_properties(obj: fc.DocumentObject) -> None:
             "Height of the bin minus the bottom unit, "
             "the amount of the bin that can be effectively used"
         ),
-        read_only=True,
     )
     ## Hidden Parameters
     obj.setEditorMode("ScrewHoles", 2)
@@ -885,7 +883,6 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileBottomChamfer",
         "zzExpertOnly",
         "height of chamfer in bottom of bin base profile <br> <br> default = 0.8 mm",
-        read_only=True,
     ).BaseProfileBottomChamfer = const.BIN_BASE_BOTTOM_CHAMFER
 
     obj.addProperty(
@@ -893,7 +890,6 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileVerticalSection",
         "zzExpertOnly",
         "Height of the vertical section in bin base profile",
-        read_only=True,
     ).BaseProfileVerticalSection = const.BIN_BASE_VERTICAL_SECTION
 
     obj.addProperty(
@@ -901,7 +897,6 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileTopChamfer",
         "zzExpertOnly",
         "Height of the top chamfer in the bin base profile",
-        read_only=True,
     ).BaseProfileTopChamfer = const.BIN_BASE_TOP_CHAMFER
 
     obj.addProperty(
@@ -909,7 +904,6 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
         "BinOuterRadius",
         "zzExpertOnly",
         "Outer radius of the bin",
-        read_only=True,
     ).BinOuterRadius = const.BIN_OUTER_RADIUS
 
     obj.addProperty(
@@ -917,7 +911,6 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
         "BinVerticalRadius",
         "zzExpertOnly",
         "Radius of the base profile Vertical section",
-        read_only=True,
     ).BinVerticalRadius = const.BIN_BASE_VERTICAL_RADIUS
 
     obj.addProperty(
@@ -925,7 +918,6 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
         "BinBottomRadius",
         "zzExpertOnly",
         "bottom of bin corner radius",
-        read_only=True,
     ).BinBottomRadius = const.BIN_BASE_BOTTOM_RADIUS
 
     obj.addProperty(
@@ -945,7 +937,6 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileHeight",
         "ReferenceParameters",
         "Height of the Gridfinity Base Profile, bottom of the bin",
-        read_only=True,
     )
 
     ## Expressions
@@ -1250,7 +1241,6 @@ def stacking_lip_properties(
         "StackingLipTopLedge",
         "zzExpertOnly",
         "Top Ledge of the stacking lip <br> <br> default = 0.4 mm",
-        read_only=True,
     ).StackingLipTopLedge = const.STACKING_LIP_TOP_LEDGE
 
     obj.addProperty(
@@ -1258,7 +1248,6 @@ def stacking_lip_properties(
         "StackingLipTopChamfer",
         "zzExpertOnly",
         "Top Chamfer of the Stacking lip",
-        read_only=True,
     )
 
     obj.addProperty(
@@ -1266,7 +1255,6 @@ def stacking_lip_properties(
         "StackingLipBottomChamfer",
         "zzExpertOnly",
         "Bottom Chamfer of the Stacking lip<br> <br> default = 0.7 mm",
-        read_only=True,
     ).StackingLipBottomChamfer = const.STACKING_LIP_BOTTOM_CHAMFER
 
     obj.addProperty(
@@ -1274,7 +1262,6 @@ def stacking_lip_properties(
         "StackingLipVerticalSection",
         "zzExpertOnly",
         "vertical section of the Stacking lip<br> <br> default = 1.8 mm",
-        read_only=True,
     ).StackingLipVerticalSection = const.STACKING_LIP_VERTICAL_SECTION
 
 
@@ -1345,7 +1332,6 @@ def bin_solid_mid_section_properties(
         "TotalHeight",
         "ReferenceParameters",
         "total height of the bin",
-        read_only=True,
     )
     ## Expert Only Parameters
     obj.addProperty(
@@ -1353,7 +1339,6 @@ def bin_solid_mid_section_properties(
         "HeightUnitValue",
         "zzExpertOnly",
         "height per unit, default is 7mm",
-        read_only=True,
     ).HeightUnitValue = const.HEIGHT_UNIT_VALUE
 
     ## Expressions

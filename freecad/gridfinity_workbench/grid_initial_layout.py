@@ -19,7 +19,6 @@ def _location_properties(obj: fc.DocumentObject) -> None:
         "xLocationOffset",
         "ShouldBeHidden",
         "changing bin location in the x direction",
-        hidden=True,
     )
 
     obj.addProperty(
@@ -27,7 +26,6 @@ def _location_properties(obj: fc.DocumentObject) -> None:
         "yLocationOffset",
         "ShouldBeHidden",
         "changing bin location in the y direction",
-        hidden=True,
     )
 
 
@@ -38,7 +36,6 @@ def _total_width_properties(obj: fc.DocumentObject) -> None:
         "xTotalWidth",
         "ReferenceParameters",
         "total width of Gridfinity object in x direction",
-        read_only=True,
     )
 
     obj.addProperty(
@@ -46,7 +43,6 @@ def _total_width_properties(obj: fc.DocumentObject) -> None:
         "yTotalWidth",
         "ReferenceParameters",
         "total width of Gridfinity object in y direction",
-        read_only=True,
     )
 
 
@@ -99,7 +95,6 @@ def rectangle_layout_properties(obj: fc.DocumentObject, *, baseplate_default: bo
         "Baseplate",
         "ShouldBeHidden",
         "Is the Gridfinity Object a baseplate",
-        hidden=True,
     ).Baseplate = baseplate_default
 
     ## Expressions
@@ -151,7 +146,6 @@ def custom_shape_layout_properties(obj: fc.DocumentObject, *, baseplate_default:
         "Baseplate",
         "ShouldBeHidden",
         "Is the Gridfinity Object a baseplate",
-        hidden=True,
     ).Baseplate = baseplate_default
 
 

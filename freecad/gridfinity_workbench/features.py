@@ -31,7 +31,6 @@ class FoundationGridfinity:
             "version",
             "version",
             "Gridfinity Workbench Version",
-            read_only=True,
         ).version = __version__
 
         obj.Proxy = self
@@ -50,7 +49,10 @@ class FoundationGridfinity:
             )  # ensure the bin is placed correctly before fusing
 
             result_shape = fp.BaseFeature.Shape.fuse(gridfinity_shape)
-            result_shape.transformShape(fp.Placement.inverse().toMatrix(), copy=True)
+            try:
+                result_shape.transformShape(fp.Placement.inverse().toMatrix(), copy=True)
+            except TypeError:
+                result_shape.transformShape(fp.Placement.inverse().toMatrix(), True)
 
             fp.Shape = result_shape
 
@@ -964,7 +966,6 @@ class StandaloneLabelShelf:
             "version",
             "version",
             "Gridfinity Workbench Version",
-            read_only=True,
         ).version = __version__
 
         obj.addProperty(
@@ -998,7 +999,6 @@ class StandaloneLabelShelf:
             "Attachment",
             "Base",
             "Object this label shelf is attached to.",
-            read_only=True,
         ).Attachment = target_obj
 
         normal = face.normalAt(*face.Surface.parameter(face.CenterOfMass))

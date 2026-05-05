@@ -225,7 +225,11 @@ def rounded_rectangle_chamfer(
         zsketchplane + height,
         radius + height,
     )
-    return Part.makeLoft([w1, w2], solid=True)
+    # Compatibility: older FreeCAD/LinkStable builds often reject keyword args for OCC bindings.
+    try:
+        return Part.makeLoft([w1, w2], True)
+    except TypeError:
+        return Part.makeLoft([w1, w2], solid=True)
 
 
 def rounded_rectangle_extrude(

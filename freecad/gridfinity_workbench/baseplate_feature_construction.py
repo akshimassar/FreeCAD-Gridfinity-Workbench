@@ -52,7 +52,6 @@ def magnet_holes_properties(obj: fc.DocumentObject) -> None:
         "BaseThickness",
         "Hidden",
         "Thickness of base under the normal baseplate  profile <br> <br> default = 6.4 mm",
-        hidden=True,
     ).BaseThickness = const.BASE_THICKNESS
 
 
@@ -318,7 +317,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileHeight",
         "ReferenceParameters",
         "Height of the Gridfinity Base Profile",
-        read_only=True,
     )
 
     ## Expert Only Parameters
@@ -327,7 +325,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileBottomChamfer",
         "zzExpertOnly",
         "height of chamfer in bottom of bin base profile <br> <br> default = 0.8 mm",
-        read_only=True,
     ).BaseProfileBottomChamfer = const.BASEPLATE_BOTTOM_CHAMFER
 
     obj.addProperty(
@@ -335,7 +332,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileVerticalSection",
         "zzExpertOnly",
         "Height of the vertical section in bin base profile",
-        read_only=True,
     ).BaseProfileVerticalSection = const.BASEPLATE_VERTICAL_SECTION
 
     obj.addProperty(
@@ -343,7 +339,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileTopChamfer",
         "zzExpertOnly",
         "Height of the top chamfer in the bin base profile",
-        read_only=True,
     ).BaseProfileTopChamfer = const.BASEPLATE_TOP_CHAMFER
 
     obj.addProperty(
@@ -351,7 +346,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BinOuterRadius",
         "zzExpertOnly",
         "Outer radius of the bin",
-        read_only=True,
     ).BinOuterRadius = const.BASEPLATE_OUTER_RADIUS
 
     obj.addProperty(
@@ -359,7 +353,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BinVerticalRadius",
         "zzExpertOnly",
         "Radius of the base profile Vertical section",
-        read_only=True,
     ).BinVerticalRadius = const.BASEPLATE_VERTICAL_RADIUS
 
     obj.addProperty(
@@ -367,7 +360,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BinBottomRadius",
         "zzExpertOnly",
         "bottom of bin corner radius",
-        read_only=True,
     ).BinBottomRadius = const.BASEPLATE_BOTTOM_RADIUS
 
     obj.addProperty(
@@ -382,7 +374,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseplateTopLedgeWidth",
         "zzExpertOnly",
         "Top ledge of baseplate, doubled between grids <br> <br> default = 0.4 mm",
-        read_only=True,
     ).BaseplateTopLedgeWidth = const.BASEPLATE_TOP_LEDGE_WIDTH
 
     ## Expressions
@@ -399,7 +390,6 @@ def solid_shape_properties(obj: fc.DocumentObject) -> None:
         "TotalHeight",
         "ReferenceDimensions",
         "total height of the bin",
-        read_only=True,
     )
 
 

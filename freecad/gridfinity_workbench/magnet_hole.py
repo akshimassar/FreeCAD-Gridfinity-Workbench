@@ -103,7 +103,6 @@ def add_properties(
         "MagnetHoleDistanceFromEdge",
         "zzExpertOnly",
         "Distance of the magnet holes from bin edge <br> <br> default = 8.0 mm",
-        read_only=True,
     ).MagnetHoleDistanceFromEdge = const.MAGNET_HOLE_DISTANCE_FROM_EDGE
 
 
