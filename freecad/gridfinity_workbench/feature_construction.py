@@ -1021,24 +1021,47 @@ def make_complex_bin_base(
     if obj.Baseplate and bool(getattr(obj, "ClickSpringsEnabled", False)):
         # Use the vertical-section footprint so the notch width does not depend on
         # the bottom-most chamfer dimensions.
-        click_width = x_vert_width + 2 * obj.ClickThickness
+        click_width_x = x_vert_width + 2 * obj.ClickThickness
+        click_width_y = y_vert_width + 2 * obj.ClickThickness
         click_length = obj.ClickLength
         click_center_y = obj.yGridSize / 4 + obj.ClickOffset
         click_notch = Part.makeBox(
-            click_width,
+            click_width_x,
             click_length,
             obj.TotalHeight,
-            fc.Vector(-click_width / 2, click_center_y - click_length / 2, -obj.TotalHeight),
+            fc.Vector(-click_width_x / 2, click_center_y - click_length / 2, -obj.TotalHeight),
             fc.Vector(0, 0, 1),
         )
         click_notch_mirror = Part.makeBox(
-            click_width,
+            click_width_x,
             click_length,
             obj.TotalHeight,
-            fc.Vector(-click_width / 2, -click_center_y - click_length / 2, -obj.TotalHeight),
+            fc.Vector(-click_width_x / 2, -click_center_y - click_length / 2, -obj.TotalHeight),
             fc.Vector(0, 0, 1),
         )
-        assembly = assembly.fuse(click_notch).fuse(click_notch_mirror)
+
+        # Transposed pair (X <-> Y): cutouts on +/-X sides.
+        click_center_x = obj.xGridSize / 4 + obj.ClickOffset
+        click_notch_t = Part.makeBox(
+            click_length,
+            click_width_y,
+            obj.TotalHeight,
+            fc.Vector(click_center_x - click_length / 2, -click_width_y / 2, -obj.TotalHeight),
+            fc.Vector(0, 0, 1),
+        )
+        click_notch_t_mirror = Part.makeBox(
+            click_length,
+            click_width_y,
+            obj.TotalHeight,
+            fc.Vector(-click_center_x - click_length / 2, -click_width_y / 2, -obj.TotalHeight),
+            fc.Vector(0, 0, 1),
+        )
+        assembly = (
+            assembly.fuse(click_notch)
+            .fuse(click_notch_mirror)
+            .fuse(click_notch_t)
+            .fuse(click_notch_t_mirror)
+        )
 
     fuse_total = utils.copy_in_layout(assembly, layout, obj.xGridSize, obj.yGridSize)
 
@@ -1102,12 +1125,16 @@ def make_click_spring_right(obj: fc.DocumentObject, layout: GridfinityLayout) ->
 
 
 def make_click_springs_two_sides(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape:
-    """Create click springs on right/left for both +Y and -Y sides."""
+    """Create click springs on all four sides of each grid cell."""
     right_single = _make_click_spring_right_single(obj)
     left_single = right_single.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
     pair_single = right_single.fuse(left_single).removeSplitter()
     pair_single_mirror_y = pair_single.mirror(fc.Vector(0, 0, 0), fc.Vector(0, 1, 0))
-    full_single = pair_single.fuse(pair_single_mirror_y).removeSplitter()
+    full_single_y = pair_single.fuse(pair_single_mirror_y).removeSplitter()
+
+    # Transposed pair (X <-> Y) by rotating around Z.
+    full_single_x = full_single_y.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
+    full_single = full_single_y.fuse(full_single_x).removeSplitter()
     full = utils.copy_in_layout(full_single, layout, obj.xGridSize, obj.yGridSize)
     return full.translate(
         fc.Vector(obj.xGridSize / 2 - obj.xLocationOffset, obj.yGridSize / 2 - obj.yLocationOffset),
