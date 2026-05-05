@@ -1133,7 +1133,8 @@ def make_click_springs_two_sides(obj: fc.DocumentObject, layout: GridfinityLayou
     full_single_y = pair_single.fuse(pair_single_mirror_y).removeSplitter()
 
     # Transposed pair (X <-> Y) by rotating around Z.
-    full_single_x = full_single_y.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
+    full_single_x = full_single_y.copy()
+    full_single_x.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
     full_single = full_single_y.fuse(full_single_x).removeSplitter()
     full = utils.copy_in_layout(full_single, layout, obj.xGridSize, obj.yGridSize)
     return full.translate(
