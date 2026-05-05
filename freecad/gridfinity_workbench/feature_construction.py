@@ -960,8 +960,6 @@ def make_complex_bin_base(
     )
     lower_size = obj.BaseProfileLowerChamferSize if lower_enabled else 0 * unitmm
     upper_size = obj.BaseProfileMainHalfWidth
-    top_crop = obj.BaseProfileTopCrop if for_cutout else 0 * unitmm
-    top_effective = upper_size - top_crop
 
     # Main section width is compatibility-critical and independent from top ledge tuning.
     clearance_for_widths = 0 * unitmm if for_cutout else obj.Clearance
@@ -998,7 +996,7 @@ def make_complex_bin_base(
         x_vert_width,
         y_vert_width,
         -obj.TotalHeight + lower_size + vertical_section_height,
-        top_effective,
+        upper_size,
         obj.BinVerticalRadius,
         obj.BinOuterRadius,
     )
@@ -1007,6 +1005,17 @@ def make_complex_bin_base(
         assembly = bottom_chamfer.multiFuse([vertical_section, top_chamfer])
     else:
         assembly = vertical_section.fuse(top_chamfer)
+
+    if for_cutout:
+        top_crop = obj.BaseProfileTopCrop
+        crop_slab = Part.makeBox(
+            obj.xGridSize * 2,
+            obj.yGridSize * 2,
+            top_crop + obj.TotalHeight,
+            fc.Vector(-obj.xGridSize, -obj.yGridSize, 0),
+            fc.Vector(0, 0, 1),
+        )
+        assembly = assembly.cut(crop_slab)
 
     if obj.Baseplate and bool(getattr(obj, "ClickSpringsEnabled", False)):
         # Use the vertical-section footprint so the notch width does not depend on
