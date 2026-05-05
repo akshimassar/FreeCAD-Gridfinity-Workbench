@@ -367,7 +367,7 @@ class Baseplate(FoundationGridfinity):
         fuse_total = solid_shape.cut(fuse_total)
 
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
-            fuse_total = fuse_total.fuse(feat.make_click_spring_right(obj, layout))
+            fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
             fuse_total = fuse_total.removeSplitter()
 
         return fuse_total
@@ -407,7 +407,7 @@ class MagnetBaseplate(FoundationGridfinity):
         fuse_total = fuse_total.cut(baseplate_feat.make_center_cut(obj, layout))
 
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
-            fuse_total = fuse_total.fuse(feat.make_click_spring_right(obj, layout))
+            fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
             fuse_total = fuse_total.removeSplitter()
 
         return fuse_total
@@ -451,7 +451,7 @@ class ScrewTogetherBaseplate(FoundationGridfinity):
         fuse_total = fuse_total.cut(baseplate_feat.make_connection_holes(obj, layout))
 
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
-            fuse_total = fuse_total.fuse(feat.make_click_spring_right(obj, layout))
+            fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
             fuse_total = fuse_total.removeSplitter()
 
         return fuse_total
@@ -856,7 +856,7 @@ class CustomBaseplate(FoundationGridfinity):
         fuse_total = solid_shape.cut(fuse_total)
 
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
-            fuse_total = fuse_total.fuse(feat.make_click_spring_right(obj, layout))
+            fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
             fuse_total = fuse_total.removeSplitter()
 
         return fuse_total

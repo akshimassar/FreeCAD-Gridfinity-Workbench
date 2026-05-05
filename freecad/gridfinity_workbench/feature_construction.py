@@ -1041,8 +1041,8 @@ def make_complex_bin_base(
     )
 
 
-def make_click_spring_right(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape:
-    """Create one right-side click spring pipe per grid cell."""
+def _make_click_spring_right_single(obj: fc.DocumentObject) -> Part.Shape:
+    """Create one right-side click spring pipe for a single grid cell at local origin."""
     x_vert_width = (obj.xGridSize - obj.Clearance * 2) - 2 * obj.BaseProfileTopChamfer
 
     click_length = obj.ClickLength
@@ -1083,9 +1083,25 @@ def make_click_spring_right(obj: fc.DocumentObject, layout: GridfinityLayout) ->
     profile = Part.Wire(Part.makePolygon(profile_points))
 
     # Fixed orientation mode (isFrenet=False).
-    spring = spine.makePipeShell([profile], True, False).removeSplitter()
+    return spine.makePipeShell([profile], True, False).removeSplitter()
+
+
+def make_click_spring_right(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape:
+    """Create one right-side click spring pipe per grid cell."""
+    spring = _make_click_spring_right_single(obj)
     spring = utils.copy_in_layout(spring, layout, obj.xGridSize, obj.yGridSize)
     return spring.translate(
+        fc.Vector(obj.xGridSize / 2 - obj.xLocationOffset, obj.yGridSize / 2 - obj.yLocationOffset),
+    )
+
+
+def make_click_springs_two_sides(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape:
+    """Create click springs on right and left sides."""
+    right_single = _make_click_spring_right_single(obj)
+    left_single = right_single.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
+    pair_single = right_single.fuse(left_single).removeSplitter()
+    pair = utils.copy_in_layout(pair_single, layout, obj.xGridSize, obj.yGridSize)
+    return pair.translate(
         fc.Vector(obj.xGridSize / 2 - obj.xLocationOffset, obj.yGridSize / 2 - obj.yLocationOffset),
     )
 
