@@ -335,8 +335,14 @@ def junction_screw_holes_properties(obj: fc.DocumentObject) -> None:
     ).JunctionCounterboreDepth = 1.5
 
 
-def make_junction_screw_holes(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape:
-    """Create internal junction screw holes with top-side counterbores."""
+def make_junction_screw_holes(
+    obj: fc.DocumentObject, layout: GridfinityLayout
+) -> Part.Shape | None:
+    """Create internal junction screw holes with top-side counterbores.
+
+    For custom layouts, a junction hole is only created where all four surrounding
+    cells exist in the layout.
+    """
     nx = len(layout)
     ny = len(layout[0])
 
@@ -345,8 +351,16 @@ def make_junction_screw_holes(obj: fc.DocumentObject, layout: GridfinityLayout) 
 
     holes = []
     for ix in range(1, nx):
-        x = ix * obj.xGridSize - obj.xLocationOffset
         for iy in range(1, ny):
+            if not (
+                layout[ix - 1][iy - 1]
+                and layout[ix][iy - 1]
+                and layout[ix - 1][iy]
+                and layout[ix][iy]
+            ):
+                continue
+
+            x = ix * obj.xGridSize - obj.xLocationOffset
             y = iy * obj.yGridSize - obj.yLocationOffset
 
             through = Part.makeCylinder(
@@ -372,6 +386,8 @@ def make_junction_screw_holes(obj: fc.DocumentObject, layout: GridfinityLayout) 
             )
             holes.append(through.fuse(counterbore).fuse(transition))
 
+    if not holes:
+        return None
     return holes[0].multiFuse(holes[1:]) if len(holes) > 1 else holes[0]
 
 

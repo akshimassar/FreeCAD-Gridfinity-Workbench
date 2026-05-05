@@ -367,7 +367,9 @@ class Baseplate(FoundationGridfinity):
         fuse_total = solid_shape.cut(fuse_total)
 
         if bool(getattr(obj, "JunctionScrewHoles", False)):
-            fuse_total = fuse_total.cut(baseplate_feat.make_junction_screw_holes(obj, layout))
+            junction_holes = baseplate_feat.make_junction_screw_holes(obj, layout)
+            if junction_holes is not None:
+                fuse_total = fuse_total.cut(junction_holes)
 
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
             fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
@@ -859,7 +861,9 @@ class CustomBaseplate(FoundationGridfinity):
         fuse_total = solid_shape.cut(fuse_total)
 
         if bool(getattr(obj, "JunctionScrewHoles", False)):
-            fuse_total = fuse_total.cut(baseplate_feat.make_junction_screw_holes(obj, layout))
+            junction_holes = baseplate_feat.make_junction_screw_holes(obj, layout)
+            if junction_holes is not None:
+                fuse_total = fuse_total.cut(junction_holes)
 
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
             fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
