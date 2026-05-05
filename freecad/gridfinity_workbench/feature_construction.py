@@ -951,6 +951,8 @@ def make_complex_bin_base(
     layout: GridfinityLayout,
 ) -> Part.Shape:
     """Creaet complex shaped bin base."""
+    disable_bottom_chamfer = bool(getattr(obj, "BaseProfileDisableBottomChamfer", False))
+
     if obj.Baseplate:
         baseplate_size_adjustment = obj.BaseplateTopLedgeWidth - obj.Clearance
     else:
@@ -979,22 +981,29 @@ def make_complex_bin_base(
         - 2 * baseplate_size_adjustment
     )
 
-    bottom_chamfer = utils.rounded_rectangle_chamfer(
-        x_bt_cmf_width,
-        y_bt_cmf_width,
-        -obj.TotalHeight,
-        obj.BaseProfileBottomChamfer,
-        obj.BinBottomRadius,
+    vertical_section_height = obj.BaseProfileVerticalSection + (
+        obj.BaseProfileBottomChamfer if disable_bottom_chamfer else 0 * unitmm
     )
 
     vertical_section = utils.rounded_rectangle_extrude(
         x_vert_width,
         y_vert_width,
-        -obj.TotalHeight + obj.BaseProfileBottomChamfer,
-        obj.BaseProfileVerticalSection,
+        -obj.TotalHeight + (0 * unitmm if disable_bottom_chamfer else obj.BaseProfileBottomChamfer),
+        vertical_section_height,
         obj.BinVerticalRadius,
     )
-    assembly = bottom_chamfer.fuse(vertical_section)
+
+    if disable_bottom_chamfer:
+        assembly = vertical_section
+    else:
+        bottom_chamfer = utils.rounded_rectangle_chamfer(
+            x_bt_cmf_width,
+            y_bt_cmf_width,
+            -obj.TotalHeight,
+            obj.BaseProfileBottomChamfer,
+            obj.BinBottomRadius,
+        )
+        assembly = bottom_chamfer.fuse(vertical_section)
 
     top_chamfer = utils.rounded_rectangle_chamfer(
         x_vert_width,
@@ -1004,7 +1013,10 @@ def make_complex_bin_base(
         obj.BinVerticalRadius,
     )
 
-    assembly = bottom_chamfer.multiFuse([vertical_section, top_chamfer])
+    if disable_bottom_chamfer:
+        assembly = vertical_section.fuse(top_chamfer)
+    else:
+        assembly = bottom_chamfer.multiFuse([vertical_section, top_chamfer])
 
     fuse_total = utils.copy_in_layout(assembly, layout, obj.xGridSize, obj.yGridSize)
 
