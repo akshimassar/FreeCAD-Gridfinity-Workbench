@@ -304,6 +304,77 @@ def make_center_cut(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Sh
     )
 
 
+def junction_screw_holes_properties(obj: fc.DocumentObject) -> None:
+    """Properties for junction screw holes at internal grid intersections."""
+    obj.addProperty(
+        "App::PropertyBool",
+        "JunctionScrewHoles",
+        "GridfinityNonStandard",
+        "Toggle internal junction screw holes",
+    ).JunctionScrewHoles = True
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "JunctionScrewDiameter",
+        "GridfinityNonStandard",
+        "Diameter of internal junction screw holes <br> <br> default = 3.3 mm",
+    ).JunctionScrewDiameter = 3.3
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "JunctionCounterboreDiameter",
+        "GridfinityNonStandard",
+        "Counterbore diameter for junction screw holes <br> <br> default = 6 mm",
+    ).JunctionCounterboreDiameter = 6
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "JunctionCounterboreDepth",
+        "GridfinityNonStandard",
+        "Counterbore depth for junction screw holes <br> <br> default = 1.5 mm",
+    ).JunctionCounterboreDepth = 1.5
+
+
+def make_junction_screw_holes(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape:
+    """Create internal junction screw holes with top-side counterbores."""
+    nx = len(layout)
+    ny = len(layout[0])
+
+    through_depth = obj.TotalHeight + 0.1 * fc.Units.Quantity("1 mm")
+    top_z = obj.TotalHeight
+
+    holes = []
+    for ix in range(1, nx):
+        x = ix * obj.xGridSize - obj.xLocationOffset
+        for iy in range(1, ny):
+            y = iy * obj.yGridSize - obj.yLocationOffset
+
+            through = Part.makeCylinder(
+                obj.JunctionScrewDiameter / 2,
+                through_depth,
+                fc.Vector(x, y, top_z),
+                fc.Vector(0, 0, -1),
+            )
+            counterbore = Part.makeCylinder(
+                obj.JunctionCounterboreDiameter / 2,
+                obj.JunctionCounterboreDepth,
+                fc.Vector(x, y, top_z),
+                fc.Vector(0, 0, -1),
+            )
+            # 90 degree included-angle transition at the end of the counterbore.
+            transition_height = (obj.JunctionCounterboreDiameter - obj.JunctionScrewDiameter) / 2
+            transition = Part.makeCone(
+                obj.JunctionCounterboreDiameter / 2,
+                obj.JunctionScrewDiameter / 2,
+                transition_height,
+                fc.Vector(x, y, top_z - obj.JunctionCounterboreDepth),
+                fc.Vector(0, 0, -1),
+            )
+            holes.append(through.fuse(counterbore).fuse(transition))
+
+    return holes[0].multiFuse(holes[1:]) if len(holes) > 1 else holes[0]
+
+
 def base_values_properties(obj: fc.DocumentObject) -> None:
     """Create BinBaseValues.
 
@@ -416,6 +487,8 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileHeight",
         "BaseProfileBottomChamfer + BaseProfileVerticalSection + BaseProfileTopChamfer",
     )
+
+    junction_screw_holes_properties(obj)
 
 
 def solid_shape_properties(obj: fc.DocumentObject) -> None:

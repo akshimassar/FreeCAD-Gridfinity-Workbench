@@ -366,6 +366,9 @@ class Baseplate(FoundationGridfinity):
         fuse_total.translate(fc.Vector(0, 0, obj.TotalHeight))
         fuse_total = solid_shape.cut(fuse_total)
 
+        if bool(getattr(obj, "JunctionScrewHoles", False)):
+            fuse_total = fuse_total.cut(baseplate_feat.make_junction_screw_holes(obj, layout))
+
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
             fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
             fuse_total = fuse_total.removeSplitter()
@@ -854,6 +857,9 @@ class CustomBaseplate(FoundationGridfinity):
         fuse_total = feat.make_complex_bin_base(obj, layout)
         fuse_total.translate(fc.Vector(0, 0, obj.TotalHeight))
         fuse_total = solid_shape.cut(fuse_total)
+
+        if bool(getattr(obj, "JunctionScrewHoles", False)):
+            fuse_total = fuse_total.cut(baseplate_feat.make_junction_screw_holes(obj, layout))
 
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
             fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
