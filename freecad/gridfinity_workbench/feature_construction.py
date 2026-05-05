@@ -931,8 +931,8 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
         "App::PropertyLength",
         "BaseProfileTopCrop",
         "zzExpertOnly",
-        "Vertical crop from apex <br> <br> default = 0.2 mm",
-    ).BaseProfileTopCrop = 0.2
+        "Vertical crop from apex <br> <br> default = 0.4 mm",
+    ).BaseProfileTopCrop = 0.4
 
     obj.addProperty(
         "App::PropertyLength",
@@ -989,7 +989,7 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
     )
     obj.setExpression(
         "BaseProfileHeight",
-        "(BaseProfileLowerChamferEnabled == 1 ? BaseProfileLowerChamferSize : 0mm) + BaseProfileMainHeight + BaseProfileMainHalfWidth - BaseProfileTopCrop",
+        "BaseProfileLowerChamferSize + BaseProfileMainHeight + BaseProfileMainHalfWidth",
     )
 
 
@@ -1001,10 +1001,12 @@ def make_complex_bin_base(
 ) -> Part.Shape:
     """Creaet complex shaped bin base."""
 
-    lower_enabled = bool(getattr(obj, "BaseProfileLowerChamferEnabled", True))
+    lower_enabled = (
+        bool(getattr(obj, "BaseProfileLowerChamferEnabled", True)) if for_cutout else True
+    )
     lower_size = obj.BaseProfileLowerChamferSize if lower_enabled else 0 * unitmm
     upper_size = obj.BaseProfileMainHalfWidth
-    top_crop = obj.BaseProfileTopCrop
+    top_crop = obj.BaseProfileTopCrop if for_cutout else 0 * unitmm
     top_effective = upper_size - top_crop
 
     # Main section width is compatibility-critical and independent from top ledge tuning.
