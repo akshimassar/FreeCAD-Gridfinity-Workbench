@@ -182,15 +182,15 @@ def _center_cut_face(obj: fc.DocumentObject) -> Part.Face:
     """Create wire for the baseplate center cut."""
     x_inframedis = (
         obj.xGridSize / 2
-        - obj.BaseProfileTopChamfer
-        - obj.BaseProfileBottomChamfer
+        - obj.BaseProfileMainHalfWidth
+        - obj.BaseProfileLowerChamferSize
         - obj.BaseplateTopLedgeWidth
     )
 
     y_inframedis = (
         obj.yGridSize / 2
-        - obj.BaseProfileTopChamfer
-        - obj.BaseProfileBottomChamfer
+        - obj.BaseProfileMainHalfWidth
+        - obj.BaseProfileLowerChamferSize
         - obj.BaseplateTopLedgeWidth
     )
 
@@ -409,34 +409,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
     ## Expert Only Parameters
     obj.addProperty(
         "App::PropertyLength",
-        "BaseProfileBottomChamfer",
-        "zzExpertOnly",
-        "height of chamfer in bottom of bin base profile <br> <br> default = 0.8 mm",
-    ).BaseProfileBottomChamfer = const.BASEPLATE_BOTTOM_CHAMFER
-
-    obj.addProperty(
-        "App::PropertyBool",
-        "BaseProfileDisableBottomChamfer",
-        "zzExpertOnly",
-        "Disable bottom chamfer while keeping the same total base profile height",
-    ).BaseProfileDisableBottomChamfer = True
-
-    obj.addProperty(
-        "App::PropertyLength",
-        "BaseProfileVerticalSection",
-        "zzExpertOnly",
-        "Height of the vertical section in bin base profile",
-    ).BaseProfileVerticalSection = const.BASEPLATE_VERTICAL_SECTION
-
-    obj.addProperty(
-        "App::PropertyLength",
-        "BaseProfileTopChamfer",
-        "zzExpertOnly",
-        "Height of the top chamfer in the bin base profile",
-    ).BaseProfileTopChamfer = const.BASEPLATE_TOP_CHAMFER
-
-    obj.addProperty(
-        "App::PropertyLength",
         "BaseProfileMainHalfWidth",
         "zzExpertOnly",
         "Half width of main profile section <br> <br> default = 2.15 mm",
@@ -535,20 +507,8 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
 
     ## Expressions
     obj.setExpression(
-        "BaseProfileBottomChamfer",
-        "BaseProfileLowerChamferSize",
-    )
-    obj.setExpression(
-        "BaseProfileTopChamfer",
-        "BaseProfileMainHalfWidth",
-    )
-    obj.setExpression(
-        "BaseProfileVerticalSection",
-        "BaseProfileMainHeight - BaseProfileLowerChamferSize",
-    )
-    obj.setExpression(
         "BaseProfileHeight",
-        "(BaseProfileLowerChamferEnabled == 1 ? BaseProfileLowerChamferSize : 0mm) + BaseProfileMainHeight + BaseProfileMainHalfWidth - BaseProfileTopCrop",
+        "BaseProfileLowerChamferSize + BaseProfileMainHeight + BaseProfileMainHalfWidth",
     )
 
     junction_screw_holes_properties(obj)

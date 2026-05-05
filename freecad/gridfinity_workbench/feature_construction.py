@@ -752,14 +752,14 @@ def make_eco_compartments(
     x_bt_cmf_width = (
         obj.xGridSize
         - obj.Clearance * 2
-        - 2 * obj.BaseProfileTopChamfer
+        - 2 * obj.BaseProfileMainHalfWidth
         - 2 * obj.BaseWallThickness
         - 2 * 0.4 * unitmm
     )
     y_bt_cmf_width = (
         obj.yGridSize
         - obj.Clearance * 2
-        - 2 * obj.BaseProfileTopChamfer
+        - 2 * obj.BaseProfileMainHalfWidth
         - 2 * obj.BaseWallThickness
         - 2 * 0.4 * unitmm
     )
@@ -767,13 +767,13 @@ def make_eco_compartments(
     x_vert_width = (
         obj.xGridSize
         - obj.Clearance * 2
-        - 2 * obj.BaseProfileTopChamfer
+        - 2 * obj.BaseProfileMainHalfWidth
         - 2 * obj.BaseWallThickness
     )
     y_vert_width = (
         obj.yGridSize
         - obj.Clearance * 2
-        - 2 * obj.BaseProfileTopChamfer
+        - 2 * obj.BaseProfileMainHalfWidth
         - 2 * obj.BaseWallThickness
     )
 
@@ -788,10 +788,10 @@ def make_eco_compartments(
     if obj.MagnetHoles:
         magoffset = obj.MagnetHoleDepth
         if (obj.MagnetHoleDepth + obj.BaseWallThickness) > (
-            obj.BaseProfileBottomChamfer + obj.BaseProfileVerticalSection + base_offset
+            obj.BaseProfileMainHeight + base_offset
         ):
             tp_chf_offset = (obj.MagnetHoleDepth + obj.BaseWallThickness) - (
-                obj.BaseProfileBottomChamfer + obj.BaseProfileVerticalSection + base_offset
+                obj.BaseProfileMainHeight + base_offset
             )
 
     bottom_chamfer = utils.rounded_rectangle_chamfer(
@@ -806,23 +806,15 @@ def make_eco_compartments(
         x_vert_width,
         y_vert_width,
         -obj.TotalHeight + obj.BaseWallThickness + 0.4 * unitmm + magoffset,
-        obj.BaseProfileVerticalSection
-        + obj.BaseProfileBottomChamfer
-        + base_offset
-        - obj.BaseWallThickness
-        - 0.4 * unitmm,
+        obj.BaseProfileMainHeight + base_offset - obj.BaseWallThickness - 0.4 * unitmm,
         v_chf_rad,
     )
 
     top_chamfer = utils.rounded_rectangle_chamfer(
         x_vert_width + tp_chf_offset,
         y_vert_width + tp_chf_offset,
-        -obj.TotalHeight
-        + obj.BaseProfileBottomChamfer
-        + obj.BaseProfileVerticalSection
-        + base_offset
-        + tp_chf_offset,
-        obj.BaseProfileTopChamfer + obj.BaseWallThickness - tp_chf_offset,
+        -obj.TotalHeight + obj.BaseProfileMainHeight + base_offset + tp_chf_offset,
+        obj.BaseProfileMainHalfWidth + obj.BaseWallThickness - tp_chf_offset,
         v_chf_rad,
     )
     assembly = bottom_chamfer.multiFuse([vertical_section, top_chamfer])
@@ -878,27 +870,6 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
 
     """
     ## Expert Only Parameters
-    obj.addProperty(
-        "App::PropertyLength",
-        "BaseProfileBottomChamfer",
-        "zzExpertOnly",
-        "height of chamfer in bottom of bin base profile <br> <br> default = 0.8 mm",
-    ).BaseProfileBottomChamfer = const.BIN_BASE_BOTTOM_CHAMFER
-
-    obj.addProperty(
-        "App::PropertyLength",
-        "BaseProfileVerticalSection",
-        "zzExpertOnly",
-        "Height of the vertical section in bin base profile",
-    ).BaseProfileVerticalSection = const.BIN_BASE_VERTICAL_SECTION
-
-    obj.addProperty(
-        "App::PropertyLength",
-        "BaseProfileTopChamfer",
-        "zzExpertOnly",
-        "Height of the top chamfer in the bin base profile",
-    ).BaseProfileTopChamfer = const.BIN_BASE_TOP_CHAMFER
-
     obj.addProperty(
         "App::PropertyLength",
         "BaseProfileMainHalfWidth",
@@ -975,18 +946,6 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
     )
 
     ## Expressions
-    obj.setExpression(
-        "BaseProfileBottomChamfer",
-        "BaseProfileLowerChamferSize",
-    )
-    obj.setExpression(
-        "BaseProfileTopChamfer",
-        "BaseProfileMainHalfWidth",
-    )
-    obj.setExpression(
-        "BaseProfileVerticalSection",
-        "BaseProfileMainHeight - BaseProfileLowerChamferSize",
-    )
     obj.setExpression(
         "BaseProfileHeight",
         "BaseProfileLowerChamferSize + BaseProfileMainHeight + BaseProfileMainHalfWidth",
@@ -1325,7 +1284,9 @@ def calc_stacking_lip_offset(obj: fc.DocumentObject) -> fc.Units.Quantity:
 def _stacking_lip_profile(obj: fc.DocumentObject) -> Part.Wire:
     """Create stacking lip profile wire."""
     ## Calculated Values
-    obj.StackingLipTopChamfer = obj.BaseProfileTopChamfer - obj.Clearance - obj.StackingLipTopLedge
+    obj.StackingLipTopChamfer = (
+        obj.BaseProfileMainHalfWidth - obj.Clearance - obj.StackingLipTopLedge
+    )
 
     ## Stacking Lip Generation
     x1 = obj.Clearance

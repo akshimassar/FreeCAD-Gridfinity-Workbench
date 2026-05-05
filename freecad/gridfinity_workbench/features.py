@@ -487,13 +487,13 @@ class CustomBlankBin(FoundationGridfinity):
         ## calculated here
 
         obj.BaseProfileHeight = (
-            obj.BaseProfileBottomChamfer
-            + obj.BaseProfileVerticalSection
-            + obj.BaseProfileTopChamfer
+            obj.BaseProfileLowerChamferSize
+            + obj.BaseProfileMainHeight
+            + obj.BaseProfileMainHalfWidth
         )
 
         obj.StackingLipTopChamfer = (
-            obj.BaseProfileTopChamfer - obj.Clearance - obj.StackingLipTopLedge
+            obj.BaseProfileMainHalfWidth - obj.Clearance - obj.StackingLipTopLedge
         )
         ## calculated values over
         layout = clean_up_layout(self.layout)
@@ -563,13 +563,13 @@ class CustomBinBase(FoundationGridfinity):
         """Generate BinBase Shape."""
         ## calculated here
         obj.BaseProfileHeight = (
-            obj.BaseProfileBottomChamfer
-            + obj.BaseProfileVerticalSection
-            + obj.BaseProfileTopChamfer
+            obj.BaseProfileLowerChamferSize
+            + obj.BaseProfileMainHeight
+            + obj.BaseProfileMainHalfWidth
         )
 
         obj.StackingLipTopChamfer = (
-            obj.BaseProfileTopChamfer - obj.Clearance - obj.StackingLipTopLedge
+            obj.BaseProfileMainHalfWidth - obj.Clearance - obj.StackingLipTopLedge
         )
         ## calculated values over
         layout = clean_up_layout(self.layout)
@@ -642,13 +642,13 @@ class CustomEcoBin(FoundationGridfinity):
         ## calculated here
 
         obj.BaseProfileHeight = (
-            obj.BaseProfileBottomChamfer
-            + obj.BaseProfileVerticalSection
-            + obj.BaseProfileTopChamfer
+            obj.BaseProfileLowerChamferSize
+            + obj.BaseProfileMainHeight
+            + obj.BaseProfileMainHalfWidth
         )
 
         obj.StackingLipTopChamfer = (
-            obj.BaseProfileTopChamfer - obj.Clearance - obj.StackingLipTopLedge
+            obj.BaseProfileMainHalfWidth - obj.Clearance - obj.StackingLipTopLedge
         )
         ## calculated values over
         layout = clean_up_layout(self.layout)
@@ -760,13 +760,13 @@ class CustomStorageBin(FoundationGridfinity):
             obj.TotalHeight = obj.HeightUnits * obj.HeightUnitValue
 
         obj.BaseProfileHeight = (
-            obj.BaseProfileBottomChamfer
-            + obj.BaseProfileVerticalSection
-            + obj.BaseProfileTopChamfer
+            obj.BaseProfileLowerChamferSize
+            + obj.BaseProfileMainHeight
+            + obj.BaseProfileMainHalfWidth
         )
 
         obj.StackingLipTopChamfer = (
-            obj.BaseProfileTopChamfer - obj.Clearance - obj.StackingLipTopLedge
+            obj.BaseProfileMainHalfWidth - obj.Clearance - obj.StackingLipTopLedge
         )
 
         ## calculated values over
