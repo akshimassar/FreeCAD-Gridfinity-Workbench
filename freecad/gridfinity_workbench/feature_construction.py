@@ -1018,6 +1018,21 @@ def make_complex_bin_base(
     else:
         assembly = bottom_chamfer.multiFuse([vertical_section, top_chamfer])
 
+    if obj.Baseplate and bool(getattr(obj, "ClickSpringsEnabled", False)):
+        # Use the vertical-section footprint so the notch width does not depend on
+        # the bottom-most chamfer dimensions.
+        click_width = x_vert_width + 2 * obj.ClickThickness
+        click_length = obj.ClickLength
+        click_center_y = obj.yGridSize / 4 + obj.ClickOffset
+        click_notch = Part.makeBox(
+            click_width,
+            click_length,
+            obj.TotalHeight,
+            fc.Vector(-click_width / 2, click_center_y - click_length / 2, -obj.TotalHeight),
+            fc.Vector(0, 0, 1),
+        )
+        assembly = assembly.fuse(click_notch)
+
     fuse_total = utils.copy_in_layout(assembly, layout, obj.xGridSize, obj.yGridSize)
 
     return fuse_total.translate(

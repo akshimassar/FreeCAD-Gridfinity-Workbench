@@ -383,6 +383,34 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "Top ledge of baseplate, doubled between grids <br> <br> default = 0.4 mm",
     ).BaseplateTopLedgeWidth = const.BASEPLATE_TOP_LEDGE_WIDTH
 
+    obj.addProperty(
+        "App::PropertyBool",
+        "ClickSpringsEnabled",
+        "GridfinityNonStandard",
+        "Enable click spring notch generation",
+    ).ClickSpringsEnabled = True
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "ClickThickness",
+        "GridfinityNonStandard",
+        "Click spring notch thickness <br> <br> default = 0.8 mm",
+    ).ClickThickness = 0.8
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "ClickLength",
+        "GridfinityNonStandard",
+        "Click spring notch length <br> <br> default = 12 mm",
+    ).ClickLength = 12
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "ClickOffset",
+        "GridfinityNonStandard",
+        "Click spring notch center offset in Y <br> <br> default = 0.55 mm",
+    ).ClickOffset = 0.55
+
     ## Expressions
     obj.setExpression(
         "BaseProfileHeight",
