@@ -419,7 +419,7 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileDisableBottomChamfer",
         "zzExpertOnly",
         "Disable bottom chamfer while keeping the same total base profile height",
-    ).BaseProfileDisableBottomChamfer = False
+    ).BaseProfileDisableBottomChamfer = True
 
     obj.addProperty(
         "App::PropertyLength",
