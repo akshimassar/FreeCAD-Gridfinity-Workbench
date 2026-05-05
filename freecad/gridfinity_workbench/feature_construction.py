@@ -800,6 +800,7 @@ def make_eco_compartments(
         -obj.TotalHeight + obj.BaseWallThickness + magoffset,
         0.4 * unitmm,
         bt_chf_rad,
+        v_chf_rad,
     )
 
     vertical_section = utils.rounded_rectangle_extrude(
@@ -816,6 +817,7 @@ def make_eco_compartments(
         -obj.TotalHeight + obj.BaseProfileMainHeight + base_offset + tp_chf_offset,
         obj.BaseProfileMainHalfWidth + obj.BaseWallThickness - tp_chf_offset,
         v_chf_rad,
+        obj.BinOuterRadius,
     )
     assembly = bottom_chamfer.multiFuse([vertical_section, top_chamfer])
 
@@ -921,13 +923,6 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
 
     obj.addProperty(
         "App::PropertyLength",
-        "BinBottomRadius",
-        "zzExpertOnly",
-        "bottom of bin corner radius",
-    ).BinBottomRadius = const.BIN_BASE_BOTTOM_RADIUS
-
-    obj.addProperty(
-        "App::PropertyLength",
         "Clearance",
         "zzExpertOnly",
         (
@@ -990,7 +985,8 @@ def make_complex_bin_base(
             y_bt_cmf_width,
             -obj.TotalHeight,
             lower_size,
-            obj.BinBottomRadius,
+            obj.BinVerticalRadius - lower_size,
+            obj.BinVerticalRadius,
         )
         assembly = bottom_chamfer.fuse(vertical_section)
     else:
@@ -1002,6 +998,7 @@ def make_complex_bin_base(
         -obj.TotalHeight + lower_size + obj.BaseProfileMainHeight,
         top_effective,
         obj.BinVerticalRadius,
+        obj.BinOuterRadius,
     )
 
     if lower_enabled:

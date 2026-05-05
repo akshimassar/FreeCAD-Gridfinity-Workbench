@@ -458,13 +458,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
 
     obj.addProperty(
         "App::PropertyLength",
-        "BinBottomRadius",
-        "zzExpertOnly",
-        "bottom of bin corner radius",
-    ).BinBottomRadius = const.BASEPLATE_BOTTOM_RADIUS
-
-    obj.addProperty(
-        "App::PropertyLength",
         "Clearance",
         "zzExpertOnly",
         "The Clearance between bin and baseplate <br> <br>default = 0.25 mm",

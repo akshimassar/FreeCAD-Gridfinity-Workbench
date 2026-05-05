@@ -203,7 +203,8 @@ def rounded_rectangle_chamfer(
     ywidth: float,
     zsketchplane: float,
     height: float,
-    radius: float,
+    lower_radius: float,
+    upper_radius: float,
 ) -> Part.Shape:
     """Create rounded rectangle shpae with a chamfer.
 
@@ -212,18 +213,19 @@ def rounded_rectangle_chamfer(
         ywidth (float): Width of the rectangle in Y direction.
         zsketchplane (float): Z heigt where the part should be.
         height (float): Height of the part
-        radius (float): Radius of the corners.
+        lower_radius (float): Radius of the lower profile corners.
+        upper_radius (float): Radius of the upper profile corners.
 
     Returns:
         Part.Shape: Rounded rectangle chanfer shape.
 
     """
-    w1 = create_rounded_rectangle(xwidth, ywidth, zsketchplane, radius)
+    w1 = create_rounded_rectangle(xwidth, ywidth, zsketchplane, lower_radius)
     w2 = create_rounded_rectangle(
         xwidth + 2 * height,
         ywidth + 2 * height,
         zsketchplane + height,
-        radius + height,
+        upper_radius,
     )
     # Compatibility: older FreeCAD/LinkStable builds often reject keyword args for OCC bindings.
     try:
