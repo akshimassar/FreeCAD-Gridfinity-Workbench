@@ -1024,7 +1024,7 @@ def make_complex_bin_base(
         click_width_x = x_vert_width + 2 * obj.ClickThickness
         click_width_y = y_vert_width + 2 * obj.ClickThickness
         click_length = obj.ClickLength
-        click_center_y = obj.yGridSize / 4 + obj.ClickOffset
+        click_center_y = obj.yGridSize / 4
         click_notch = Part.makeBox(
             click_width_x,
             click_length,
@@ -1041,7 +1041,7 @@ def make_complex_bin_base(
         )
 
         # Transposed pair (X <-> Y): cutouts on +/-X sides.
-        click_center_x = obj.xGridSize / 4 + obj.ClickOffset
+        click_center_x = obj.xGridSize / 4
         click_notch_t = Part.makeBox(
             click_length,
             click_width_y,
@@ -1075,7 +1075,7 @@ def _make_click_spring_right_single(obj: fc.DocumentObject) -> Part.Shape:
     x_vert_width = (obj.xGridSize - obj.Clearance * 2) - 2 * obj.BaseProfileTopChamfer
 
     click_length = obj.ClickLength
-    click_center_y = obj.yGridSize / 4 + obj.ClickOffset
+    click_center_y = obj.yGridSize / 4
     click_top_y = click_center_y + click_length / 2
 
     step = click_length / 3
