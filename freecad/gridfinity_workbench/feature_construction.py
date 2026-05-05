@@ -901,6 +901,41 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
 
     obj.addProperty(
         "App::PropertyLength",
+        "BaseProfileMainHalfWidth",
+        "zzExpertOnly",
+        "Half width of main profile section <br> <br> default = 2.15 mm",
+    ).BaseProfileMainHalfWidth = 2.15
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "BaseProfileMainHeight",
+        "zzExpertOnly",
+        "Height of main (vertical) section <br> <br> default = 2.5 mm",
+    ).BaseProfileMainHeight = 2.5
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "BaseProfileLowerChamferSize",
+        "zzExpertOnly",
+        "Lower chamfer size <br> <br> default = 0.7 mm",
+    ).BaseProfileLowerChamferSize = 0.7
+
+    obj.addProperty(
+        "App::PropertyBool",
+        "BaseProfileLowerChamferEnabled",
+        "ShouldBeHidden",
+        "Enable lower chamfer",
+    ).BaseProfileLowerChamferEnabled = True
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "BaseProfileTopCrop",
+        "zzExpertOnly",
+        "Vertical crop from apex <br> <br> default = 0.2 mm",
+    ).BaseProfileTopCrop = 0.2
+
+    obj.addProperty(
+        "App::PropertyLength",
         "BinOuterRadius",
         "zzExpertOnly",
         "Outer radius of the bin",
@@ -941,82 +976,77 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
 
     ## Expressions
     obj.setExpression(
+        "BaseProfileBottomChamfer",
+        "BaseProfileLowerChamferSize",
+    )
+    obj.setExpression(
+        "BaseProfileTopChamfer",
+        "BaseProfileMainHalfWidth",
+    )
+    obj.setExpression(
+        "BaseProfileVerticalSection",
+        "BaseProfileMainHeight - BaseProfileLowerChamferSize",
+    )
+    obj.setExpression(
         "BaseProfileHeight",
-        "BaseProfileBottomChamfer + BaseProfileVerticalSection + BaseProfileTopChamfer",
+        "(BaseProfileLowerChamferEnabled == 1 ? BaseProfileLowerChamferSize : 0mm) + BaseProfileMainHeight + BaseProfileMainHalfWidth - BaseProfileTopCrop",
     )
 
 
 def make_complex_bin_base(
     obj: fc.DocumentObject,
     layout: GridfinityLayout,
+    *,
+    for_cutout: bool = False,
 ) -> Part.Shape:
     """Creaet complex shaped bin base."""
-    disable_bottom_chamfer = bool(getattr(obj, "BaseProfileDisableBottomChamfer", False))
 
-    if obj.Baseplate:
-        baseplate_size_adjustment = obj.BaseplateTopLedgeWidth - obj.Clearance
-    else:
-        baseplate_size_adjustment = 0 * unitmm
+    lower_enabled = bool(getattr(obj, "BaseProfileLowerChamferEnabled", True))
+    lower_size = obj.BaseProfileLowerChamferSize if lower_enabled else 0 * unitmm
+    upper_size = obj.BaseProfileMainHalfWidth
+    top_crop = obj.BaseProfileTopCrop
+    top_effective = upper_size - top_crop
 
-    x_bt_cmf_width = (
-        (obj.xGridSize - obj.Clearance * 2)
-        - 2 * obj.BaseProfileBottomChamfer
-        - 2 * obj.BaseProfileTopChamfer
-        - 2 * baseplate_size_adjustment
-    )
-    y_bt_cmf_width = (
-        (obj.yGridSize - obj.Clearance * 2)
-        - 2 * obj.BaseProfileBottomChamfer
-        - 2 * obj.BaseProfileTopChamfer
-        - 2 * baseplate_size_adjustment
-    )
-    x_vert_width = (
-        (obj.xGridSize - obj.Clearance * 2)
-        - 2 * obj.BaseProfileTopChamfer
-        - 2 * baseplate_size_adjustment
-    )
-    y_vert_width = (
-        (obj.yGridSize - obj.Clearance * 2)
-        - 2 * obj.BaseProfileTopChamfer
-        - 2 * baseplate_size_adjustment
-    )
+    # Main section width is compatibility-critical and independent from top ledge tuning.
+    clearance_for_widths = 0 * unitmm if for_cutout else obj.Clearance
+    x_vert_width = (obj.xGridSize - clearance_for_widths * 2) - 2 * obj.BaseProfileMainHalfWidth
+    y_vert_width = (obj.yGridSize - clearance_for_widths * 2) - 2 * obj.BaseProfileMainHalfWidth
 
-    vertical_section_height = obj.BaseProfileVerticalSection + (
-        obj.BaseProfileBottomChamfer if disable_bottom_chamfer else 0 * unitmm
-    )
+    x_bt_cmf_width = x_vert_width - 2 * lower_size
+    y_bt_cmf_width = y_vert_width - 2 * lower_size
 
     vertical_section = utils.rounded_rectangle_extrude(
         x_vert_width,
         y_vert_width,
-        -obj.TotalHeight + (0 * unitmm if disable_bottom_chamfer else obj.BaseProfileBottomChamfer),
-        vertical_section_height,
+        -obj.TotalHeight + lower_size,
+        obj.BaseProfileMainHeight,
         obj.BinVerticalRadius,
     )
 
-    if disable_bottom_chamfer:
-        assembly = vertical_section
-    else:
+    if lower_enabled:
         bottom_chamfer = utils.rounded_rectangle_chamfer(
             x_bt_cmf_width,
             y_bt_cmf_width,
             -obj.TotalHeight,
-            obj.BaseProfileBottomChamfer,
+            lower_size,
             obj.BinBottomRadius,
         )
         assembly = bottom_chamfer.fuse(vertical_section)
+    else:
+        assembly = vertical_section
 
     top_chamfer = utils.rounded_rectangle_chamfer(
         x_vert_width,
         y_vert_width,
-        -obj.TotalHeight + obj.BaseProfileBottomChamfer + obj.BaseProfileVerticalSection,
-        obj.BaseProfileTopChamfer,
+        -obj.TotalHeight + lower_size + obj.BaseProfileMainHeight,
+        top_effective,
         obj.BinVerticalRadius,
     )
 
-    if disable_bottom_chamfer:
-        assembly = vertical_section.fuse(top_chamfer)
-    else:
+    if lower_enabled:
         assembly = bottom_chamfer.multiFuse([vertical_section, top_chamfer])
+    else:
+        assembly = vertical_section.fuse(top_chamfer)
 
     if obj.Baseplate and bool(getattr(obj, "ClickSpringsEnabled", False)):
         # Use the vertical-section footprint so the notch width does not depend on
@@ -1072,14 +1102,14 @@ def make_complex_bin_base(
 
 def _make_click_spring_right_single(obj: fc.DocumentObject) -> Part.Shape:
     """Create one right-side click spring pipe for a single grid cell at local origin."""
-    x_vert_width = (obj.xGridSize - obj.Clearance * 2) - 2 * obj.BaseProfileTopChamfer
+    x_vert_width = obj.xGridSize - 2 * obj.BaseProfileMainHalfWidth
 
     click_length = obj.ClickLength
     click_center_y = obj.yGridSize / 4
     click_top_y = click_center_y + click_length / 2
 
     step = click_length / 3
-    x0 = x_vert_width / 2 - (obj.BaseplateTopLedgeWidth - obj.Clearance)
+    x0 = x_vert_width / 2
     x1 = x0 - obj.ClickOffset
     x2 = x1
     x3 = x2 + obj.ClickOffset
@@ -1099,7 +1129,7 @@ def _make_click_spring_right_single(obj: fc.DocumentObject) -> Part.Shape:
     ]
     spine = Part.Wire(Part.makePolygon(path_points))
 
-    z1 = obj.BaseProfileBottomChamfer + obj.BaseProfileVerticalSection
+    z1 = obj.BaseProfileMainHeight
     x2 = x0 + obj.ClickThickness
     z2 = z1 + obj.ClickThickness
     profile_points = [

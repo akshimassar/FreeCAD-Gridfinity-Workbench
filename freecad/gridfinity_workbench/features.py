@@ -362,7 +362,7 @@ class Baseplate(FoundationGridfinity):
             baseplate_type="standard",
         )
 
-        fuse_total = feat.make_complex_bin_base(obj, layout)
+        fuse_total = feat.make_complex_bin_base(obj, layout, for_cutout=True)
         fuse_total.translate(fc.Vector(0, 0, obj.TotalHeight))
         fuse_total = solid_shape.cut(fuse_total)
 
@@ -405,7 +405,7 @@ class MagnetBaseplate(FoundationGridfinity):
             baseplate_type="magnet",
         )
 
-        fuse_total = feat.make_complex_bin_base(obj, layout)
+        fuse_total = feat.make_complex_bin_base(obj, layout, for_cutout=True)
         fuse_total.translate(fc.Vector(0, 0, obj.TotalHeight))
         fuse_total = solid_shape.cut(fuse_total)
         fuse_total = fuse_total.cut(baseplate_feat.make_magnet_holes(obj, layout))
@@ -447,7 +447,7 @@ class ScrewTogetherBaseplate(FoundationGridfinity):
             baseplate_type="screw_together",
         )
 
-        fuse_total = feat.make_complex_bin_base(obj, layout)
+        fuse_total = feat.make_complex_bin_base(obj, layout, for_cutout=True)
         fuse_total.translate(fc.Vector(0, 0, obj.TotalHeight))
         fuse_total = solid_shape.cut(fuse_total)
         fuse_total = fuse_total.cut(baseplate_feat.make_magnet_holes(obj, layout))
@@ -856,7 +856,7 @@ class CustomBaseplate(FoundationGridfinity):
         solid_shape = solid_shape.removeSplitter()
         solid_shape = vertical_edge_fillet(solid_shape, obj.BinOuterRadius)
 
-        fuse_total = feat.make_complex_bin_base(obj, layout)
+        fuse_total = feat.make_complex_bin_base(obj, layout, for_cutout=True)
         fuse_total.translate(fc.Vector(0, 0, obj.TotalHeight))
         fuse_total = solid_shape.cut(fuse_total)
 
@@ -911,7 +911,7 @@ class CustomMagnetBaseplate(FoundationGridfinity):
         solid_shape = solid_shape.removeSplitter()
         solid_shape = vertical_edge_fillet(solid_shape, obj.BinOuterRadius)
 
-        fuse_total = feat.make_complex_bin_base(obj, layout)
+        fuse_total = feat.make_complex_bin_base(obj, layout, for_cutout=True)
         fuse_total.translate(fc.Vector(0, 0, obj.TotalHeight))
         fuse_total = solid_shape.cut(fuse_total)
         fuse_total = fuse_total.cut(baseplate_feat.make_magnet_holes(obj, layout))
@@ -961,7 +961,7 @@ class CustomScrewTogetherBaseplate(FoundationGridfinity):
         solid_shape = solid_shape.removeSplitter()
         solid_shape = vertical_edge_fillet(solid_shape, obj.BinOuterRadius)
 
-        fuse_total = feat.make_complex_bin_base(obj, layout)
+        fuse_total = feat.make_complex_bin_base(obj, layout, for_cutout=True)
         fuse_total.translate(fc.Vector(0, 0, obj.TotalHeight))
         fuse_total = solid_shape.cut(fuse_total)
         fuse_total = fuse_total.cut(baseplate_feat.make_magnet_holes(obj, layout))

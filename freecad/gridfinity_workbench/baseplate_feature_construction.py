@@ -437,6 +437,41 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
 
     obj.addProperty(
         "App::PropertyLength",
+        "BaseProfileMainHalfWidth",
+        "zzExpertOnly",
+        "Half width of main profile section <br> <br> default = 2.15 mm",
+    ).BaseProfileMainHalfWidth = 2.15
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "BaseProfileMainHeight",
+        "zzExpertOnly",
+        "Height of main (vertical) section <br> <br> default = 2.5 mm",
+    ).BaseProfileMainHeight = 2.5
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "BaseProfileLowerChamferSize",
+        "zzExpertOnly",
+        "Lower chamfer size <br> <br> default = 0.7 mm",
+    ).BaseProfileLowerChamferSize = 0.7
+
+    obj.addProperty(
+        "App::PropertyBool",
+        "BaseProfileLowerChamferEnabled",
+        "zzExpertOnly",
+        "Enable lower chamfer",
+    ).BaseProfileLowerChamferEnabled = False
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "BaseProfileTopCrop",
+        "zzExpertOnly",
+        "Vertical crop from apex <br> <br> default = 0.2 mm",
+    ).BaseProfileTopCrop = 0.2
+
+    obj.addProperty(
+        "App::PropertyLength",
         "BinOuterRadius",
         "zzExpertOnly",
         "Outer radius of the bin",
@@ -500,8 +535,20 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
 
     ## Expressions
     obj.setExpression(
+        "BaseProfileBottomChamfer",
+        "BaseProfileLowerChamferSize",
+    )
+    obj.setExpression(
+        "BaseProfileTopChamfer",
+        "BaseProfileMainHalfWidth",
+    )
+    obj.setExpression(
+        "BaseProfileVerticalSection",
+        "BaseProfileMainHeight - BaseProfileLowerChamferSize",
+    )
+    obj.setExpression(
         "BaseProfileHeight",
-        "BaseProfileBottomChamfer + BaseProfileVerticalSection + BaseProfileTopChamfer",
+        "(BaseProfileLowerChamferEnabled == 1 ? BaseProfileLowerChamferSize : 0mm) + BaseProfileMainHeight + BaseProfileMainHalfWidth - BaseProfileTopCrop",
     )
 
     junction_screw_holes_properties(obj)
