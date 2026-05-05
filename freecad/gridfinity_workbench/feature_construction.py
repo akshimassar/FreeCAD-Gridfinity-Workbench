@@ -943,7 +943,7 @@ def bin_base_values_properties(obj: fc.DocumentObject) -> None:
     ## Expressions
     obj.setExpression(
         "BaseProfileHeight",
-        "BaseProfileLowerChamferSize + BaseProfileMainHeight + BaseProfileMainHalfWidth",
+        "BaseProfileMainHeight + BaseProfileMainHalfWidth",
     )
 
 
@@ -971,11 +971,13 @@ def make_complex_bin_base(
     x_bt_cmf_width = x_vert_width - 2 * lower_size
     y_bt_cmf_width = y_vert_width - 2 * lower_size
 
+    vertical_section_height = obj.BaseProfileMainHeight - lower_size
+
     vertical_section = utils.rounded_rectangle_extrude(
         x_vert_width,
         y_vert_width,
         -obj.TotalHeight + lower_size,
-        obj.BaseProfileMainHeight,
+        vertical_section_height,
         obj.BinVerticalRadius,
     )
 
@@ -995,7 +997,7 @@ def make_complex_bin_base(
     top_chamfer = utils.rounded_rectangle_chamfer(
         x_vert_width,
         y_vert_width,
-        -obj.TotalHeight + lower_size + obj.BaseProfileMainHeight,
+        -obj.TotalHeight + lower_size + vertical_section_height,
         top_effective,
         obj.BinVerticalRadius,
         obj.BinOuterRadius,

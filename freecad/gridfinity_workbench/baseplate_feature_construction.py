@@ -501,7 +501,7 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
     ## Expressions
     obj.setExpression(
         "BaseProfileHeight",
-        "BaseProfileLowerChamferSize + BaseProfileMainHeight + BaseProfileMainHalfWidth",
+        "BaseProfileMainHeight + BaseProfileMainHalfWidth - BaseProfileTopCrop",
     )
 
     junction_screw_holes_properties(obj)
