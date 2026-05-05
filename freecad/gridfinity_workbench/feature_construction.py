@@ -1083,7 +1083,7 @@ def make_click_spring_right(obj: fc.DocumentObject, layout: GridfinityLayout) ->
     profile = Part.Wire(Part.makePolygon(profile_points))
 
     # Fixed orientation mode (isFrenet=False).
-    spring = spine.makePipeShell([profile], True, False)
+    spring = spine.makePipeShell([profile], True, False).removeSplitter()
     spring = utils.copy_in_layout(spring, layout, obj.xGridSize, obj.yGridSize)
     return spring.translate(
         fc.Vector(obj.xGridSize / 2 - obj.xLocationOffset, obj.yGridSize / 2 - obj.yLocationOffset),
