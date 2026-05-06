@@ -371,6 +371,11 @@ class Baseplate(FoundationGridfinity):
             if junction_holes is not None:
                 fuse_total = fuse_total.cut(junction_holes)
 
+        if bool(getattr(obj, "ClipCutoutsEnabled", False)):
+            clip_cutouts = baseplate_feat.make_clip_cutouts_edge_y0(obj, layout)
+            if clip_cutouts is not None:
+                fuse_total = fuse_total.cut(clip_cutouts)
+
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
             fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
             fuse_total = fuse_total.removeSplitter()

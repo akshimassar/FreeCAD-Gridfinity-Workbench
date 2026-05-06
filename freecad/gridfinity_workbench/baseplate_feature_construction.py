@@ -335,6 +335,67 @@ def junction_screw_holes_properties(obj: fc.DocumentObject) -> None:
     ).JunctionCounterboreDepth = 1.5
 
 
+def clip_cutouts_properties(obj: fc.DocumentObject) -> None:
+    """Properties for clip connector cutouts on baseplate edges."""
+    obj.addProperty(
+        "App::PropertyBool",
+        "ClipCutoutsEnabled",
+        "GridfinityNonStandard",
+        "Toggle clip connector cutouts",
+    ).ClipCutoutsEnabled = True
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "ClipLength",
+        "GridfinityNonStandard",
+        "Length of clip cutout along X <br> <br> default = 3 mm",
+    ).ClipLength = 3
+
+
+def make_clip_cutouts_edge_y0(
+    obj: fc.DocumentObject, layout: GridfinityLayout
+) -> Part.Shape | None:
+    """Create clip cutouts along the Y=0 edge at internal X junctions."""
+    nx = len(layout)
+    # Profile proportions from reference values:
+    # height ref = 4, half-width ref = 2.15.
+    h = obj.TotalHeight
+    w = obj.BaseProfileMainHalfWidth
+    scale_y = w / (2.15 * fc.Units.Quantity("1 mm"))
+    scale_z = h / (4 * fc.Units.Quantity("1 mm"))
+
+    ref_points = [
+        (0.0, 3.0),
+        (0.0, 4.0),
+        (1.9, 4.0),
+        (1.9, 0.0),
+        (0.6, 0.0),
+        (0.7, 2.5),
+        (0.2, 3.0),
+        (0.0, 3.0),
+    ]
+
+    pts = [fc.Vector(0, y * scale_y, z * scale_z) for y, z in ref_points]
+
+    wire = Part.Wire(Part.makePolygon(pts))
+    face = Part.Face(wire)
+
+    clip = face.extrude(fc.Vector(obj.ClipLength, 0, 0))
+    clip.translate(fc.Vector(-obj.ClipLength / 2, 0, 0))
+
+    cutouts = []
+    # Junctions on this edge include corners (ix=0 and ix=nx).
+    # Excluding first/last corner junctions leaves ix=1..nx-1.
+    for ix in range(1, nx):
+        x = ix * obj.xGridSize - obj.xLocationOffset
+        y = 0 * fc.Units.Quantity("1 mm") - obj.yLocationOffset
+        cutouts.append(clip.translated(fc.Vector(x, y, 0)))
+
+    if not cutouts:
+        return None
+    return cutouts[0].multiFuse(cutouts[1:]) if len(cutouts) > 1 else cutouts[0]
+
+
 def make_junction_screw_holes(
     obj: fc.DocumentObject, layout: GridfinityLayout
 ) -> Part.Shape | None:
@@ -505,6 +566,7 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
     )
 
     junction_screw_holes_properties(obj)
+    clip_cutouts_properties(obj)
 
 
 def solid_shape_properties(obj: fc.DocumentObject) -> None:
