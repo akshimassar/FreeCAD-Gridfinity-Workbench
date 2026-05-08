@@ -352,11 +352,10 @@ def clip_cutouts_properties(obj: fc.DocumentObject) -> None:
     ).ClipLength = 3
 
 
-def make_clip_cutouts_edge_y0(
-    obj: fc.DocumentObject, layout: GridfinityLayout
-) -> Part.Shape | None:
-    """Create clip cutouts along the Y=0 edge at internal X junctions."""
+def make_clip_cutouts(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape | None:
+    """Create clip cutouts at junctions with exactly 2 orthogonal neighbors."""
     nx = len(layout)
+    ny = len(layout[0])
     # Profile proportions from reference values:
     # height ref = 4, half-width ref = 2.15.
     h = obj.TotalHeight
@@ -381,16 +380,40 @@ def make_clip_cutouts_edge_y0(
     wire = Part.Wire(Part.makePolygon(pts))
     face = Part.Face(wire)
 
-    clip = face.extrude(fc.Vector(obj.ClipLength, 0, 0))
-    clip.translate(fc.Vector(-obj.ClipLength / 2, 0, 0))
+    clip_x = face.extrude(fc.Vector(obj.ClipLength, 0, 0))
+    clip_x.translate(fc.Vector(-obj.ClipLength / 2, 0, 0))
+
+    clip_y = clip_x.copy()
+    clip_y.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
+
+    def cell(x: int, y: int) -> bool:
+        if 0 <= x < nx and 0 <= y < ny:
+            return bool(layout[x][y])
+        return False
 
     cutouts = []
-    # Junctions on this edge include corners (ix=0 and ix=nx).
-    # Excluding first/last corner junctions leaves ix=1..nx-1.
-    for ix in range(1, nx):
-        x = ix * obj.xGridSize - obj.xLocationOffset
-        y = 0 * fc.Units.Quantity("1 mm") - obj.yLocationOffset
-        cutouts.append(clip.translated(fc.Vector(x, y, 0)))
+    for ix in range(nx + 1):
+        for iy in range(ny + 1):
+            sw = cell(ix - 1, iy - 1)
+            se = cell(ix, iy - 1)
+            nw = cell(ix - 1, iy)
+            ne = cell(ix, iy)
+
+            populated = sw + se + nw + ne
+            if populated != 2:
+                continue
+
+            horizontal = (sw and se) or (nw and ne)
+            vertical = (sw and nw) or (se and ne)
+            if not (horizontal or vertical):
+                continue
+
+            x = ix * obj.xGridSize - obj.xLocationOffset
+            y = iy * obj.yGridSize - obj.yLocationOffset
+            if horizontal:
+                cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
+            else:
+                cutouts.append(clip_y.translated(fc.Vector(x, y, 0)))
 
     if not cutouts:
         return None
