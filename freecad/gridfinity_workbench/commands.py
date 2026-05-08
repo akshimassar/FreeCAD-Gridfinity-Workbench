@@ -204,6 +204,15 @@ class CreateScrewTogetherBaseplate(CreateCommand):
         )
 
 
+class CreateConnectingClip(CreateCommand):
+    def __init__(self) -> None:
+        super().__init__(
+            name="ConnectingClip",
+            gridfinity_function=features.ConnectingClip,
+            pixmap=ICONDIR / "template_resource.svg",
+        )
+
+
 class DrawCommand(BaseCommand):
     """Base for gridfinity workbench command.
 

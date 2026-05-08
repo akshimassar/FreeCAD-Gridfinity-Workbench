@@ -8,6 +8,7 @@ import FreeCAD as fc  # noqa: N813
 import Part
 
 from . import baseplate_feature_construction as baseplate_feat
+from . import clip_profiles
 from . import check_version, const, grid_initial_layout, label_shelf, utils
 from . import feature_construction as feat
 from .custom_shape_features import (
@@ -1047,13 +1048,13 @@ class StandaloneLabelShelf:
 
         placement = fc.Placement(translation, rotation)
 
-        obj.Proxy = self
-
         obj.Placement = placement
         obj.setExpression(
             "Placement.Base.z",
             "Attachment.StackingLip == 1 ? -Attachment.LabelShelfStackingOffset : 0mm",
         )
+
+        obj.Proxy = self
 
     def execute(self, obj: Part.Feature) -> None:
         width = obj.Width
@@ -1080,3 +1081,43 @@ class StandaloneLabelShelf:
 
     def loads(self, state: tuple) -> None:  # noqa: ARG002
         return
+
+
+class ConnectingClip(FoundationGridfinity):
+    def __init__(self, obj: fc.DocumentObject) -> None:
+        super().__init__(obj)
+
+        obj.addProperty(
+            "App::PropertyLength",
+            "HalfWidth",
+            "Gridfinity",
+            "Half width of clip profile <br> <br> default = 2.15 mm",
+        ).HalfWidth = 2.15
+
+        obj.addProperty(
+            "App::PropertyLength",
+            "Height",
+            "Gridfinity",
+            "Height of clip profile <br> <br> default = 4.0 mm",
+        ).Height = 4.0
+
+        obj.addProperty(
+            "App::PropertyLength",
+            "Tolerance",
+            "Gridfinity",
+            "Clip tolerance <br> <br> default = 0.15 mm",
+        ).Tolerance = 0.15
+
+        obj.addProperty(
+            "App::PropertyLength",
+            "ClipLength",
+            "Gridfinity",
+            "Clip length <br> <br> default = 3.0 mm",
+        ).ClipLength = 3.0
+
+    def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
+        wire = clip_profiles.build_clip_profile_wire(obj.HalfWidth, obj.Height, obj.Tolerance)
+        length = obj.ClipLength - 2 * obj.Tolerance
+        return (
+            Part.Face(wire).extrude(fc.Vector(length, 0, 0)).translate(fc.Vector(-length / 2, 0, 0))
+        )

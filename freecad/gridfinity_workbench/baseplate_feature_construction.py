@@ -8,6 +8,7 @@ import math
 import FreeCAD as fc  # noqa: N813
 import Part
 
+from . import clip_profiles
 from . import const, utils
 from . import magnet_hole as magnet_hole_module
 from .utils import GridfinityLayout
@@ -351,76 +352,6 @@ def clip_cutouts_properties(obj: fc.DocumentObject) -> None:
         "Length of clip cutout along X <br> <br> default = 3 mm",
     ).ClipLength = 3
 
-    obj.addProperty(
-        "App::PropertyLength",
-        "ClipTolerance",
-        "GridfinityNonStandard",
-        "Clip profile tolerance <br> <br> default = 0.15 mm",
-    ).ClipTolerance = 0.15
-
-
-def _clip_profile_scales(obj: fc.DocumentObject) -> tuple[float, float]:
-    """Return (y, z) scales from reference clip profile size."""
-    scale_y = obj.BaseProfileMainHalfWidth / (2.15 * fc.Units.Quantity("1 mm"))
-    scale_z = obj.TotalHeight / (4 * fc.Units.Quantity("1 mm"))
-    return scale_y, scale_z
-
-
-def _scale_profile_yz(y: float, z: float, scale_y: float, scale_z: float) -> fc.Vector:
-    """Scale a reference (y, z) point into 3D YZ profile space at x=0."""
-    return fc.Vector(0, y * scale_y, z * scale_z)
-
-
-def _build_clip_profile_wire(obj: fc.DocumentObject) -> Part.Wire:
-    """Build the arc-based clip profile wire in YZ plane."""
-    scale_y, scale_z = _clip_profile_scales(obj)
-    t_world = obj.ClipTolerance / fc.Units.Quantity("1 mm")
-    # Keep resulting tolerance in world units by inversely scaling per axis.
-    t_ref_y = (t_world / scale_y).Value
-    t_ref_z = (t_world / scale_z).Value
-
-    c = _scale_profile_yz(0.0, 2.5, scale_y, scale_z)
-
-    a = _scale_profile_yz(-0.7 - t_ref_y, 2.5, scale_y, scale_z)
-    b = _scale_profile_yz(0.7 + t_ref_y, 2.5, scale_y, scale_z)
-    d = _scale_profile_yz(0.6 + t_ref_y, 0.0 + t_ref_z, scale_y, scale_z)
-    e = _scale_profile_yz(1.9 - t_ref_y, 0.0 + t_ref_z, scale_y, scale_z)
-    f = _scale_profile_yz(1.9 - t_ref_y, 2.5, scale_y, scale_z)
-    g = _scale_profile_yz(-1.9 + t_ref_y, 2.5, scale_y, scale_z)
-    h = _scale_profile_yz(-1.9 + t_ref_y, 0.0 + t_ref_z, scale_y, scale_z)
-    i = _scale_profile_yz(-0.6 - t_ref_y, 0.0 + t_ref_z, scale_y, scale_z)
-
-    arc1 = Part.Arc(a, _scale_profile_yz(0.0, 2.5 + (0.7 + t_ref_z), scale_y, scale_z), b).toShape()
-    line1 = Part.LineSegment(b, d).toShape()
-    line2 = Part.LineSegment(d, e).toShape()
-    line3 = Part.LineSegment(e, f).toShape()
-    arc2 = Part.Arc(f, _scale_profile_yz(0.0, 2.5 + (1.9 - t_ref_z), scale_y, scale_z), g).toShape()
-    line4 = Part.LineSegment(g, h).toShape()
-    line5 = Part.LineSegment(h, i).toShape()
-    line6 = Part.LineSegment(i, a).toShape()
-
-    return Part.Wire([arc1, line1, line2, line3, arc2, line4, line5, line6])
-
-
-def _build_clip_cutout_profile_wire(obj: fc.DocumentObject) -> Part.Wire:
-    """Build the clip cutout profile wire in YZ plane."""
-    scale_y, scale_z = _clip_profile_scales(obj)
-
-    forward = [
-        (0.0, 4.0),
-        (1.9, 4.0),
-        (1.9, 0.0),
-        (0.6, 0.0),
-        (0.7, 2.5),
-        (0.2, 3.0),
-        (0.0, 3.0),
-    ]
-    mirrored = [(-y, z) for y, z in reversed(forward[1:-1])]
-    ref_points = forward + mirrored + [forward[0]]
-
-    pts = [_scale_profile_yz(y, z, scale_y, scale_z) for y, z in ref_points]
-    return Part.Wire(Part.makePolygon(pts))
-
 
 def _profile_wire_to_centered_x_solid(profile_wire: Part.Wire, length: float) -> Part.Shape:
     """Extrude profile along X and center it around x=0."""
@@ -433,7 +364,10 @@ def make_clip_cutouts(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.
     """Create clip cutouts at junctions with exactly 2 orthogonal neighbors."""
     nx = len(layout)
     ny = len(layout[0])
-    clip_wire = _build_clip_cutout_profile_wire(obj)
+    clip_wire = clip_profiles.build_clip_cutout_profile_wire(
+        obj.BaseProfileMainHalfWidth,
+        obj.TotalHeight,
+    )
     clip_x = _profile_wire_to_centered_x_solid(clip_wire, obj.ClipLength)
 
     clip_y = clip_x.copy()
