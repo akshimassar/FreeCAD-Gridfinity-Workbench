@@ -1153,9 +1153,10 @@ def make_baseplate_top_support(
             raise ValueError("Support A-profile generation failed: no faces after notch cut")
         profile_a_face = max(profile_a_shape.Faces, key=lambda f: f.Area)
     profile_a = profile_a_face.OuterWire
+    profile_a.translate(fc.Vector(0, 0, loft_height))
 
-    profile_b = utils.create_rounded_rectangle(x_b, y_b, loft_height, r_b)
-    cutter = Part.makeLoft([profile_a, profile_b], True)
+    profile_b = utils.create_rounded_rectangle(x_b, y_b, 0, r_b)
+    cutter = Part.makeLoft([profile_b, profile_a], True)
 
     cutters = utils.copy_in_layout(cutter, layout, obj.xGridSize, obj.yGridSize)
     cutters = cutters.translate(

@@ -408,7 +408,19 @@ class SupportBaseplate(FoundationGridfinity):
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         layout = grid_initial_layout.make_rectangle_layout(obj)
         obj.TotalHeight = obj.BaseProfileHeight
-        return feat.make_baseplate_top_support(obj, layout)
+        shape = feat.make_baseplate_top_support(obj, layout)
+        z_start = obj.BaseProfileMainHeight + obj.BaseProfileMainHalfWidth - obj.BaseProfileTopCrop
+        z_matrix = fc.Matrix()
+        z_matrix.move(fc.Vector(0, 0, z_start.Value))
+        try:
+            return shape.transformGeometry(z_matrix)
+        except Exception:
+            shifted_shape = shape.copy()
+            try:
+                shifted_shape.transformShape(z_matrix, copy=False)
+            except TypeError:
+                shifted_shape.transformShape(z_matrix, False)
+            return shifted_shape
 
 
 class MagnetBaseplate(FoundationGridfinity):
