@@ -524,8 +524,8 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "App::PropertyLength",
         "BaseProfileTopCrop",
         "zzExpertOnly",
-        "Vertical crop from apex <br> <br> default = 0.4 mm",
-    ).BaseProfileTopCrop = 0.4
+        "Vertical crop from apex <br> <br> default = 0.8 mm",
+    ).BaseProfileTopCrop = 0.8
 
     obj.addProperty(
         "App::PropertyLength",
