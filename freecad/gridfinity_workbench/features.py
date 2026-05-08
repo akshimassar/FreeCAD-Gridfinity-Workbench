@@ -404,9 +404,6 @@ class SupportBaseplate(FoundationGridfinity):
         if hasattr(obj, "ClipCutoutsEnabled"):
             obj.ClipCutoutsEnabled = False
             obj.setEditorMode("ClipCutoutsEnabled", ("ReadOnly", "Hidden"))
-        if hasattr(obj, "ClickSpringsEnabled"):
-            obj.ClickSpringsEnabled = False
-            obj.setEditorMode("ClickSpringsEnabled", ("ReadOnly", "Hidden"))
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         layout = grid_initial_layout.make_rectangle_layout(obj)

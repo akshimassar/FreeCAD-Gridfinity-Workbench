@@ -1113,7 +1113,47 @@ def make_baseplate_top_support(
     r_a = obj.BinVerticalRadius
     r_b = obj.BinVerticalRadius + main_half_width - top_half_width
 
-    profile_a = utils.create_rounded_rectangle(x_a, y_a, 0, r_a)
+    profile_a_face = Part.Face(utils.create_rounded_rectangle(x_a, y_a, 0, r_a))
+
+    if bool(getattr(obj, "ClickSpringsEnabled", False)):
+        click_length = obj.ClickLength
+        step = click_length / 3
+        x0 = x_a / 2
+        x1 = x0 - obj.ClickOffset
+        x2 = x1
+        x3 = x2 + obj.ClickOffset
+        y0 = obj.yGridSize / 4 + click_length / 2
+        y1 = y0 - step
+        y2 = y1 - step
+        y3 = y2 - step
+
+        notch_points = [
+            fc.Vector(x0, y0, 0),
+            fc.Vector(x1, y1, 0),
+            fc.Vector(x2, y2, 0),
+            fc.Vector(x3, y3, 0),
+            fc.Vector(x0, y0, 0),
+        ]
+        notch_wire = Part.Wire(Part.makePolygon(notch_points))
+        if not notch_wire.isClosed():
+            raise ValueError("Support A-profile spring notch wire is not closed")
+
+        notch_single = Part.Face(notch_wire)
+        notch_single_mirror_y = notch_single.mirror(fc.Vector(0, 0, 0), fc.Vector(0, 1, 0))
+        notch_right = notch_single.fuse(notch_single_mirror_y)
+        notch_left = notch_right.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
+        notches_y = notch_right.fuse(notch_left)
+
+        notches_x = notches_y.copy()
+        notches_x.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
+        notches = notches_y.fuse(notches_x)
+
+        profile_a_shape = profile_a_face.cut(notches)
+        if not profile_a_shape.Faces:
+            raise ValueError("Support A-profile generation failed: no faces after notch cut")
+        profile_a_face = max(profile_a_shape.Faces, key=lambda f: f.Area)
+    profile_a = profile_a_face.OuterWire
+
     profile_b = utils.create_rounded_rectangle(x_b, y_b, loft_height, r_b)
     cutter = Part.makeLoft([profile_a, profile_b], True)
 
