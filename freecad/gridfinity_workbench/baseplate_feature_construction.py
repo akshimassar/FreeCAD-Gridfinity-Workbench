@@ -364,8 +364,7 @@ def make_clip_cutouts_edge_y0(
     scale_y = w / (2.15 * fc.Units.Quantity("1 mm"))
     scale_z = h / (4 * fc.Units.Quantity("1 mm"))
 
-    ref_points = [
-        (0.0, 3.0),
+    forward = [
         (0.0, 4.0),
         (1.9, 4.0),
         (1.9, 0.0),
@@ -374,6 +373,8 @@ def make_clip_cutouts_edge_y0(
         (0.2, 3.0),
         (0.0, 3.0),
     ]
+    mirrored = [(-y, z) for y, z in reversed(forward[1:-1])]
+    ref_points = forward + mirrored + [forward[0]]
 
     pts = [fc.Vector(0, y * scale_y, z * scale_z) for y, z in ref_points]
 
