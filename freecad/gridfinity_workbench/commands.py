@@ -186,6 +186,15 @@ class CreateBaseplate(CreateCommand):
         )
 
 
+class CreateSupportBaseplate(CreateCommand):
+    def __init__(self) -> None:
+        super().__init__(
+            name="SupportBaseplate",
+            gridfinity_function=features.SupportBaseplate,
+            pixmap=ICONDIR / "Baseplate.svg",
+        )
+
+
 class CreateMagnetBaseplate(CreateCommand):
     def __init__(self) -> None:
         super().__init__(

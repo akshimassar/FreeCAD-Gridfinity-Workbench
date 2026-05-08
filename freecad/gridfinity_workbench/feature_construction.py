@@ -1069,6 +1069,72 @@ def make_complex_bin_base(
     )
 
 
+def _top_planar_faces(shape: Part.Shape) -> list[Part.Face]:
+    """Return all top-most +Z planar faces from shape."""
+    top_z = max(face.BoundBox.ZMax for face in shape.Faces)
+    z_tol = 1e-7
+
+    faces = []
+    for face in shape.Faces:
+        if abs(face.BoundBox.ZMax - top_z) > z_tol:
+            continue
+        if not isinstance(face.Surface, Part.Plane):
+            continue
+        u_min, u_max, v_min, v_max = face.ParameterRange
+        normal = face.normalAt((u_min + u_max) / 2, (v_min + v_max) / 2)
+        if normal.z > 0:
+            faces.append(face)
+    return faces
+
+
+def make_baseplate_top_support(
+    obj: fc.DocumentObject,
+    layout: GridfinityLayout,
+) -> Part.Shape:
+    """Create support body per cell from a loft cutter and subtract from a cell box."""
+    main_half_width = obj.BaseProfileMainHalfWidth
+    top_half_width = obj.BaseProfileTopCrop
+    run = main_half_width + obj.ClickOffset - top_half_width
+
+    if run <= 0:
+        raise ValueError(
+            "Invalid support geometry: BaseProfileMainHalfWidth + ClickOffset "
+            "must be greater than BaseProfileTopCrop"
+        )
+
+    loft_height = run / math.tan(math.radians(obj.SupportOverhangAngle.Value))
+    if loft_height <= 0:
+        raise ValueError("Invalid support geometry: computed loft height must be positive")
+
+    x_a = obj.xGridSize - 2 * main_half_width
+    y_a = obj.yGridSize - 2 * main_half_width
+    x_b = obj.xGridSize - 2 * top_half_width
+    y_b = obj.yGridSize - 2 * top_half_width
+    r_a = obj.BinVerticalRadius
+    r_b = obj.BinVerticalRadius + main_half_width - top_half_width
+
+    profile_a = utils.create_rounded_rectangle(x_a, y_a, 0, r_a)
+    profile_b = utils.create_rounded_rectangle(x_b, y_b, loft_height, r_b)
+    cutter = Part.makeLoft([profile_a, profile_b], True)
+
+    cutters = utils.copy_in_layout(cutter, layout, obj.xGridSize, obj.yGridSize)
+    cutters = cutters.translate(
+        fc.Vector(obj.xGridSize / 2 - obj.xLocationOffset, obj.yGridSize / 2 - obj.yLocationOffset),
+    )
+
+    baseplate_outside_shape = utils.create_rounded_rectangle(
+        obj.xTotalWidth,
+        obj.yTotalWidth,
+        0,
+        obj.BinOuterRadius,
+    )
+    baseplate_outside_shape.translate(fc.Vector(obj.xTotalWidth / 2, obj.yTotalWidth / 2, 0))
+    support_solid = Part.Face(baseplate_outside_shape).extrude(fc.Vector(0, 0, loft_height))
+    support_solid = support_solid.translate(fc.Vector(-obj.xLocationOffset, -obj.yLocationOffset))
+
+    return support_solid.cut(cutters).removeSplitter()
+
+
 def _make_click_spring_right_single(obj: fc.DocumentObject) -> Part.Shape:
     """Create one right-side click spring pipe for a single grid cell at local origin."""
     x_vert_width = obj.xGridSize - 2 * obj.BaseProfileMainHalfWidth

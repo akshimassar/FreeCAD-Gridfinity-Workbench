@@ -384,6 +384,36 @@ class Baseplate(FoundationGridfinity):
         return fuse_total
 
 
+class SupportBaseplate(FoundationGridfinity):
+    def __init__(self, obj: fc.DocumentObject) -> None:
+        super().__init__(obj)
+
+        grid_initial_layout.rectangle_layout_properties(obj, baseplate_default=True)
+        baseplate_feat.solid_shape_properties(obj)
+        baseplate_feat.base_values_properties(obj)
+        obj.addProperty(
+            "App::PropertyAngle",
+            "SupportOverhangAngle",
+            "GridfinityNonStandard",
+            "Overhang angle used to calculate A-to-B loft height <br> <br> default = 50 deg",
+        ).SupportOverhangAngle = 50
+
+        if hasattr(obj, "JunctionScrewHoles"):
+            obj.JunctionScrewHoles = False
+            obj.setEditorMode("JunctionScrewHoles", ("ReadOnly", "Hidden"))
+        if hasattr(obj, "ClipCutoutsEnabled"):
+            obj.ClipCutoutsEnabled = False
+            obj.setEditorMode("ClipCutoutsEnabled", ("ReadOnly", "Hidden"))
+        if hasattr(obj, "ClickSpringsEnabled"):
+            obj.ClickSpringsEnabled = False
+            obj.setEditorMode("ClickSpringsEnabled", ("ReadOnly", "Hidden"))
+
+    def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
+        layout = grid_initial_layout.make_rectangle_layout(obj)
+        obj.TotalHeight = obj.BaseProfileHeight
+        return feat.make_baseplate_top_support(obj, layout)
+
+
 class MagnetBaseplate(FoundationGridfinity):
     def __init__(self, obj: fc.DocumentObject) -> None:
         super().__init__(obj)
