@@ -1248,6 +1248,27 @@ def make_click_springs_two_sides(obj: fc.DocumentObject, layout: GridfinityLayou
     )
 
 
+def trim_click_springs_to_top_crop(obj: fc.DocumentObject, springs: Part.Shape) -> Part.Shape:
+    """Trim click springs above the base-profile top-crop cap height."""
+    z_limit = obj.BaseProfileMainHeight + obj.BaseProfileMainHalfWidth - obj.BaseProfileTopCrop
+    z2 = obj.BaseProfileMainHeight + obj.ClickThickness
+    if z2 <= z_limit:
+        return springs
+
+    bbox = springs.BoundBox
+    margin = 1 * unitmm
+    clip_z = z_limit.Value
+    clip_height = max((bbox.ZMax - clip_z) + margin.Value, margin.Value)
+    clip_box = Part.makeBox(
+        (bbox.XMax - bbox.XMin) + 2 * margin.Value,
+        (bbox.YMax - bbox.YMin) + 2 * margin.Value,
+        clip_height,
+        fc.Vector(bbox.XMin - margin.Value, bbox.YMin - margin.Value, clip_z),
+        fc.Vector(0, 0, 1),
+    )
+    return springs.cut(clip_box).removeSplitter()
+
+
 def blank_bin_recessed_top_properties(obj: fc.DocumentObject) -> None:
     """Create blank bin recessed top section."""
     ## Gridfinity Non Standard Parameters

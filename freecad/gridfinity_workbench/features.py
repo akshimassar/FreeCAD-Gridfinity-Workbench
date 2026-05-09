@@ -501,7 +501,9 @@ class ScrewTogetherBaseplate(FoundationGridfinity):
         fuse_total = fuse_total.cut(baseplate_feat.make_connection_holes(obj, layout))
 
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
-            fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
+            springs = feat.make_click_springs_two_sides(obj, layout)
+            springs = feat.trim_click_springs_to_top_crop(obj, springs)
+            fuse_total = fuse_total.fuse(springs)
             fuse_total = fuse_total.removeSplitter()
 
         return fuse_total
@@ -916,7 +918,9 @@ class CustomBaseplate(FoundationGridfinity):
                 fuse_total = fuse_total.cut(clip_cutouts)
 
         if bool(getattr(obj, "ClickSpringsEnabled", False)):
-            fuse_total = fuse_total.fuse(feat.make_click_springs_two_sides(obj, layout))
+            springs = feat.make_click_springs_two_sides(obj, layout)
+            springs = feat.trim_click_springs_to_top_crop(obj, springs)
+            fuse_total = fuse_total.fuse(springs)
             fuse_total = fuse_total.removeSplitter()
 
         return fuse_total
