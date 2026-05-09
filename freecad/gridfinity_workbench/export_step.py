@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import FreeCAD as fc  # noqa: N813
 import Part
@@ -15,13 +16,16 @@ def export_rect_baseplates_step(
     *,
     x_max: int = 5,
     y_max: int = 6,
+    kind: Literal["baseplate", "support_baseplate"] = "baseplate",
 ) -> list[str]:
-    """Export unique rectangular baseplates as STEP files.
+    """Export unique rectangular baseplate-family objects as STEP files.
 
     The export keeps only one orientation of each rectangle (x <= y), so 2x1 is skipped
     because 1x2 is already exported.
     """
     out_root = Path(output_root)
+    if kind == "support_baseplate":
+        out_root = out_root / "support"
     out_root.mkdir(parents=True, exist_ok=True)
 
     def log(msg: str) -> None:
@@ -30,6 +34,13 @@ def export_rect_baseplates_step(
     previous_doc = fc.ActiveDocument
     doc = fc.newDocument("GridfinityBatchExport")
     exported: list[str] = []
+
+    if kind == "support_baseplate":
+        feature_ctor = features.SupportBaseplate
+        file_prefix = "baseplate-SP-support"
+    else:
+        feature_ctor = features.Baseplate
+        file_prefix = "baseplate-SP"
 
     log(f"[gridfinity-export] Output root: {out_root}")
 
@@ -40,13 +51,13 @@ def export_rect_baseplates_step(
 
             for y_units in range(x_units, y_max + 1):
                 obj = utils.new_object("Baseplate")
-                features.Baseplate(obj)
+                feature_ctor(obj)
                 obj.xGridUnits = x_units
                 obj.yGridUnits = y_units
 
                 doc.recompute()
 
-                file_path = subdir / f"baseplate-CP-{x_units}x{y_units}.step"
+                file_path = subdir / f"{file_prefix}-{x_units}x{y_units}.step"
                 Part.export([obj], str(file_path))
                 exported.append(str(file_path))
                 log(f"[gridfinity-export] Exported {x_units}x{y_units} -> {file_path}")
