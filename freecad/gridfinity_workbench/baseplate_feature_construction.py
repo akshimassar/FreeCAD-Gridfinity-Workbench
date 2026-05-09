@@ -362,12 +362,28 @@ def _profile_wire_to_centered_x_solid(profile_wire: Part.Wire, length: float) ->
 
 def make_clip_cutouts(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape | None:
     """Create clip cutouts at junctions with exactly 2 orthogonal neighbors."""
+    unitmm = fc.Units.Quantity("1 mm")
+
+    max_clip_length = 2 * obj.BaseProfileMainHalfWidth
+    if obj.ClipLength >= max_clip_length:
+        raise ValueError(
+            f"ClipLength ({obj.ClipLength}) must be smaller than "
+            f"2*BaseProfileMainHalfWidth ({max_clip_length})"
+        )
+
     nx = len(layout)
     ny = len(layout[0])
     clip_wire = clip_profiles.build_clip_cutout_profile_wire(
         obj.BaseProfileMainHalfWidth,
         obj.BaseProfileMainHeight,
     )
+    clip_cutout_top_z = clip_wire.BoundBox.ZMax * unitmm
+    max_clip_cutout_top_z = obj.BaseProfileMainHeight + obj.BaseProfileMainHalfWidth
+    if clip_cutout_top_z <= max_clip_cutout_top_z:
+        raise ValueError(
+            f"Clip cutout top Z after scaling ({clip_cutout_top_z}) must be greater than "
+            f"BaseProfileMainHeight + BaseProfileMainHalfWidth ({max_clip_cutout_top_z})"
+        )
     clip_x = _profile_wire_to_centered_x_solid(clip_wire, obj.ClipLength)
 
     clip_y = clip_x.copy()
