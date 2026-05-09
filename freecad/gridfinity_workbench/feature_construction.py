@@ -955,6 +955,12 @@ def make_complex_bin_base(
 ) -> Part.Shape:
     """Creaet complex shaped bin base."""
 
+    if obj.BaseProfileTopCrop >= obj.BaseProfileMainHalfWidth:
+        raise ValueError(
+            f"BaseProfileTopCrop ({obj.BaseProfileTopCrop}) must be smaller than "
+            f"BaseProfileMainHalfWidth ({obj.BaseProfileMainHalfWidth})"
+        )
+
     lower_enabled = (
         bool(getattr(obj, "BaseProfileLowerChamferEnabled", True)) if for_cutout else True
     )
@@ -1221,8 +1227,28 @@ def _make_click_spring_right_single(obj: fc.DocumentObject) -> Part.Shape:
     return spine.makePipeShell([profile], True, False).removeSplitter()
 
 
+def _validate_click_spring_geometry(obj: fc.DocumentObject) -> None:
+    """Validate click spring length against available quarter-cell span."""
+    if obj.ClickThickness >= obj.BaseProfileMainHalfWidth:
+        raise ValueError(
+            f"Invalid click spring geometry: ClickThickness ({obj.ClickThickness}) must be "
+            f"smaller than BaseProfileMainHalfWidth ({obj.BaseProfileMainHalfWidth})"
+        )
+
+    half_len = obj.ClickLength / 2
+    x_limit = obj.xGridSize / 4 - obj.BinVerticalRadius
+    y_limit = obj.yGridSize / 4 - obj.BinVerticalRadius
+
+    if half_len >= x_limit or half_len >= y_limit:
+        raise ValueError(
+            f"Invalid click spring geometry: ClickLength/2 ({half_len}) must be smaller than "
+            f"cell_size/4 - main_round_radius in both axes (x={x_limit}, y={y_limit})"
+        )
+
+
 def make_click_spring_right(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape:
     """Create one right-side click spring pipe per grid cell."""
+    _validate_click_spring_geometry(obj)
     spring = _make_click_spring_right_single(obj)
     spring = utils.copy_in_layout(spring, layout, obj.xGridSize, obj.yGridSize)
     return spring.translate(
@@ -1232,6 +1258,7 @@ def make_click_spring_right(obj: fc.DocumentObject, layout: GridfinityLayout) ->
 
 def make_click_springs_two_sides(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape:
     """Create click springs on all four sides of each grid cell."""
+    _validate_click_spring_geometry(obj)
     right_single = _make_click_spring_right_single(obj)
     left_single = right_single.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
     pair_single = right_single.fuse(left_single).removeSplitter()
