@@ -366,7 +366,7 @@ def make_clip_cutouts(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.
     ny = len(layout[0])
     clip_wire = clip_profiles.build_clip_cutout_profile_wire(
         obj.BaseProfileMainHalfWidth,
-        obj.TotalHeight,
+        obj.BaseProfileMainHeight,
     )
     clip_x = _profile_wire_to_centered_x_solid(clip_wire, obj.ClipLength)
 

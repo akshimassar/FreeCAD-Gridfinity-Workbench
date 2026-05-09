@@ -10,7 +10,7 @@ def _profile_scales(
     half_width: fc.Units.Quantity, height: fc.Units.Quantity
 ) -> tuple[float, float]:
     scale_y = half_width / (2.15 * fc.Units.Quantity("1 mm"))
-    scale_z = height / (4 * fc.Units.Quantity("1 mm"))
+    scale_z = height / (2.5 * fc.Units.Quantity("1 mm"))
     return scale_y, scale_z
 
 
@@ -58,13 +58,13 @@ def build_clip_cutout_profile_wire(
     scale_y, scale_z = _profile_scales(half_width, height)
 
     forward = [
-        (0.0, 4.0),
-        (1.9, 4.0),
+        (0.0, 10.0),
+        (1.9, 10.0),
         (1.9, 0.0),
         (0.6, 0.0),
-        (0.7, 2.5),
-        (0.2, 3.0),
-        (0.0, 3.0),
+        (0.7, 2.4),
+        (0.2, 2.9),
+        (0.0, 2.9),
     ]
     mirrored = [(-y, z) for y, z in reversed(forward[1:-1])]
     ref_points = forward + mirrored + [forward[0]]
