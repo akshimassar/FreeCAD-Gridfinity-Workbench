@@ -173,6 +173,28 @@ def apply_junction_screws(
     return shape.cut(junction_holes) if junction_holes is not None else shape
 
 
+def make_post_replication_cutter(
+    obj: fc.DocumentObject,
+    layout: GridfinityLayout,
+    options: BaseplateBuildOptions,
+) -> Part.Shape | None:
+    cutters: list[Part.Shape] = []
+
+    if options.include_junction_screws:
+        junction_holes = baseplate_feat.make_junction_screw_holes(obj, layout)
+        if junction_holes is not None:
+            cutters.append(junction_holes)
+
+    if options.include_clip_cutouts:
+        clip_cutouts = baseplate_feat.make_clip_cutouts(obj, layout)
+        if clip_cutouts is not None:
+            cutters.append(clip_cutouts)
+
+    if not cutters:
+        return None
+    return cutters[0].multiFuse(cutters[1:]) if len(cutters) > 1 else cutters[0]
+
+
 def apply_clip_cutouts(
     shape: Part.Shape,
     obj: fc.DocumentObject,
@@ -220,19 +242,20 @@ def build_simple_baseplate(
     shape = replicate_layout(shape, obj, layout)
     t3 = time.perf_counter()
 
-    shape = apply_junction_screws(shape, obj, layout, options)
     t4 = time.perf_counter()
-
-    shape = apply_clip_cutouts(shape, obj, layout, options)
+    post_cutter = make_post_replication_cutter(obj, layout, options)
     t5 = time.perf_counter()
+    if post_cutter is not None:
+        shape = shape.cut(post_cutter)
+    t6 = time.perf_counter()
 
     fc.Console.PrintMessage(
         "[Gridfinity Timing] baseplate "
         f"core={t1 - t0:.3f}s "
         f"springs={t2 - t1:.3f}s "
         f"replicate_round={t3 - t2:.3f}s "
-        f"junction={t4 - t3:.3f}s "
-        f"clip={t5 - t4:.3f}s "
-        f"total={t5 - total_start:.3f}s\n"
+        f"build_cutter={t5 - t4:.3f}s "
+        f"post_cut={t6 - t5:.3f}s "
+        f"total={t6 - total_start:.3f}s\n"
     )
     return shape

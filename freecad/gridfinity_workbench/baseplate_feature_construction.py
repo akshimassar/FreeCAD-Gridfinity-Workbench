@@ -432,7 +432,7 @@ def make_junction_screw_holes(
     through_depth = obj.TotalHeight + 0.1 * fc.Units.Quantity("1 mm")
     top_z = obj.TotalHeight
 
-    holes = []
+    cutters = []
     for ix in range(1, nx):
         for iy in range(1, ny):
             if not (
@@ -467,11 +467,11 @@ def make_junction_screw_holes(
                 fc.Vector(x, y, top_z - obj.JunctionCounterboreDepth),
                 fc.Vector(0, 0, -1),
             )
-            holes.append(through.fuse(counterbore).fuse(transition))
+            cutters.extend([through, counterbore, transition])
 
-    if not holes:
+    if not cutters:
         return None
-    return holes[0].multiFuse(holes[1:]) if len(holes) > 1 else holes[0]
+    return cutters[0].multiFuse(cutters[1:]) if len(cutters) > 1 else cutters[0]
 
 
 def base_values_properties(obj: fc.DocumentObject) -> None:
