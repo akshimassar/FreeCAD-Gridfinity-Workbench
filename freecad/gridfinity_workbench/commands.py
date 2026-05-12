@@ -12,6 +12,16 @@ from typing import TYPE_CHECKING, Any
 
 import FreeCAD as fc  # noqa: N813
 import FreeCADGui as fcg  # noqa: N813
+from PySide.QtCore import Qt
+from PySide.QtWidgets import (
+    QCheckBox,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QLabel,
+    QVBoxLayout,
+    QWidget,
+)
 
 from . import custom_shape, features, utils
 
@@ -19,6 +29,7 @@ if TYPE_CHECKING:
     import Part
 
 ICONDIR = Path(__file__).parent / "icons"
+PREFS_PATH = "User parameter:BaseApp/Preferences/Mod/GridfinityWorkbench"
 
 PASCAL_CASE_REGEX = re.compile(r"(?<!^)(?=[A-Z])")
 
@@ -220,6 +231,83 @@ class CreateConnectingClip(CreateCommand):
             gridfinity_function=features.ConnectingClip,
             pixmap=ICONDIR / "template_resource.svg",
         )
+
+
+class GridfinitySettingsTaskPanel:
+    """Task panel for editing persisted Gridfinity defaults."""
+
+    def __init__(self) -> None:
+        self._prefs = fc.ParamGet(PREFS_PATH)
+        self.form = QWidget()
+        self.form.setWindowTitle("Gridfinity Default Settings")
+
+        layout = QVBoxLayout(self.form)
+
+        general_label = QLabel("General")
+        general_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(general_label)
+
+        general_form = QFormLayout()
+        self.grid_size = QDoubleSpinBox()
+        self.grid_size.setDecimals(3)
+        self.grid_size.setMinimum(1.0)
+        self.grid_size.setMaximum(500.0)
+        self.grid_size.setSuffix(" mm")
+        self.grid_size.setValue(self._prefs.GetFloat("GridSize", 42.0))
+        general_form.addRow("Grid Size", self.grid_size)
+        layout.addLayout(general_form)
+
+        baseplate_label = QLabel("Baseplate")
+        baseplate_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(baseplate_label)
+
+        baseplate_form = QFormLayout()
+        self.enable_lower_chamfer = QCheckBox()
+        self.enable_lower_chamfer.setChecked(
+            self._prefs.GetBool("BaseplateLowerChamferEnabled", False)
+        )
+        baseplate_form.addRow("Enable lower chamfer", self.enable_lower_chamfer)
+
+        self.top_crop = QDoubleSpinBox()
+        self.top_crop.setDecimals(3)
+        self.top_crop.setMinimum(0.0)
+        self.top_crop.setMaximum(100.0)
+        self.top_crop.setSuffix(" mm")
+        self.top_crop.setValue(self._prefs.GetFloat("BaseplateTopCrop", 0.8))
+        baseplate_form.addRow("Top crop", self.top_crop)
+        layout.addLayout(baseplate_form)
+
+        note = QLabel("These are default settings for all objects and they are saved.")
+        note.setWordWrap(True)
+        note.setAlignment(Qt.AlignLeft)
+        layout.addWidget(note)
+
+    def getStandardButtons(self) -> int:  # noqa: N802
+        return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+
+    def accept(self) -> bool:
+        self._prefs.SetFloat("GridSize", self.grid_size.value())
+        self._prefs.SetBool("BaseplateLowerChamferEnabled", self.enable_lower_chamfer.isChecked())
+        self._prefs.SetFloat("BaseplateTopCrop", self.top_crop.value())
+        fcg.Control.closeDialog()
+        return True
+
+    def reject(self) -> bool:
+        fcg.Control.closeDialog()
+        return True
+
+
+class OpenGridfinitySettings(BaseCommand):
+    def __init__(self) -> None:
+        super().__init__(
+            name="OpenGridfinitySettings",
+            pixmap=ICONDIR / "settings.svg",
+            menu_text="Gridfinity default settings",
+            tooltip="Open Gridfinity default settings task dialog.",
+        )
+
+    def Activated(self) -> None:
+        fcg.Control.showDialog(GridfinitySettingsTaskPanel())
 
 
 class DrawCommand(BaseCommand):

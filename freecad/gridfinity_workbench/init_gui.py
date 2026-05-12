@@ -65,6 +65,7 @@ class GridfinityWorkbench(Workbench):
                 ("CreateCustomBaseplate", commands.DrawBaseplate()),
                 ("ChangeLayout", commands.ChangeLayout()),
                 ("StandaloneLabelShelf", commands.StandaloneLabelShelf()),
+                ("OpenGridfinitySettings", commands.OpenGridfinitySettings()),
             ],
         )
 
