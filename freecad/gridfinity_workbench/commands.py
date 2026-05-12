@@ -25,6 +25,7 @@ from PySide.QtWidgets import (
 )
 
 from . import custom_shape, features, utils
+from .baseplate_params import BaseplateParams, apply_params_to_obj, params_from_obj
 from .settings import defaults, factory_defaults
 
 if TYPE_CHECKING:
@@ -388,7 +389,7 @@ class CreateBaseplateTaskPanel:
         self._pixmap = pixmap
         self._target_obj = target_obj
         self._created_preview_obj = False
-        self._original_values: dict[str, float | bool] | None = None
+        self._original_values: BaseplateParams | None = None
         self._original_view: dict[str, Any] | None = None
         self._preview_applied = False
         self.form = QWidget()
@@ -409,7 +410,7 @@ class CreateBaseplateTaskPanel:
                 ViewProviderGridfinity(view_object, str(self._pixmap))
             features.Baseplate(self._target_obj)
         else:
-            self._original_values = self._capture_object_values(self._target_obj)
+            self._original_values = params_from_obj(self._target_obj)
 
         self._capture_and_set_preview_visuals()
 
@@ -428,108 +429,56 @@ class CreateBaseplateTaskPanel:
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
-        self.x_grid_units.setValue(int(obj.xGridUnits + 1e-6))
-        self.y_grid_units.setValue(int(obj.yGridUnits + 1e-6))
-        self.grid_size.setValue(obj.xGridSize.Value)
-        self.base_profile_main_half_width.setValue(obj.BaseProfileMainHalfWidth.Value)
-        self.base_profile_main_height.setValue(obj.BaseProfileMainHeight.Value)
-        self.bin_outer_radius.setValue(obj.BinOuterRadius.Value)
-        self.enable_lower_chamfer.setChecked(bool(obj.BaseProfileLowerChamferEnabled))
-        self.base_profile_lower_chamfer_size.setValue(obj.BaseProfileLowerChamferSize.Value)
-        self.top_crop.setValue(obj.BaseProfileTopCrop.Value)
-        self.clearance.setValue(obj.Clearance.Value)
-        self.click_springs_enabled.setChecked(bool(obj.ClickSpringsEnabled))
-        self.click_thickness.setValue(obj.ClickThickness.Value)
-        self.click_length.setValue(obj.ClickLength.Value)
-        self.click_offset.setValue(obj.ClickOffset.Value)
-        self.junction_screw_holes.setChecked(bool(obj.JunctionScrewHoles))
-        self.junction_screw_diameter.setValue(obj.JunctionScrewDiameter.Value)
-        self.junction_counterbore_diameter.setValue(obj.JunctionCounterboreDiameter.Value)
-        self.junction_counterbore_depth.setValue(obj.JunctionCounterboreDepth.Value)
-        self.clip_cutouts_enabled.setChecked(bool(obj.ClipCutoutsEnabled))
-        self.clip_length.setValue(obj.ClipLength.Value)
+        params = params_from_obj(obj)
+        self.x_grid_units.setValue(int(params.x_grid_units + 1e-6))
+        self.y_grid_units.setValue(int(params.y_grid_units + 1e-6))
+        self.grid_size.setValue(params.grid_size)
+        self.base_profile_main_half_width.setValue(params.base_profile_main_half_width)
+        self.base_profile_main_height.setValue(params.base_profile_main_height)
+        self.bin_outer_radius.setValue(params.bin_outer_radius)
+        self.enable_lower_chamfer.setChecked(params.base_profile_lower_chamfer_enabled)
+        self.base_profile_lower_chamfer_size.setValue(params.base_profile_lower_chamfer_size)
+        self.top_crop.setValue(params.base_profile_top_crop)
+        self.clearance.setValue(params.clearance)
+        self.click_springs_enabled.setChecked(params.click_springs_enabled)
+        self.click_thickness.setValue(params.click_thickness)
+        self.click_length.setValue(params.click_length)
+        self.click_offset.setValue(params.click_offset)
+        self.junction_screw_holes.setChecked(params.junction_screw_holes)
+        self.junction_screw_diameter.setValue(params.junction_screw_diameter)
+        self.junction_counterbore_diameter.setValue(params.junction_counterbore_diameter)
+        self.junction_counterbore_depth.setValue(params.junction_counterbore_depth)
+        self.clip_cutouts_enabled.setChecked(params.clip_cutouts_enabled)
+        self.clip_length.setValue(params.clip_length)
 
-    def _capture_object_values(self, obj: fc.DocumentObject) -> dict[str, float | bool]:
-        return {
-            "xGridUnits": float(obj.xGridUnits),
-            "yGridUnits": float(obj.yGridUnits),
-            "xGridSize": obj.xGridSize.Value,
-            "yGridSize": obj.yGridSize.Value,
-            "BaseProfileMainHalfWidth": obj.BaseProfileMainHalfWidth.Value,
-            "BaseProfileMainHeight": obj.BaseProfileMainHeight.Value,
-            "BinOuterRadius": obj.BinOuterRadius.Value,
-            "BaseProfileLowerChamferEnabled": bool(obj.BaseProfileLowerChamferEnabled),
-            "BaseProfileLowerChamferSize": obj.BaseProfileLowerChamferSize.Value,
-            "BaseProfileTopCrop": obj.BaseProfileTopCrop.Value,
-            "Clearance": obj.Clearance.Value,
-            "ClickSpringsEnabled": bool(obj.ClickSpringsEnabled),
-            "ClickThickness": obj.ClickThickness.Value,
-            "ClickLength": obj.ClickLength.Value,
-            "ClickOffset": obj.ClickOffset.Value,
-            "JunctionScrewHoles": bool(obj.JunctionScrewHoles),
-            "JunctionScrewDiameter": obj.JunctionScrewDiameter.Value,
-            "JunctionCounterboreDiameter": obj.JunctionCounterboreDiameter.Value,
-            "JunctionCounterboreDepth": obj.JunctionCounterboreDepth.Value,
-            "ClipCutoutsEnabled": bool(obj.ClipCutoutsEnabled),
-            "ClipLength": obj.ClipLength.Value,
-        }
-
-    def _restore_object_values(
-        self, obj: fc.DocumentObject, values: dict[str, float | bool]
-    ) -> None:
-        obj.xGridUnits = values["xGridUnits"]
-        obj.yGridUnits = values["yGridUnits"]
-        obj.xGridSize = values["xGridSize"]
-        obj.yGridSize = values["yGridSize"]
-        obj.BaseProfileMainHalfWidth = values["BaseProfileMainHalfWidth"]
-        obj.BaseProfileMainHeight = values["BaseProfileMainHeight"]
-        obj.BinOuterRadius = values["BinOuterRadius"]
-        obj.BaseProfileLowerChamferEnabled = values["BaseProfileLowerChamferEnabled"]
-        obj.BaseProfileLowerChamferSize = values["BaseProfileLowerChamferSize"]
-        obj.BaseProfileTopCrop = values["BaseProfileTopCrop"]
-        obj.Clearance = values["Clearance"]
-        obj.ClickSpringsEnabled = values["ClickSpringsEnabled"]
-        obj.ClickThickness = values["ClickThickness"]
-        obj.ClickLength = values["ClickLength"]
-        obj.ClickOffset = values["ClickOffset"]
-        obj.JunctionScrewHoles = values["JunctionScrewHoles"]
-        obj.JunctionScrewDiameter = values["JunctionScrewDiameter"]
-        obj.JunctionCounterboreDiameter = values["JunctionCounterboreDiameter"]
-        obj.JunctionCounterboreDepth = values["JunctionCounterboreDepth"]
-        obj.ClipCutoutsEnabled = values["ClipCutoutsEnabled"]
-        obj.ClipLength = values["ClipLength"]
+    def _params_from_controls(self, *, preview_mode: bool) -> BaseplateParams:
+        return BaseplateParams(
+            x_grid_units=float(self.x_grid_units.value()),
+            y_grid_units=float(self.y_grid_units.value()),
+            grid_size=float(self.grid_size.value()),
+            base_profile_main_half_width=float(self.base_profile_main_half_width.value()),
+            base_profile_main_height=float(self.base_profile_main_height.value()),
+            bin_outer_radius=float(self.bin_outer_radius.value()),
+            base_profile_lower_chamfer_enabled=self.enable_lower_chamfer.isChecked(),
+            base_profile_lower_chamfer_size=float(self.base_profile_lower_chamfer_size.value()),
+            base_profile_top_crop=float(self.top_crop.value()),
+            clearance=float(self.clearance.value()),
+            click_springs_enabled=(
+                False if preview_mode else self.click_springs_enabled.isChecked()
+            ),
+            click_thickness=float(self.click_thickness.value()),
+            click_length=float(self.click_length.value()),
+            click_offset=float(self.click_offset.value()),
+            junction_screw_holes=(False if preview_mode else self.junction_screw_holes.isChecked()),
+            junction_screw_diameter=float(self.junction_screw_diameter.value()),
+            junction_counterbore_diameter=float(self.junction_counterbore_diameter.value()),
+            junction_counterbore_depth=float(self.junction_counterbore_depth.value()),
+            clip_cutouts_enabled=(False if preview_mode else self.clip_cutouts_enabled.isChecked()),
+            clip_length=float(self.clip_length.value()),
+        )
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> None:
-        obj.xGridUnits = self.x_grid_units.value()
-        obj.yGridUnits = self.y_grid_units.value()
-        obj.xGridSize = self.grid_size.value()
-        obj.yGridSize = self.grid_size.value()
-        obj.BaseProfileMainHalfWidth = self.base_profile_main_half_width.value()
-        obj.BaseProfileMainHeight = self.base_profile_main_height.value()
-        obj.BinOuterRadius = self.bin_outer_radius.value()
-
-        obj.BaseProfileLowerChamferEnabled = self.enable_lower_chamfer.isChecked()
-        obj.BaseProfileLowerChamferSize = self.base_profile_lower_chamfer_size.value()
-        obj.BaseProfileTopCrop = self.top_crop.value()
-        obj.Clearance = self.clearance.value()
-
-        if preview_mode:
-            obj.ClickSpringsEnabled = False
-            obj.JunctionScrewHoles = False
-            obj.ClipCutoutsEnabled = False
-        else:
-            obj.ClickSpringsEnabled = self.click_springs_enabled.isChecked()
-            obj.JunctionScrewHoles = self.junction_screw_holes.isChecked()
-            obj.ClipCutoutsEnabled = self.clip_cutouts_enabled.isChecked()
-
-        obj.ClickThickness = self.click_thickness.value()
-        obj.ClickLength = self.click_length.value()
-        obj.ClickOffset = self.click_offset.value()
-
-        obj.JunctionScrewDiameter = self.junction_screw_diameter.value()
-        obj.JunctionCounterboreDiameter = self.junction_counterbore_diameter.value()
-        obj.JunctionCounterboreDepth = self.junction_counterbore_depth.value()
-        obj.ClipLength = self.clip_length.value()
+        apply_params_to_obj(obj, self._params_from_controls(preview_mode=preview_mode))
 
     def _preview_color(self) -> tuple[float, float, float]:
         """Return FreeCAD standard-ish preview color from preferences, fallback orange."""
@@ -609,7 +558,7 @@ class CreateBaseplateTaskPanel:
             if self._created_preview_obj:
                 fc.ActiveDocument.removeObject(self._target_obj.Name)
             elif self._original_values is not None and self._preview_applied:
-                self._restore_object_values(self._target_obj, self._original_values)
+                apply_params_to_obj(self._target_obj, self._original_values)
                 fc.ActiveDocument.recompute()
             self._restore_preview_visuals()
         fcg.Control.closeDialog()

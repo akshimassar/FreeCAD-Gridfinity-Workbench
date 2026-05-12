@@ -8,6 +8,7 @@ import FreeCAD as fc  # noqa: N813
 import Part
 
 from . import baseplate_feature_construction as baseplate_feat
+from . import baseplate_builder
 from . import clip_profiles
 from . import check_version, const, grid_initial_layout, label_shelf, utils
 from . import feature_construction as feat
@@ -348,42 +349,12 @@ class Baseplate(FoundationGridfinity):
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         layout = grid_initial_layout.make_rectangle_layout(obj)
-
-        baseplate_outside_shape = utils.create_rounded_rectangle(
-            obj.xTotalWidth,
-            obj.yTotalWidth,
-            0,
-            obj.BinOuterRadius,
+        options = baseplate_builder.BaseplateBuildOptions(
+            include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
+            include_clip_cutouts=bool(getattr(obj, "ClipCutoutsEnabled", False)),
+            include_snap_springs=bool(getattr(obj, "ClickSpringsEnabled", False)),
         )
-        baseplate_outside_shape.translate(fc.Vector(obj.xTotalWidth / 2, obj.yTotalWidth / 2, 0))
-
-        solid_shape = baseplate_feat.make_solid_shape(
-            obj,
-            baseplate_outside_shape,
-            baseplate_type="standard",
-        )
-
-        fuse_total = feat.make_complex_bin_base(obj, layout, for_cutout=True)
-        fuse_total.translate(fc.Vector(0, 0, obj.TotalHeight))
-        fuse_total = solid_shape.cut(fuse_total)
-
-        if bool(getattr(obj, "JunctionScrewHoles", False)):
-            junction_holes = baseplate_feat.make_junction_screw_holes(obj, layout)
-            if junction_holes is not None:
-                fuse_total = fuse_total.cut(junction_holes)
-
-        if bool(getattr(obj, "ClipCutoutsEnabled", False)):
-            clip_cutouts = baseplate_feat.make_clip_cutouts(obj, layout)
-            if clip_cutouts is not None:
-                fuse_total = fuse_total.cut(clip_cutouts)
-
-        if bool(getattr(obj, "ClickSpringsEnabled", False)):
-            springs = feat.make_click_springs_two_sides(obj, layout)
-            springs = feat.trim_click_springs_to_top_crop(obj, springs)
-            fuse_total = fuse_total.fuse(springs)
-            fuse_total = fuse_total.removeSplitter()
-
-        return fuse_total
+        return baseplate_builder.build_simple_baseplate(obj, layout, options)
 
 
 class SupportBaseplate(FoundationGridfinity):
