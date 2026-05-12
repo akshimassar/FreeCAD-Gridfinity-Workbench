@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import FreeCAD as fc  # noqa: N813
@@ -52,14 +53,29 @@ def build_single_cell_baseplate_core(
 def replicate_layout(
     shape: Part.Shape, obj: fc.DocumentObject, layout: GridfinityLayout
 ) -> Part.Shape:
+    t0 = time.perf_counter()
     base_cell = shape.copy()
     base_cell.translate(fc.Vector(obj.xGridSize / 2, obj.yGridSize / 2, 0))
+    t1 = time.perf_counter()
     replicated = utils.copy_in_layout(base_cell, layout, obj.xGridSize, obj.yGridSize)
-    replicated = replicated.removeSplitter()
+    t2 = time.perf_counter()
+    # Intentionally skip global refine/removeSplitter here for performance.
+    t3 = time.perf_counter()
     replicated = replicated.translate(
         fc.Vector(-obj.xLocationOffset, -obj.yLocationOffset),
     )
-    return _apply_layout_corner_roundover(replicated, obj, layout)
+    t4 = time.perf_counter()
+    rounded = _apply_layout_corner_roundover(replicated, obj, layout)
+    t5 = time.perf_counter()
+    fc.Console.PrintMessage(
+        "[Gridfinity Timing] replicate "
+        f"copy={t2 - t1:.3f}s "
+        f"cleanup={t3 - t2:.3f}s "
+        f"offset={t4 - t3:.3f}s "
+        f"roundover={t5 - t4:.3f}s "
+        f"total={t5 - t0:.3f}s\n"
+    )
+    return rounded
 
 
 def _apply_layout_corner_roundover(
@@ -67,6 +83,7 @@ def _apply_layout_corner_roundover(
     obj: fc.DocumentObject,
     layout: GridfinityLayout,
 ) -> Part.Shape:
+    t0 = time.perf_counter()
     nx = len(layout)
     ny = len(layout[0])
     tol = 1e-6
@@ -89,12 +106,17 @@ def _apply_layout_corner_roundover(
             x = float(ix * obj.xGridSize - obj.xLocationOffset)
             y = float(iy * obj.yGridSize - obj.yLocationOffset)
             corner_points[(x, y)] = populated
+    t1 = time.perf_counter()
 
     if not corner_points:
         return shape
 
-    edges_pop1 = []
-    edges_pop3 = []
+    def key_for(x: float, y: float) -> tuple[int, int]:
+        return (int(round(x / tol)), int(round(y / tol)))
+
+    target_keys = {key_for(x, y): populated for (x, y), populated in corner_points.items()}
+
+    vertical_edges_by_key: dict[tuple[int, int], list[Part.Edge]] = {}
     for edge in shape.Edges:
         v0 = edge.Vertexes[0]
         v1 = edge.Vertexes[1]
@@ -102,13 +124,19 @@ def _apply_layout_corner_roundover(
             continue
         if abs(v0.X - v1.X) > tol or abs(v0.Y - v1.Y) > tol:
             continue
-        for (px, py), populated in corner_points.items():
-            if abs(v0.X - px) <= tol and abs(v0.Y - py) <= tol:
-                if populated == 1:
-                    edges_pop1.append(edge)
-                else:
-                    edges_pop3.append(edge)
-                break
+        key = key_for(v0.X, v0.Y)
+        if key in target_keys:
+            vertical_edges_by_key.setdefault(key, []).append(edge)
+    t2 = time.perf_counter()
+
+    edges_pop1: list[Part.Edge] = []
+    edges_pop3: list[Part.Edge] = []
+    for key, populated in target_keys.items():
+        edges = vertical_edges_by_key.get(key, [])
+        if populated == 1:
+            edges_pop1.extend(edges)
+        else:
+            edges_pop3.extend(edges)
 
     if not edges_pop1 and not edges_pop3:
         return shape
@@ -116,8 +144,20 @@ def _apply_layout_corner_roundover(
     rounded = shape
     if edges_pop1:
         rounded = rounded.makeFillet(obj.BinOuterRadius, edges_pop1)
+    t3 = time.perf_counter()
     if edges_pop3:
         rounded = rounded.makeFillet(obj.BinOuterRadius / 4, edges_pop3)
+    t4 = time.perf_counter()
+    fc.Console.PrintMessage(
+        "[Gridfinity Timing] roundover "
+        f"corner_scan={t1 - t0:.3f}s "
+        f"edge_match={t2 - t1:.3f}s "
+        f"fillet_pop1={t3 - t2:.3f}s "
+        f"fillet_pop3={t4 - t3:.3f}s "
+        f"corners={len(corner_points)} "
+        f"edges_pop1={len(edges_pop1)} "
+        f"edges_pop3={len(edges_pop3)}\n"
+    )
     return rounded
 
 
@@ -168,9 +208,31 @@ def build_simple_baseplate(
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
 ) -> Part.Shape:
+    total_start = time.perf_counter()
+
+    t0 = time.perf_counter()
     shape = build_single_cell_baseplate_core(obj, options)
+    t1 = time.perf_counter()
+
     shape = apply_snap_springs(shape, obj, options)
+    t2 = time.perf_counter()
+
     shape = replicate_layout(shape, obj, layout)
+    t3 = time.perf_counter()
+
     shape = apply_junction_screws(shape, obj, layout, options)
+    t4 = time.perf_counter()
+
     shape = apply_clip_cutouts(shape, obj, layout, options)
+    t5 = time.perf_counter()
+
+    fc.Console.PrintMessage(
+        "[Gridfinity Timing] baseplate "
+        f"core={t1 - t0:.3f}s "
+        f"springs={t2 - t1:.3f}s "
+        f"replicate_round={t3 - t2:.3f}s "
+        f"junction={t4 - t3:.3f}s "
+        f"clip={t5 - t4:.3f}s "
+        f"total={t5 - total_start:.3f}s\n"
+    )
     return shape
