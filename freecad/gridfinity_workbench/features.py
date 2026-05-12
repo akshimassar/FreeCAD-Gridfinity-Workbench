@@ -865,41 +865,15 @@ class CustomBaseplate(FoundationGridfinity):
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         """Generate Baseplate Shape."""
-        ## calculated here
         obj.TotalHeight = obj.BaseProfileHeight
-
-        ## calculated values over
         layout = clean_up_layout(self.layout)
         grid_initial_layout.make_custom_shape_layout(obj, layout)
-        solid_shape = custom_shape_solid(
-            obj,
-            layout,
-            obj.TotalHeight,
-        ).translate(fc.Vector(0, 0, obj.TotalHeight))
-        solid_shape = solid_shape.removeSplitter()
-        solid_shape = vertical_edge_fillet(solid_shape, obj.BinOuterRadius)
-
-        fuse_total = feat.make_complex_bin_base(obj, layout, for_cutout=True)
-        fuse_total.translate(fc.Vector(0, 0, obj.TotalHeight))
-        fuse_total = solid_shape.cut(fuse_total)
-
-        if bool(getattr(obj, "JunctionScrewHoles", False)):
-            junction_holes = baseplate_feat.make_junction_screw_holes(obj, layout)
-            if junction_holes is not None:
-                fuse_total = fuse_total.cut(junction_holes)
-
-        if bool(getattr(obj, "ClipCutoutsEnabled", False)):
-            clip_cutouts = baseplate_feat.make_clip_cutouts(obj, layout)
-            if clip_cutouts is not None:
-                fuse_total = fuse_total.cut(clip_cutouts)
-
-        if bool(getattr(obj, "ClickSpringsEnabled", False)):
-            springs = feat.make_click_springs_two_sides(obj, layout)
-            springs = feat.trim_click_springs_to_top_crop(obj, springs)
-            fuse_total = fuse_total.fuse(springs)
-            fuse_total = fuse_total.removeSplitter()
-
-        return fuse_total
+        options = baseplate_builder.BaseplateBuildOptions(
+            include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
+            include_clip_cutouts=bool(getattr(obj, "ClipCutoutsEnabled", False)),
+            include_snap_springs=bool(getattr(obj, "ClickSpringsEnabled", False)),
+        )
+        return baseplate_builder.build_simple_baseplate(obj, layout, options)
 
     def dumps(self) -> dict:
         """Needed for JSON Serialization when saving a file containing gridfinity object."""
