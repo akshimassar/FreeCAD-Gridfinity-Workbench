@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import FreeCAD as fc  # noqa: N813
 import FreeCADGui as fcg  # noqa: N813
-from PySide.QtCore import Qt
+from PySide.QtCore import Qt, QTimer
 from PySide.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
@@ -387,6 +387,10 @@ class CreateBaseplateTaskPanel:
     def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
         self._pixmap = pixmap
         self._target_obj = target_obj
+        self._created_preview_obj = False
+        self._original_values: dict[str, float | bool] | None = None
+        self._original_view: dict[str, Any] | None = None
+        self._preview_applied = False
         self.form = QWidget()
         self.form.setWindowTitle("Edit Baseplate" if target_obj is not None else "Create Baseplate")
         layout = QVBoxLayout(self.form)
@@ -397,8 +401,28 @@ class CreateBaseplateTaskPanel:
         for key, widget in controls.items():
             setattr(self, key, widget)
 
+        if self._target_obj is None:
+            self._target_obj = utils.new_object("Baseplate")
+            self._created_preview_obj = True
+            if fc.GuiUp:
+                view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
+                ViewProviderGridfinity(view_object, str(self._pixmap))
+            features.Baseplate(self._target_obj)
+        else:
+            self._original_values = self._capture_object_values(self._target_obj)
+
+        self._capture_and_set_preview_visuals()
+
         if self._target_obj is not None:
             self._load_from_object(self._target_obj)
+
+        self._preview_timer = QTimer(self.form)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(500)
+        self._preview_timer.timeout.connect(self._update_preview)
+        self._connect_preview_signals()
+        if self._created_preview_obj:
+            self._update_preview()
 
     def getStandardButtons(self) -> int:  # noqa: N802
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -425,16 +449,57 @@ class CreateBaseplateTaskPanel:
         self.clip_cutouts_enabled.setChecked(bool(obj.ClipCutoutsEnabled))
         self.clip_length.setValue(obj.ClipLength.Value)
 
-    def accept(self) -> bool:
-        obj = self._target_obj
-        if obj is None:
-            obj = utils.new_object("Baseplate")
-            if fc.GuiUp:
-                view_object: fcg.ViewProviderDocumentObject = obj.ViewObject
-                ViewProviderGridfinity(view_object, str(self._pixmap))
+    def _capture_object_values(self, obj: fc.DocumentObject) -> dict[str, float | bool]:
+        return {
+            "xGridUnits": float(obj.xGridUnits),
+            "yGridUnits": float(obj.yGridUnits),
+            "xGridSize": obj.xGridSize.Value,
+            "yGridSize": obj.yGridSize.Value,
+            "BaseProfileMainHalfWidth": obj.BaseProfileMainHalfWidth.Value,
+            "BaseProfileMainHeight": obj.BaseProfileMainHeight.Value,
+            "BinOuterRadius": obj.BinOuterRadius.Value,
+            "BaseProfileLowerChamferEnabled": bool(obj.BaseProfileLowerChamferEnabled),
+            "BaseProfileLowerChamferSize": obj.BaseProfileLowerChamferSize.Value,
+            "BaseProfileTopCrop": obj.BaseProfileTopCrop.Value,
+            "Clearance": obj.Clearance.Value,
+            "ClickSpringsEnabled": bool(obj.ClickSpringsEnabled),
+            "ClickThickness": obj.ClickThickness.Value,
+            "ClickLength": obj.ClickLength.Value,
+            "ClickOffset": obj.ClickOffset.Value,
+            "JunctionScrewHoles": bool(obj.JunctionScrewHoles),
+            "JunctionScrewDiameter": obj.JunctionScrewDiameter.Value,
+            "JunctionCounterboreDiameter": obj.JunctionCounterboreDiameter.Value,
+            "JunctionCounterboreDepth": obj.JunctionCounterboreDepth.Value,
+            "ClipCutoutsEnabled": bool(obj.ClipCutoutsEnabled),
+            "ClipLength": obj.ClipLength.Value,
+        }
 
-            features.Baseplate(obj)
+    def _restore_object_values(
+        self, obj: fc.DocumentObject, values: dict[str, float | bool]
+    ) -> None:
+        obj.xGridUnits = values["xGridUnits"]
+        obj.yGridUnits = values["yGridUnits"]
+        obj.xGridSize = values["xGridSize"]
+        obj.yGridSize = values["yGridSize"]
+        obj.BaseProfileMainHalfWidth = values["BaseProfileMainHalfWidth"]
+        obj.BaseProfileMainHeight = values["BaseProfileMainHeight"]
+        obj.BinOuterRadius = values["BinOuterRadius"]
+        obj.BaseProfileLowerChamferEnabled = values["BaseProfileLowerChamferEnabled"]
+        obj.BaseProfileLowerChamferSize = values["BaseProfileLowerChamferSize"]
+        obj.BaseProfileTopCrop = values["BaseProfileTopCrop"]
+        obj.Clearance = values["Clearance"]
+        obj.ClickSpringsEnabled = values["ClickSpringsEnabled"]
+        obj.ClickThickness = values["ClickThickness"]
+        obj.ClickLength = values["ClickLength"]
+        obj.ClickOffset = values["ClickOffset"]
+        obj.JunctionScrewHoles = values["JunctionScrewHoles"]
+        obj.JunctionScrewDiameter = values["JunctionScrewDiameter"]
+        obj.JunctionCounterboreDiameter = values["JunctionCounterboreDiameter"]
+        obj.JunctionCounterboreDepth = values["JunctionCounterboreDepth"]
+        obj.ClipCutoutsEnabled = values["ClipCutoutsEnabled"]
+        obj.ClipLength = values["ClipLength"]
 
+    def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> None:
         obj.xGridUnits = self.x_grid_units.value()
         obj.yGridUnits = self.y_grid_units.value()
         obj.xGridSize = self.grid_size.value()
@@ -448,24 +513,105 @@ class CreateBaseplateTaskPanel:
         obj.BaseProfileTopCrop = self.top_crop.value()
         obj.Clearance = self.clearance.value()
 
-        obj.ClickSpringsEnabled = self.click_springs_enabled.isChecked()
+        if preview_mode:
+            obj.ClickSpringsEnabled = False
+            obj.JunctionScrewHoles = False
+            obj.ClipCutoutsEnabled = False
+        else:
+            obj.ClickSpringsEnabled = self.click_springs_enabled.isChecked()
+            obj.JunctionScrewHoles = self.junction_screw_holes.isChecked()
+            obj.ClipCutoutsEnabled = self.clip_cutouts_enabled.isChecked()
+
         obj.ClickThickness = self.click_thickness.value()
         obj.ClickLength = self.click_length.value()
         obj.ClickOffset = self.click_offset.value()
 
-        obj.JunctionScrewHoles = self.junction_screw_holes.isChecked()
         obj.JunctionScrewDiameter = self.junction_screw_diameter.value()
         obj.JunctionCounterboreDiameter = self.junction_counterbore_diameter.value()
         obj.JunctionCounterboreDepth = self.junction_counterbore_depth.value()
-        obj.ClipCutoutsEnabled = self.clip_cutouts_enabled.isChecked()
         obj.ClipLength = self.clip_length.value()
 
+    def _preview_color(self) -> tuple[float, float, float]:
+        """Return FreeCAD standard-ish preview color from preferences, fallback orange."""
+        prefs = fc.ParamGet("User parameter:BaseApp/Preferences/View")
+        color_uint = prefs.GetUnsigned("DefaultShapeColor", 0xCC9966)
+        r = ((color_uint >> 24) & 0xFF) / 255.0
+        g = ((color_uint >> 16) & 0xFF) / 255.0
+        b = ((color_uint >> 8) & 0xFF) / 255.0
+        return (r, g, b)
+
+    def _capture_and_set_preview_visuals(self) -> None:
+        if not fc.GuiUp or self._target_obj is None:
+            return
+        view = self._target_obj.ViewObject
+        self._original_view = {
+            "ShapeColor": tuple(view.ShapeColor),
+            "Transparency": int(view.Transparency),
+        }
+        view.ShapeColor = self._preview_color()
+        view.Transparency = 70
+
+    def _restore_preview_visuals(self) -> None:
+        if not fc.GuiUp or self._target_obj is None or self._original_view is None:
+            return
+        view = self._target_obj.ViewObject
+        view.ShapeColor = self._original_view["ShapeColor"]
+        view.Transparency = self._original_view["Transparency"]
+
+    def _connect_preview_signals(self) -> None:
+        controls = [
+            self.x_grid_units,
+            self.y_grid_units,
+            self.grid_size,
+            self.base_profile_main_half_width,
+            self.base_profile_main_height,
+            self.bin_outer_radius,
+            self.enable_lower_chamfer,
+            self.base_profile_lower_chamfer_size,
+            self.top_crop,
+            self.clearance,
+            self.click_springs_enabled,
+            self.click_thickness,
+            self.click_length,
+            self.click_offset,
+            self.junction_screw_holes,
+            self.junction_screw_diameter,
+            self.junction_counterbore_diameter,
+            self.junction_counterbore_depth,
+            self.clip_cutouts_enabled,
+            self.clip_length,
+        ]
+        for control in controls:
+            if isinstance(control, (QDoubleSpinBox, QSpinBox)):
+                control.valueChanged.connect(lambda *_: self._preview_timer.start())
+            else:
+                control.stateChanged.connect(lambda *_: self._preview_timer.start())
+
+    def _update_preview(self) -> None:
+        if self._target_obj is None:
+            return
+        self._apply_dialog_values(self._target_obj, preview_mode=True)
         fc.ActiveDocument.recompute()
+        self._preview_applied = True
+
+    def accept(self) -> bool:
+        if self._target_obj is None:
+            return False
+        self._apply_dialog_values(self._target_obj, preview_mode=False)
+        fc.ActiveDocument.recompute()
+        self._restore_preview_visuals()
         fcg.SendMsgToActiveView("ViewFit")
         fcg.Control.closeDialog()
         return True
 
     def reject(self) -> bool:
+        if self._target_obj is not None:
+            if self._created_preview_obj:
+                fc.ActiveDocument.removeObject(self._target_obj.Name)
+            elif self._original_values is not None and self._preview_applied:
+                self._restore_object_values(self._target_obj, self._original_values)
+                fc.ActiveDocument.recompute()
+            self._restore_preview_visuals()
         fcg.Control.closeDialog()
         return True
 
