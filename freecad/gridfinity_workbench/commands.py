@@ -24,7 +24,7 @@ from PySide.QtWidgets import (
 )
 
 from . import custom_shape, features, utils
-from .settings import defaults
+from .settings import defaults, factory_defaults
 
 if TYPE_CHECKING:
     import Part
@@ -242,18 +242,50 @@ class GridfinitySettingsTaskPanel:
 
         layout = QVBoxLayout(self.form)
 
-        general_label = QLabel("General")
+        general_label = QLabel("Fundamentals")
         general_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(general_label)
 
+        compatibility_note = QLabel(
+            "Changing these values affects Gridfinity compatibility with other objects."
+        )
+        compatibility_note.setWordWrap(True)
+        compatibility_note.setAlignment(Qt.AlignLeft)
+        layout.addWidget(compatibility_note)
+
         general_form = QFormLayout()
+        general_form.setContentsMargins(20, 0, 0, 0)
         self.grid_size = QDoubleSpinBox()
-        self.grid_size.setDecimals(3)
+        self.grid_size.setDecimals(2)
         self.grid_size.setMinimum(1.0)
         self.grid_size.setMaximum(500.0)
         self.grid_size.setSuffix(" mm")
         self.grid_size.setValue(defaults.grid_size)
         general_form.addRow("Grid Size", self.grid_size)
+
+        self.base_profile_main_half_width = QDoubleSpinBox()
+        self.base_profile_main_half_width.setDecimals(2)
+        self.base_profile_main_half_width.setMinimum(0.0)
+        self.base_profile_main_half_width.setMaximum(100.0)
+        self.base_profile_main_half_width.setSuffix(" mm")
+        self.base_profile_main_half_width.setValue(defaults.base_profile_main_half_width)
+        general_form.addRow("Base profile half width", self.base_profile_main_half_width)
+
+        self.base_profile_main_height = QDoubleSpinBox()
+        self.base_profile_main_height.setDecimals(2)
+        self.base_profile_main_height.setMinimum(0.0)
+        self.base_profile_main_height.setMaximum(100.0)
+        self.base_profile_main_height.setSuffix(" mm")
+        self.base_profile_main_height.setValue(defaults.base_profile_main_height)
+        general_form.addRow("Base profile height", self.base_profile_main_height)
+
+        self.bin_outer_radius = QDoubleSpinBox()
+        self.bin_outer_radius.setDecimals(2)
+        self.bin_outer_radius.setMinimum(0.0)
+        self.bin_outer_radius.setMaximum(100.0)
+        self.bin_outer_radius.setSuffix(" mm")
+        self.bin_outer_radius.setValue(defaults.bin_outer_radius)
+        general_form.addRow("Outer radius", self.bin_outer_radius)
         layout.addLayout(general_form)
 
         baseplate_label = QLabel("Baseplate")
@@ -261,70 +293,42 @@ class GridfinitySettingsTaskPanel:
         layout.addWidget(baseplate_label)
 
         baseplate_form = QFormLayout()
-        self.base_profile_main_half_width = QDoubleSpinBox()
-        self.base_profile_main_half_width.setDecimals(3)
-        self.base_profile_main_half_width.setMinimum(0.0)
-        self.base_profile_main_half_width.setMaximum(100.0)
-        self.base_profile_main_half_width.setSuffix(" mm")
-        self.base_profile_main_half_width.setValue(defaults.base_profile_main_half_width)
-        baseplate_form.addRow("Main half width", self.base_profile_main_half_width)
+        baseplate_form.setContentsMargins(20, 0, 0, 0)
 
-        self.base_profile_main_height = QDoubleSpinBox()
-        self.base_profile_main_height.setDecimals(3)
-        self.base_profile_main_height.setMinimum(0.0)
-        self.base_profile_main_height.setMaximum(100.0)
-        self.base_profile_main_height.setSuffix(" mm")
-        self.base_profile_main_height.setValue(defaults.base_profile_main_height)
-        baseplate_form.addRow("Main height", self.base_profile_main_height)
+        self.enable_lower_chamfer = QCheckBox()
+        self.enable_lower_chamfer.setChecked(defaults.baseplate_lower_chamfer_enabled)
+        baseplate_form.addRow("Enable lower chamfer", self.enable_lower_chamfer)
 
         self.base_profile_lower_chamfer_size = QDoubleSpinBox()
-        self.base_profile_lower_chamfer_size.setDecimals(3)
+        self.base_profile_lower_chamfer_size.setDecimals(2)
         self.base_profile_lower_chamfer_size.setMinimum(0.0)
         self.base_profile_lower_chamfer_size.setMaximum(100.0)
         self.base_profile_lower_chamfer_size.setSuffix(" mm")
         self.base_profile_lower_chamfer_size.setValue(defaults.base_profile_lower_chamfer_size)
         baseplate_form.addRow("Lower chamfer size", self.base_profile_lower_chamfer_size)
 
-        self.enable_lower_chamfer = QCheckBox()
-        self.enable_lower_chamfer.setChecked(defaults.baseplate_lower_chamfer_enabled)
-        baseplate_form.addRow("Enable lower chamfer", self.enable_lower_chamfer)
-
         self.top_crop = QDoubleSpinBox()
-        self.top_crop.setDecimals(3)
+        self.top_crop.setDecimals(2)
         self.top_crop.setMinimum(0.0)
         self.top_crop.setMaximum(100.0)
         self.top_crop.setSuffix(" mm")
         self.top_crop.setValue(defaults.baseplate_top_crop)
         baseplate_form.addRow("Top crop", self.top_crop)
 
-        self.bin_outer_radius = QDoubleSpinBox()
-        self.bin_outer_radius.setDecimals(3)
-        self.bin_outer_radius.setMinimum(0.0)
-        self.bin_outer_radius.setMaximum(100.0)
-        self.bin_outer_radius.setSuffix(" mm")
-        self.bin_outer_radius.setValue(defaults.bin_outer_radius)
-        baseplate_form.addRow("Outer radius", self.bin_outer_radius)
-
-        self.clearance = QDoubleSpinBox()
-        self.clearance.setDecimals(3)
-        self.clearance.setMinimum(0.0)
-        self.clearance.setMaximum(100.0)
-        self.clearance.setSuffix(" mm")
-        self.clearance.setValue(defaults.clearance)
-        baseplate_form.addRow("Clearance", self.clearance)
         layout.addLayout(baseplate_form)
 
-        click_label = QLabel("Click springs")
-        click_label.setStyleSheet("font-weight: bold;")
+        click_label = QLabel("Snap springs")
+        click_label.setStyleSheet("font-weight: bold; padding-left: 20px;")
         layout.addWidget(click_label)
 
         click_form = QFormLayout()
+        click_form.setContentsMargins(40, 0, 0, 0)
         self.click_springs_enabled = QCheckBox()
         self.click_springs_enabled.setChecked(defaults.click_springs_enabled)
         click_form.addRow("Enabled", self.click_springs_enabled)
 
         self.click_thickness = QDoubleSpinBox()
-        self.click_thickness.setDecimals(3)
+        self.click_thickness.setDecimals(2)
         self.click_thickness.setMinimum(0.0)
         self.click_thickness.setMaximum(100.0)
         self.click_thickness.setSuffix(" mm")
@@ -332,7 +336,7 @@ class GridfinitySettingsTaskPanel:
         click_form.addRow("Thickness", self.click_thickness)
 
         self.click_length = QDoubleSpinBox()
-        self.click_length.setDecimals(3)
+        self.click_length.setDecimals(2)
         self.click_length.setMinimum(0.0)
         self.click_length.setMaximum(1000.0)
         self.click_length.setSuffix(" mm")
@@ -340,7 +344,7 @@ class GridfinitySettingsTaskPanel:
         click_form.addRow("Length", self.click_length)
 
         self.click_offset = QDoubleSpinBox()
-        self.click_offset.setDecimals(3)
+        self.click_offset.setDecimals(2)
         self.click_offset.setMinimum(0.0)
         self.click_offset.setMaximum(100.0)
         self.click_offset.setSuffix(" mm")
@@ -348,63 +352,139 @@ class GridfinitySettingsTaskPanel:
         click_form.addRow("Offset", self.click_offset)
         layout.addLayout(click_form)
 
-        junction_clip_label = QLabel("Junction / clip")
-        junction_clip_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(junction_clip_label)
+        junction_label = QLabel("Junction screws")
+        junction_label.setStyleSheet("font-weight: bold; padding-left: 20px;")
+        layout.addWidget(junction_label)
 
-        junction_clip_form = QFormLayout()
+        junction_form = QFormLayout()
+        junction_form.setContentsMargins(40, 0, 0, 0)
         self.junction_screw_holes = QCheckBox()
         self.junction_screw_holes.setChecked(defaults.junction_screw_holes)
-        junction_clip_form.addRow("Junction screw holes", self.junction_screw_holes)
+        junction_form.addRow("Enabled", self.junction_screw_holes)
 
         self.junction_screw_diameter = QDoubleSpinBox()
-        self.junction_screw_diameter.setDecimals(3)
+        self.junction_screw_diameter.setDecimals(2)
         self.junction_screw_diameter.setMinimum(0.0)
         self.junction_screw_diameter.setMaximum(100.0)
         self.junction_screw_diameter.setSuffix(" mm")
         self.junction_screw_diameter.setValue(defaults.junction_screw_diameter)
-        junction_clip_form.addRow("Junction screw diameter", self.junction_screw_diameter)
+        junction_form.addRow("Screw diameter", self.junction_screw_diameter)
 
         self.junction_counterbore_diameter = QDoubleSpinBox()
-        self.junction_counterbore_diameter.setDecimals(3)
+        self.junction_counterbore_diameter.setDecimals(2)
         self.junction_counterbore_diameter.setMinimum(0.0)
         self.junction_counterbore_diameter.setMaximum(100.0)
         self.junction_counterbore_diameter.setSuffix(" mm")
         self.junction_counterbore_diameter.setValue(defaults.junction_counterbore_diameter)
-        junction_clip_form.addRow(
-            "Junction counterbore diameter",
-            self.junction_counterbore_diameter,
-        )
+        junction_form.addRow("Counterbore diameter", self.junction_counterbore_diameter)
 
         self.junction_counterbore_depth = QDoubleSpinBox()
-        self.junction_counterbore_depth.setDecimals(3)
+        self.junction_counterbore_depth.setDecimals(2)
         self.junction_counterbore_depth.setMinimum(0.0)
         self.junction_counterbore_depth.setMaximum(100.0)
         self.junction_counterbore_depth.setSuffix(" mm")
         self.junction_counterbore_depth.setValue(defaults.junction_counterbore_depth)
-        junction_clip_form.addRow("Junction counterbore depth", self.junction_counterbore_depth)
+        junction_form.addRow("Counterbore depth", self.junction_counterbore_depth)
+        layout.addLayout(junction_form)
+
+        clip_label = QLabel("Connecting clips")
+        clip_label.setStyleSheet("font-weight: bold; padding-left: 20px;")
+        layout.addWidget(clip_label)
+
+        clip_form = QFormLayout()
+        clip_form.setContentsMargins(40, 0, 0, 0)
 
         self.clip_cutouts_enabled = QCheckBox()
         self.clip_cutouts_enabled.setChecked(defaults.clip_cutouts_enabled)
-        junction_clip_form.addRow("Clip cutouts", self.clip_cutouts_enabled)
+        clip_form.addRow("Enabled", self.clip_cutouts_enabled)
 
         self.clip_length = QDoubleSpinBox()
-        self.clip_length.setDecimals(3)
+        self.clip_length.setDecimals(2)
         self.clip_length.setMinimum(0.0)
         self.clip_length.setMaximum(100.0)
         self.clip_length.setSuffix(" mm")
         self.clip_length.setValue(defaults.clip_length)
-        junction_clip_form.addRow("Clip length", self.clip_length)
+        clip_form.addRow("Clip length", self.clip_length)
 
-        layout.addLayout(junction_clip_form)
+        layout.addLayout(clip_form)
 
-        note = QLabel("These are default settings for all objects and they are saved.")
-        note.setWordWrap(True)
-        note.setAlignment(Qt.AlignLeft)
-        layout.addWidget(note)
+        bin_label = QLabel("Bin")
+        bin_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(bin_label)
+
+        bin_form = QFormLayout()
+        bin_form.setContentsMargins(20, 0, 0, 0)
+        self.clearance = QDoubleSpinBox()
+        self.clearance.setDecimals(2)
+        self.clearance.setMinimum(0.0)
+        self.clearance.setMaximum(100.0)
+        self.clearance.setSuffix(" mm")
+        self.clearance.setValue(defaults.clearance)
+        bin_form.addRow("Clearance", self.clearance)
+
+        self.half_grid_size = QCheckBox()
+        self.half_grid_size.setChecked(defaults.half_grid_size)
+        bin_form.addRow("Half Grid Size", self.half_grid_size)
+
+        layout.addLayout(bin_form)
+
+        self._wire_default_warning_colors()
 
     def getStandardButtons(self) -> int:  # noqa: N802
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+
+    def _set_warn_style(self, widget: QWidget, warn: bool) -> None:
+        if warn:
+            widget.setStyleSheet("border: 1px solid #e6a700;")
+        else:
+            widget.setStyleSheet("")
+
+    def _wire_default_warning_colors(self) -> None:
+        numeric_controls = [
+            (self.grid_size, factory_defaults.grid_size),
+            (self.base_profile_main_half_width, factory_defaults.base_profile_main_half_width),
+            (self.base_profile_main_height, factory_defaults.base_profile_main_height),
+            (self.bin_outer_radius, factory_defaults.bin_outer_radius),
+            (
+                self.base_profile_lower_chamfer_size,
+                factory_defaults.base_profile_lower_chamfer_size,
+            ),
+            (self.top_crop, factory_defaults.baseplate_top_crop),
+            (self.click_thickness, factory_defaults.click_thickness),
+            (self.click_length, factory_defaults.click_length),
+            (self.click_offset, factory_defaults.click_offset),
+            (self.junction_screw_diameter, factory_defaults.junction_screw_diameter),
+            (self.junction_counterbore_diameter, factory_defaults.junction_counterbore_diameter),
+            (self.junction_counterbore_depth, factory_defaults.junction_counterbore_depth),
+            (self.clip_length, factory_defaults.clip_length),
+            (self.clearance, factory_defaults.clearance),
+        ]
+
+        for control, default_value in numeric_controls:
+
+            def updater(
+                _value: float, c: QDoubleSpinBox = control, d: float = default_value
+            ) -> None:
+                self._set_warn_style(c, abs(c.value() - d) > 1e-9)
+
+            control.valueChanged.connect(updater)
+            updater(control.value())
+
+        bool_controls = [
+            (self.enable_lower_chamfer, factory_defaults.baseplate_lower_chamfer_enabled),
+            (self.click_springs_enabled, factory_defaults.click_springs_enabled),
+            (self.junction_screw_holes, factory_defaults.junction_screw_holes),
+            (self.clip_cutouts_enabled, factory_defaults.clip_cutouts_enabled),
+            (self.half_grid_size, factory_defaults.half_grid_size),
+        ]
+
+        for control, default_value in bool_controls:
+
+            def updater(_state: int, c: QCheckBox = control, d: bool = default_value) -> None:
+                self._set_warn_style(c, c.isChecked() != d)
+
+            control.stateChanged.connect(updater)
+            updater(0)
 
     def accept(self) -> bool:
         defaults.grid_size = self.grid_size.value()
@@ -415,6 +495,7 @@ class GridfinitySettingsTaskPanel:
         defaults.baseplate_top_crop = self.top_crop.value()
         defaults.bin_outer_radius = self.bin_outer_radius.value()
         defaults.clearance = self.clearance.value()
+        defaults.half_grid_size = self.half_grid_size.isChecked()
 
         defaults.click_springs_enabled = self.click_springs_enabled.isChecked()
         defaults.click_thickness = self.click_thickness.value()

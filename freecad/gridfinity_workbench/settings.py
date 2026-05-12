@@ -18,6 +18,7 @@ class Defaults:
     baseplate_top_crop: float = 0.8
     bin_outer_radius: float = 4.0
     clearance: float = 0.25
+    half_grid_size: bool = False
 
     click_springs_enabled: bool = True
     click_thickness: float = 0.8
@@ -54,6 +55,7 @@ class Defaults:
         self.baseplate_top_crop = prefs.GetFloat("BaseplateTopCrop", self.baseplate_top_crop)
         self.bin_outer_radius = prefs.GetFloat("BinOuterRadius", self.bin_outer_radius)
         self.clearance = prefs.GetFloat("Clearance", self.clearance)
+        self.half_grid_size = prefs.GetBool("HalfGridSize", self.half_grid_size)
 
         self.click_springs_enabled = prefs.GetBool(
             "ClickSpringsEnabled", self.click_springs_enabled
@@ -89,6 +91,7 @@ class Defaults:
         prefs.SetFloat("BaseplateTopCrop", self.baseplate_top_crop)
         prefs.SetFloat("BinOuterRadius", self.bin_outer_radius)
         prefs.SetFloat("Clearance", self.clearance)
+        prefs.SetBool("HalfGridSize", self.half_grid_size)
 
         prefs.SetBool("ClickSpringsEnabled", self.click_springs_enabled)
         prefs.SetFloat("ClickThickness", self.click_thickness)
@@ -103,6 +106,8 @@ class Defaults:
         prefs.SetBool("ClipCutoutsEnabled", self.clip_cutouts_enabled)
         prefs.SetFloat("ClipLength", self.clip_length)
 
+
+factory_defaults = Defaults()
 
 defaults = Defaults()
 defaults.load()
