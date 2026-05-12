@@ -3,6 +3,7 @@
 import FreeCAD as fc  # noqa: N813
 
 from . import const
+from .settings import defaults
 
 
 def _location_properties(obj: fc.DocumentObject) -> None:
@@ -46,21 +47,24 @@ def _total_width_properties(obj: fc.DocumentObject) -> None:
     )
 
 
-def _grid_size_properties(obj: fc.DocumentObject) -> None:
+def _grid_size_properties(obj: fc.DocumentObject, *, baseplate_default: bool) -> None:
     """Grid Size Properties."""
+    use_half_grid = defaults.half_grid_size and not baseplate_default
+    grid_size = defaults.grid_size / 2 if use_half_grid else defaults.grid_size
+
     obj.addProperty(
         "App::PropertyLength",
         "xGridSize",
         "zzExpertOnly",
         "Size of each grid in x direction <br> <br> default = 42 mm",
-    ).xGridSize = const.X_GRID_SIZE
+    ).xGridSize = grid_size
 
     obj.addProperty(
         "App::PropertyLength",
         "yGridSize",
         "zzExpertOnly",
         "Size of each grid in y direction <br> <br> default = 42 mm",
-    ).yGridSize = const.Y_GRID_SIZE
+    ).yGridSize = grid_size
 
 
 def rectangle_layout_properties(obj: fc.DocumentObject, *, baseplate_default: bool) -> None:
@@ -73,7 +77,7 @@ def rectangle_layout_properties(obj: fc.DocumentObject, *, baseplate_default: bo
     """
     _location_properties(obj)
     _total_width_properties(obj)
-    _grid_size_properties(obj)
+    _grid_size_properties(obj, baseplate_default=baseplate_default)
 
     ## Standard Gridfinity Parameters
     obj.addProperty(
@@ -133,7 +137,7 @@ def custom_shape_layout_properties(obj: fc.DocumentObject, *, baseplate_default:
 
     """
     _total_width_properties(obj)
-    _grid_size_properties(obj)
+    _grid_size_properties(obj, baseplate_default=baseplate_default)
 
     _location_properties(obj)
     obj.setEditorMode("GenerationLocation", 2)

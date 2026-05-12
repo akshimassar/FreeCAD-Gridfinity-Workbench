@@ -11,6 +11,7 @@ import Part
 from . import clip_profiles
 from . import const, utils
 from . import magnet_hole as magnet_hole_module
+from .settings import defaults
 from .utils import GridfinityLayout
 
 
@@ -312,28 +313,28 @@ def junction_screw_holes_properties(obj: fc.DocumentObject) -> None:
         "JunctionScrewHoles",
         "GridfinityNonStandard",
         "Toggle internal junction screw holes",
-    ).JunctionScrewHoles = True
+    ).JunctionScrewHoles = defaults.junction_screw_holes
 
     obj.addProperty(
         "App::PropertyLength",
         "JunctionScrewDiameter",
         "GridfinityNonStandard",
         "Diameter of internal junction screw holes <br> <br> default = 3.3 mm",
-    ).JunctionScrewDiameter = 3.3
+    ).JunctionScrewDiameter = defaults.junction_screw_diameter
 
     obj.addProperty(
         "App::PropertyLength",
         "JunctionCounterboreDiameter",
         "GridfinityNonStandard",
         "Counterbore diameter for junction screw holes <br> <br> default = 6 mm",
-    ).JunctionCounterboreDiameter = 6
+    ).JunctionCounterboreDiameter = defaults.junction_counterbore_diameter
 
     obj.addProperty(
         "App::PropertyLength",
         "JunctionCounterboreDepth",
         "GridfinityNonStandard",
         "Counterbore depth for junction screw holes <br> <br> default = 1.5 mm",
-    ).JunctionCounterboreDepth = 1.5
+    ).JunctionCounterboreDepth = defaults.junction_counterbore_depth
 
 
 def clip_cutouts_properties(obj: fc.DocumentObject) -> None:
@@ -343,14 +344,14 @@ def clip_cutouts_properties(obj: fc.DocumentObject) -> None:
         "ClipCutoutsEnabled",
         "GridfinityNonStandard",
         "Toggle clip connector cutouts",
-    ).ClipCutoutsEnabled = True
+    ).ClipCutoutsEnabled = defaults.clip_cutouts_enabled
 
     obj.addProperty(
         "App::PropertyLength",
         "ClipLength",
         "GridfinityNonStandard",
         "Length of clip cutout along X <br> <br> default = 3 mm",
-    ).ClipLength = 3
+    ).ClipLength = defaults.clip_length
 
 
 def _profile_wire_to_centered_x_solid(profile_wire: Part.Wire, length: float) -> Part.Shape:
@@ -500,56 +501,56 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BaseProfileMainHalfWidth",
         "zzExpertOnly",
         "Half width of main profile section <br> <br> default = 2.15 mm",
-    ).BaseProfileMainHalfWidth = 2.15
+    ).BaseProfileMainHalfWidth = defaults.base_profile_main_half_width
 
     obj.addProperty(
         "App::PropertyLength",
         "BaseProfileMainHeight",
         "zzExpertOnly",
         "Height of main (vertical) section <br> <br> default = 2.5 mm",
-    ).BaseProfileMainHeight = 2.5
+    ).BaseProfileMainHeight = defaults.base_profile_main_height
 
     obj.addProperty(
         "App::PropertyLength",
         "BaseProfileLowerChamferSize",
         "zzExpertOnly",
         "Lower chamfer size <br> <br> default = 0.7 mm",
-    ).BaseProfileLowerChamferSize = 0.7
+    ).BaseProfileLowerChamferSize = defaults.base_profile_lower_chamfer_size
 
     obj.addProperty(
         "App::PropertyBool",
         "BaseProfileLowerChamferEnabled",
         "zzExpertOnly",
         "Enable lower chamfer",
-    ).BaseProfileLowerChamferEnabled = False
+    ).BaseProfileLowerChamferEnabled = defaults.baseplate_lower_chamfer_enabled
 
     obj.addProperty(
         "App::PropertyLength",
         "BaseProfileTopCrop",
         "zzExpertOnly",
         "Vertical crop from apex <br> <br> default = 0.8 mm",
-    ).BaseProfileTopCrop = 0.8
+    ).BaseProfileTopCrop = defaults.baseplate_top_crop
 
     obj.addProperty(
         "App::PropertyLength",
         "BinOuterRadius",
         "zzExpertOnly",
         "Outer radius of the bin",
-    ).BinOuterRadius = const.BASEPLATE_OUTER_RADIUS
+    ).BinOuterRadius = defaults.bin_outer_radius
 
     obj.addProperty(
         "App::PropertyLength",
         "BinVerticalRadius",
         "zzExpertOnly",
         "Radius of the base profile Vertical section",
-    ).BinVerticalRadius = const.BASEPLATE_VERTICAL_RADIUS
+    ).BinVerticalRadius = defaults.bin_outer_radius - defaults.base_profile_main_half_width
 
     obj.addProperty(
         "App::PropertyLength",
         "Clearance",
         "zzExpertOnly",
         "The Clearance between bin and baseplate <br> <br>default = 0.25 mm",
-    ).Clearance = const.CLEARANCE
+    ).Clearance = defaults.clearance
 
     obj.addProperty(
         "App::PropertyLength",
@@ -563,33 +564,37 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "ClickSpringsEnabled",
         "GridfinityNonStandard",
         "Enable click spring notch generation",
-    ).ClickSpringsEnabled = True
+    ).ClickSpringsEnabled = defaults.click_springs_enabled
 
     obj.addProperty(
         "App::PropertyLength",
         "ClickThickness",
         "GridfinityNonStandard",
         "Click spring notch thickness <br> <br> default = 0.8 mm",
-    ).ClickThickness = 0.8
+    ).ClickThickness = defaults.click_thickness
 
     obj.addProperty(
         "App::PropertyLength",
         "ClickLength",
         "GridfinityNonStandard",
         "Click spring notch length <br> <br> default = 12 mm",
-    ).ClickLength = 12
+    ).ClickLength = defaults.click_length
 
     obj.addProperty(
         "App::PropertyLength",
         "ClickOffset",
         "GridfinityNonStandard",
         "Click spring notch center offset in Y <br> <br> default = 0.55 mm",
-    ).ClickOffset = 0.55
+    ).ClickOffset = defaults.click_offset
 
     ## Expressions
     obj.setExpression(
         "BaseProfileHeight",
         "BaseProfileMainHeight + BaseProfileMainHalfWidth - BaseProfileTopCrop",
+    )
+    obj.setExpression(
+        "BinVerticalRadius",
+        "BinOuterRadius - BaseProfileMainHalfWidth",
     )
 
     junction_screw_holes_properties(obj)
