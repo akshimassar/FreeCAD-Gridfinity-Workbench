@@ -24,12 +24,12 @@ from PySide.QtWidgets import (
 )
 
 from . import custom_shape, features, utils
+from .settings import defaults
 
 if TYPE_CHECKING:
     import Part
 
 ICONDIR = Path(__file__).parent / "icons"
-PREFS_PATH = "User parameter:BaseApp/Preferences/Mod/GridfinityWorkbench"
 
 PASCAL_CASE_REGEX = re.compile(r"(?<!^)(?=[A-Z])")
 
@@ -237,7 +237,6 @@ class GridfinitySettingsTaskPanel:
     """Task panel for editing persisted Gridfinity defaults."""
 
     def __init__(self) -> None:
-        self._prefs = fc.ParamGet(PREFS_PATH)
         self.form = QWidget()
         self.form.setWindowTitle("Gridfinity Default Settings")
 
@@ -253,7 +252,7 @@ class GridfinitySettingsTaskPanel:
         self.grid_size.setMinimum(1.0)
         self.grid_size.setMaximum(500.0)
         self.grid_size.setSuffix(" mm")
-        self.grid_size.setValue(self._prefs.GetFloat("GridSize", 42.0))
+        self.grid_size.setValue(defaults.grid_size)
         general_form.addRow("Grid Size", self.grid_size)
         layout.addLayout(general_form)
 
@@ -262,10 +261,32 @@ class GridfinitySettingsTaskPanel:
         layout.addWidget(baseplate_label)
 
         baseplate_form = QFormLayout()
+        self.base_profile_main_half_width = QDoubleSpinBox()
+        self.base_profile_main_half_width.setDecimals(3)
+        self.base_profile_main_half_width.setMinimum(0.0)
+        self.base_profile_main_half_width.setMaximum(100.0)
+        self.base_profile_main_half_width.setSuffix(" mm")
+        self.base_profile_main_half_width.setValue(defaults.base_profile_main_half_width)
+        baseplate_form.addRow("Main half width", self.base_profile_main_half_width)
+
+        self.base_profile_main_height = QDoubleSpinBox()
+        self.base_profile_main_height.setDecimals(3)
+        self.base_profile_main_height.setMinimum(0.0)
+        self.base_profile_main_height.setMaximum(100.0)
+        self.base_profile_main_height.setSuffix(" mm")
+        self.base_profile_main_height.setValue(defaults.base_profile_main_height)
+        baseplate_form.addRow("Main height", self.base_profile_main_height)
+
+        self.base_profile_lower_chamfer_size = QDoubleSpinBox()
+        self.base_profile_lower_chamfer_size.setDecimals(3)
+        self.base_profile_lower_chamfer_size.setMinimum(0.0)
+        self.base_profile_lower_chamfer_size.setMaximum(100.0)
+        self.base_profile_lower_chamfer_size.setSuffix(" mm")
+        self.base_profile_lower_chamfer_size.setValue(defaults.base_profile_lower_chamfer_size)
+        baseplate_form.addRow("Lower chamfer size", self.base_profile_lower_chamfer_size)
+
         self.enable_lower_chamfer = QCheckBox()
-        self.enable_lower_chamfer.setChecked(
-            self._prefs.GetBool("BaseplateLowerChamferEnabled", False)
-        )
+        self.enable_lower_chamfer.setChecked(defaults.baseplate_lower_chamfer_enabled)
         baseplate_form.addRow("Enable lower chamfer", self.enable_lower_chamfer)
 
         self.top_crop = QDoubleSpinBox()
@@ -273,9 +294,109 @@ class GridfinitySettingsTaskPanel:
         self.top_crop.setMinimum(0.0)
         self.top_crop.setMaximum(100.0)
         self.top_crop.setSuffix(" mm")
-        self.top_crop.setValue(self._prefs.GetFloat("BaseplateTopCrop", 0.8))
+        self.top_crop.setValue(defaults.baseplate_top_crop)
         baseplate_form.addRow("Top crop", self.top_crop)
+
+        self.bin_outer_radius = QDoubleSpinBox()
+        self.bin_outer_radius.setDecimals(3)
+        self.bin_outer_radius.setMinimum(0.0)
+        self.bin_outer_radius.setMaximum(100.0)
+        self.bin_outer_radius.setSuffix(" mm")
+        self.bin_outer_radius.setValue(defaults.bin_outer_radius)
+        baseplate_form.addRow("Outer radius", self.bin_outer_radius)
+
+        self.clearance = QDoubleSpinBox()
+        self.clearance.setDecimals(3)
+        self.clearance.setMinimum(0.0)
+        self.clearance.setMaximum(100.0)
+        self.clearance.setSuffix(" mm")
+        self.clearance.setValue(defaults.clearance)
+        baseplate_form.addRow("Clearance", self.clearance)
         layout.addLayout(baseplate_form)
+
+        click_label = QLabel("Click springs")
+        click_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(click_label)
+
+        click_form = QFormLayout()
+        self.click_springs_enabled = QCheckBox()
+        self.click_springs_enabled.setChecked(defaults.click_springs_enabled)
+        click_form.addRow("Enabled", self.click_springs_enabled)
+
+        self.click_thickness = QDoubleSpinBox()
+        self.click_thickness.setDecimals(3)
+        self.click_thickness.setMinimum(0.0)
+        self.click_thickness.setMaximum(100.0)
+        self.click_thickness.setSuffix(" mm")
+        self.click_thickness.setValue(defaults.click_thickness)
+        click_form.addRow("Thickness", self.click_thickness)
+
+        self.click_length = QDoubleSpinBox()
+        self.click_length.setDecimals(3)
+        self.click_length.setMinimum(0.0)
+        self.click_length.setMaximum(1000.0)
+        self.click_length.setSuffix(" mm")
+        self.click_length.setValue(defaults.click_length)
+        click_form.addRow("Length", self.click_length)
+
+        self.click_offset = QDoubleSpinBox()
+        self.click_offset.setDecimals(3)
+        self.click_offset.setMinimum(0.0)
+        self.click_offset.setMaximum(100.0)
+        self.click_offset.setSuffix(" mm")
+        self.click_offset.setValue(defaults.click_offset)
+        click_form.addRow("Offset", self.click_offset)
+        layout.addLayout(click_form)
+
+        junction_clip_label = QLabel("Junction / clip")
+        junction_clip_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(junction_clip_label)
+
+        junction_clip_form = QFormLayout()
+        self.junction_screw_holes = QCheckBox()
+        self.junction_screw_holes.setChecked(defaults.junction_screw_holes)
+        junction_clip_form.addRow("Junction screw holes", self.junction_screw_holes)
+
+        self.junction_screw_diameter = QDoubleSpinBox()
+        self.junction_screw_diameter.setDecimals(3)
+        self.junction_screw_diameter.setMinimum(0.0)
+        self.junction_screw_diameter.setMaximum(100.0)
+        self.junction_screw_diameter.setSuffix(" mm")
+        self.junction_screw_diameter.setValue(defaults.junction_screw_diameter)
+        junction_clip_form.addRow("Junction screw diameter", self.junction_screw_diameter)
+
+        self.junction_counterbore_diameter = QDoubleSpinBox()
+        self.junction_counterbore_diameter.setDecimals(3)
+        self.junction_counterbore_diameter.setMinimum(0.0)
+        self.junction_counterbore_diameter.setMaximum(100.0)
+        self.junction_counterbore_diameter.setSuffix(" mm")
+        self.junction_counterbore_diameter.setValue(defaults.junction_counterbore_diameter)
+        junction_clip_form.addRow(
+            "Junction counterbore diameter",
+            self.junction_counterbore_diameter,
+        )
+
+        self.junction_counterbore_depth = QDoubleSpinBox()
+        self.junction_counterbore_depth.setDecimals(3)
+        self.junction_counterbore_depth.setMinimum(0.0)
+        self.junction_counterbore_depth.setMaximum(100.0)
+        self.junction_counterbore_depth.setSuffix(" mm")
+        self.junction_counterbore_depth.setValue(defaults.junction_counterbore_depth)
+        junction_clip_form.addRow("Junction counterbore depth", self.junction_counterbore_depth)
+
+        self.clip_cutouts_enabled = QCheckBox()
+        self.clip_cutouts_enabled.setChecked(defaults.clip_cutouts_enabled)
+        junction_clip_form.addRow("Clip cutouts", self.clip_cutouts_enabled)
+
+        self.clip_length = QDoubleSpinBox()
+        self.clip_length.setDecimals(3)
+        self.clip_length.setMinimum(0.0)
+        self.clip_length.setMaximum(100.0)
+        self.clip_length.setSuffix(" mm")
+        self.clip_length.setValue(defaults.clip_length)
+        junction_clip_form.addRow("Clip length", self.clip_length)
+
+        layout.addLayout(junction_clip_form)
 
         note = QLabel("These are default settings for all objects and they are saved.")
         note.setWordWrap(True)
@@ -286,9 +407,28 @@ class GridfinitySettingsTaskPanel:
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 
     def accept(self) -> bool:
-        self._prefs.SetFloat("GridSize", self.grid_size.value())
-        self._prefs.SetBool("BaseplateLowerChamferEnabled", self.enable_lower_chamfer.isChecked())
-        self._prefs.SetFloat("BaseplateTopCrop", self.top_crop.value())
+        defaults.grid_size = self.grid_size.value()
+        defaults.base_profile_main_half_width = self.base_profile_main_half_width.value()
+        defaults.base_profile_main_height = self.base_profile_main_height.value()
+        defaults.base_profile_lower_chamfer_size = self.base_profile_lower_chamfer_size.value()
+        defaults.baseplate_lower_chamfer_enabled = self.enable_lower_chamfer.isChecked()
+        defaults.baseplate_top_crop = self.top_crop.value()
+        defaults.bin_outer_radius = self.bin_outer_radius.value()
+        defaults.clearance = self.clearance.value()
+
+        defaults.click_springs_enabled = self.click_springs_enabled.isChecked()
+        defaults.click_thickness = self.click_thickness.value()
+        defaults.click_length = self.click_length.value()
+        defaults.click_offset = self.click_offset.value()
+
+        defaults.junction_screw_holes = self.junction_screw_holes.isChecked()
+        defaults.junction_screw_diameter = self.junction_screw_diameter.value()
+        defaults.junction_counterbore_diameter = self.junction_counterbore_diameter.value()
+        defaults.junction_counterbore_depth = self.junction_counterbore_depth.value()
+        defaults.clip_cutouts_enabled = self.clip_cutouts_enabled.isChecked()
+        defaults.clip_length = self.clip_length.value()
+
+        defaults.save()
         fcg.Control.closeDialog()
         return True
 
