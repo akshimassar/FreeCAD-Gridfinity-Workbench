@@ -463,22 +463,22 @@ class CreateBaseplateTaskPanel:
             base_profile_lower_chamfer_size=float(self.base_profile_lower_chamfer_size.value()),
             base_profile_top_crop=float(self.top_crop.value()),
             clearance=float(self.clearance.value()),
-            click_springs_enabled=(
-                False if preview_mode else self.click_springs_enabled.isChecked()
-            ),
+            click_springs_enabled=self.click_springs_enabled.isChecked(),
             click_thickness=float(self.click_thickness.value()),
             click_length=float(self.click_length.value()),
             click_offset=float(self.click_offset.value()),
-            junction_screw_holes=(False if preview_mode else self.junction_screw_holes.isChecked()),
+            junction_screw_holes=self.junction_screw_holes.isChecked(),
             junction_screw_diameter=float(self.junction_screw_diameter.value()),
             junction_counterbore_diameter=float(self.junction_counterbore_diameter.value()),
             junction_counterbore_depth=float(self.junction_counterbore_depth.value()),
-            clip_cutouts_enabled=(False if preview_mode else self.clip_cutouts_enabled.isChecked()),
+            clip_cutouts_enabled=self.clip_cutouts_enabled.isChecked(),
             clip_length=float(self.clip_length.value()),
         )
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> None:
         apply_params_to_obj(obj, self._params_from_controls(preview_mode=preview_mode))
+        if hasattr(obj, "PreviewBuildMode"):
+            obj.PreviewBuildMode = preview_mode
 
     def _preview_color(self) -> tuple[float, float, float]:
         """Return FreeCAD standard-ish preview color from preferences, fallback orange."""
@@ -559,6 +559,8 @@ class CreateBaseplateTaskPanel:
                 fc.ActiveDocument.removeObject(self._target_obj.Name)
             elif self._original_values is not None and self._preview_applied:
                 apply_params_to_obj(self._target_obj, self._original_values)
+                if hasattr(self._target_obj, "PreviewBuildMode"):
+                    self._target_obj.PreviewBuildMode = False
                 fc.ActiveDocument.recompute()
             self._restore_preview_visuals()
         fcg.Control.closeDialog()

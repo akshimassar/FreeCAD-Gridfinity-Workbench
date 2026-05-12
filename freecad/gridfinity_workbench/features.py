@@ -346,13 +346,26 @@ class Baseplate(FoundationGridfinity):
         grid_initial_layout.rectangle_layout_properties(obj, baseplate_default=True)
         baseplate_feat.solid_shape_properties(obj)
         baseplate_feat.base_values_properties(obj)
+        obj.addProperty(
+            "App::PropertyBool",
+            "PreviewBuildMode",
+            "ShouldBeHidden",
+            "Internal flag for simplified interactive preview build",
+        ).PreviewBuildMode = False
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         layout = grid_initial_layout.make_rectangle_layout(obj)
+        preview_mode = bool(getattr(obj, "PreviewBuildMode", False))
         options = baseplate_builder.BaseplateBuildOptions(
-            include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
-            include_clip_cutouts=bool(getattr(obj, "ClipCutoutsEnabled", False)),
-            include_snap_springs=bool(getattr(obj, "ClickSpringsEnabled", False)),
+            include_junction_screws=(
+                False if preview_mode else bool(getattr(obj, "JunctionScrewHoles", False))
+            ),
+            include_clip_cutouts=(
+                False if preview_mode else bool(getattr(obj, "ClipCutoutsEnabled", False))
+            ),
+            include_snap_springs=(
+                False if preview_mode else bool(getattr(obj, "ClickSpringsEnabled", False))
+            ),
         )
         return baseplate_builder.build_simple_baseplate(obj, layout, options)
 
