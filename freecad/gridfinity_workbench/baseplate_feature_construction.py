@@ -183,17 +183,11 @@ def make_connection_holes(obj: fc.DocumentObject, layout: GridfinityLayout) -> P
 def _center_cut_face(obj: fc.DocumentObject) -> Part.Face:
     """Create wire for the baseplate center cut."""
     x_inframedis = (
-        obj.xGridSize / 2
-        - obj.BaseProfileMainHalfWidth
-        - obj.BaseProfileLowerChamferSize
-        - obj.BaseplateTopLedgeWidth
+        obj.xGridSize / 2 - obj.BaseProfileMainHalfWidth - obj.BaseProfileLowerChamferSize
     )
 
     y_inframedis = (
-        obj.yGridSize / 2
-        - obj.BaseProfileMainHalfWidth
-        - obj.BaseProfileLowerChamferSize
-        - obj.BaseplateTopLedgeWidth
+        obj.yGridSize / 2 - obj.BaseProfileMainHalfWidth - obj.BaseProfileLowerChamferSize
     )
 
     x_magedge = (
@@ -551,13 +545,6 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "zzExpertOnly",
         "The Clearance between bin and baseplate <br> <br>default = 0.25 mm",
     ).Clearance = defaults.clearance
-
-    obj.addProperty(
-        "App::PropertyLength",
-        "BaseplateTopLedgeWidth",
-        "zzExpertOnly",
-        "Top ledge of baseplate, doubled between grids <br> <br> default = 0.4 mm",
-    ).BaseplateTopLedgeWidth = const.BASEPLATE_TOP_LEDGE_WIDTH
 
     obj.addProperty(
         "App::PropertyBool",
