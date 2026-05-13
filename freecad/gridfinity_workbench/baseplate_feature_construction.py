@@ -11,6 +11,12 @@ import Part
 from . import clip_profiles
 from . import const, utils
 from . import magnet_hole as magnet_hole_module
+from .baseplate_params import (
+    BaseplateCoreParams,
+    ClipCutoutParams,
+    FundamentalsParams,
+    JunctionScrewParams,
+)
 from .settings import defaults
 from .utils import GridfinityLayout, GridfinityLayoutGeometry
 
@@ -482,6 +488,77 @@ def make_clip_cutouts(
     return cutouts[0].multiFuse(cutouts[1:]) if len(cutouts) > 1 else cutouts[0]
 
 
+def make_clip_cutouts_from_params(
+    fundamentals: FundamentalsParams,
+    clip_cutouts: ClipCutoutParams,
+    layout: GridfinityLayout,
+    *,
+    geometry: GridfinityLayoutGeometry | None = None,
+) -> Part.Shape | None:
+    unitmm = fc.Units.Quantity("1 mm")
+
+    max_clip_length = 2 * fundamentals.base_profile_main_half_width
+    if clip_cutouts.clip_length >= max_clip_length:
+        raise ValueError(
+            f"ClipLength ({clip_cutouts.clip_length}) must be smaller than "
+            f"2*BaseProfileMainHalfWidth ({max_clip_length})"
+        )
+
+    use_layout = geometry.layout if geometry is not None else layout
+    nx = len(use_layout)
+    ny = len(use_layout[0])
+    clip_wire = clip_profiles.build_clip_cutout_profile_wire(
+        fundamentals.base_profile_main_half_width,
+        fundamentals.base_profile_main_height,
+    )
+    clip_cutout_top_z = clip_wire.BoundBox.ZMax * unitmm
+    max_clip_cutout_top_z = (
+        fundamentals.base_profile_main_height + fundamentals.base_profile_main_half_width
+    )
+    if clip_cutout_top_z <= max_clip_cutout_top_z:
+        raise ValueError(
+            f"Clip cutout top Z after scaling ({clip_cutout_top_z}) must be greater than "
+            f"BaseProfileMainHeight + BaseProfileMainHalfWidth ({max_clip_cutout_top_z})"
+        )
+    clip_x = _profile_wire_to_centered_x_solid(clip_wire, clip_cutouts.clip_length)
+
+    clip_y = clip_x.copy()
+    clip_y.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
+
+    def cell(x: int, y: int) -> bool:
+        if 0 <= x < nx and 0 <= y < ny:
+            return bool(use_layout[x][y])
+        return False
+
+    cutouts = []
+    for ix in range(nx + 1):
+        for iy in range(ny + 1):
+            sw = cell(ix - 1, iy - 1)
+            se = cell(ix, iy - 1)
+            nw = cell(ix - 1, iy)
+            ne = cell(ix, iy)
+
+            populated = sw + se + nw + ne
+            if populated != 2:
+                continue
+
+            horizontal = (sw and se) or (nw and ne)
+            vertical = (sw and nw) or (se and ne)
+            if not (horizontal or vertical):
+                continue
+
+            x = ix * fundamentals.x_grid_size if geometry is None else geometry.x_lines[ix]
+            y = iy * fundamentals.y_grid_size if geometry is None else geometry.y_lines[iy]
+            if horizontal:
+                cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
+            else:
+                cutouts.append(clip_y.translated(fc.Vector(x, y, 0)))
+
+    if not cutouts:
+        return None
+    return cutouts[0].multiFuse(cutouts[1:]) if len(cutouts) > 1 else cutouts[0]
+
+
 def make_junction_screw_holes(
     obj: fc.DocumentObject,
     layout: GridfinityLayout,
@@ -539,6 +616,69 @@ def make_junction_screw_holes(
                 obj.JunctionScrewDiameter / 2,
                 transition_height,
                 fc.Vector(x, y, top_z - obj.JunctionCounterboreDepth),
+                fc.Vector(0, 0, -1),
+            )
+            cutters.extend([through, counterbore, transition])
+
+    if not cutters:
+        return None
+    return cutters[0].multiFuse(cutters[1:]) if len(cutters) > 1 else cutters[0]
+
+
+def make_junction_screw_holes_from_params(
+    fundamentals: FundamentalsParams,
+    core: BaseplateCoreParams,
+    junction_screws: JunctionScrewParams,
+    layout: GridfinityLayout,
+    *,
+    geometry: GridfinityLayoutGeometry | None = None,
+) -> Part.Shape | None:
+    use_layout = geometry.layout if geometry is not None else layout
+    nx = len(use_layout)
+    ny = len(use_layout[0])
+
+    total_height = (
+        fundamentals.base_profile_main_height
+        + fundamentals.base_profile_main_half_width
+        - core.base_profile_top_crop
+    )
+    through_depth = total_height + 0.1 * fc.Units.Quantity("1 mm")
+    top_z = total_height
+
+    cutters = []
+    for ix in range(1, nx):
+        for iy in range(1, ny):
+            if not (
+                use_layout[ix - 1][iy - 1]
+                and use_layout[ix][iy - 1]
+                and use_layout[ix - 1][iy]
+                and use_layout[ix][iy]
+            ):
+                continue
+
+            x = ix * fundamentals.x_grid_size if geometry is None else geometry.x_lines[ix]
+            y = iy * fundamentals.y_grid_size if geometry is None else geometry.y_lines[iy]
+
+            through = Part.makeCylinder(
+                junction_screws.screw_diameter / 2,
+                through_depth,
+                fc.Vector(x, y, top_z),
+                fc.Vector(0, 0, -1),
+            )
+            counterbore = Part.makeCylinder(
+                junction_screws.counterbore_diameter / 2,
+                junction_screws.counterbore_depth,
+                fc.Vector(x, y, top_z),
+                fc.Vector(0, 0, -1),
+            )
+            transition_height = (
+                junction_screws.counterbore_diameter - junction_screws.screw_diameter
+            ) / 2
+            transition = Part.makeCone(
+                junction_screws.counterbore_diameter / 2,
+                junction_screws.screw_diameter / 2,
+                transition_height,
+                fc.Vector(x, y, top_z - junction_screws.counterbore_depth),
                 fc.Vector(0, 0, -1),
             )
             cutters.extend([through, counterbore, transition])

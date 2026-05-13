@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import FreeCAD as fc  # noqa: N813
 import Part
@@ -11,7 +11,7 @@ import Part
 from . import baseplate_feature_construction as baseplate_feat
 from . import feature_construction as feat
 from . import utils
-from .baseplate_params import params_from_obj
+from .baseplate_params import BaseplateParams, params_from_obj
 from .utils import GridfinityLayout, GridfinityLayoutGeometry
 
 
@@ -36,38 +36,44 @@ def _create_rectangle_wire(x_width: float, y_width: float, z: float = 0) -> Part
 
 
 def build_single_cell_baseplate_core(
-    obj: fc.DocumentObject, options: BaseplateBuildOptions
+    params: BaseplateParams,
+    options: BaseplateBuildOptions,
 ) -> Part.Shape:
-    baseplate_outside_shape = _create_rectangle_wire(obj.xGridSize, obj.yGridSize)
-
-    solid_shape = baseplate_feat.make_solid_shape(
-        obj,
-        baseplate_outside_shape,
-        baseplate_type="standard",
+    baseplate_outside_shape = _create_rectangle_wire(
+        params.fundamentals.x_grid_size,
+        params.fundamentals.y_grid_size,
     )
-
-    cutout = feat.make_complex_bin_base_single(obj, for_cutout=True)
-    cutout.translate(fc.Vector(0, 0, obj.TotalHeight))
+    total_height = (
+        params.fundamentals.base_profile_main_height
+        + params.fundamentals.base_profile_main_half_width
+        - params.core.base_profile_top_crop
+    )
+    face = Part.Face(baseplate_outside_shape)
+    solid_shape = face.extrude(fc.Vector(0, 0, total_height))
+    cutout = feat.make_complex_bin_base_single_from_params(params.fundamentals, params.core)
+    cutout.translate(fc.Vector(0, 0, total_height))
     return solid_shape.cut(cutout)
 
 
 def replicate_layout(
-    shape: Part.Shape, obj: fc.DocumentObject, layout: GridfinityLayout
+    shape: Part.Shape,
+    params: BaseplateParams,
+    layout: GridfinityLayout,
 ) -> Part.Shape:
     nx = len(layout)
     ny = len(layout[0])
-    x_lines = _build_grid_lines([obj.xGridSize] * nx)
-    y_lines = _build_grid_lines([obj.yGridSize] * ny)
+    x_lines = _build_grid_lines([params.fundamentals.x_grid_size] * nx)
+    y_lines = _build_grid_lines([params.fundamentals.y_grid_size] * ny)
     return _replicate_layout_variable(shape, layout, x_lines, y_lines)
 
 
 def add_filler_strips(
     shape: Part.Shape,
-    obj: fc.DocumentObject,
+    params: BaseplateParams,
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
 ) -> tuple[Part.Shape, GridfinityLayoutGeometry]:
-    expanded = _build_expanded_layout_with_fillers(obj, layout)
+    expanded = _build_expanded_layout_with_fillers(params, layout)
     has_fillers = len(expanded.layout) != len(layout) or len(expanded.layout[0]) != len(layout[0])
     if not has_fillers:
         return shape, expanded
@@ -83,7 +89,7 @@ def add_filler_strips(
                 ring_only[ix][iy] = True
 
     filler_shape = _replicate_layout_variable_generated(
-        obj,
+        params,
         ring_only,
         expanded.x_lines,
         expanded.y_lines,
@@ -95,39 +101,43 @@ def add_filler_strips(
 
 
 def _build_expanded_layout_with_fillers(
-    obj: fc.DocumentObject,
+    params: BaseplateParams,
     layout: GridfinityLayout,
 ) -> GridfinityLayoutGeometry:
     nx = len(layout)
     ny = len(layout[0])
 
     left_w = (
-        obj.FillerLeftWidth if bool(getattr(obj, "FillerLeftEnabled", False)) else 0 * obj.xGridSize
+        params.fillers.left_width
+        if params.fillers.left_enabled
+        else 0 * params.fundamentals.x_grid_size
     )
     right_w = (
-        obj.FillerRightWidth
-        if bool(getattr(obj, "FillerRightEnabled", False))
-        else 0 * obj.xGridSize
+        params.fillers.right_width
+        if params.fillers.right_enabled
+        else 0 * params.fundamentals.x_grid_size
     )
     bottom_w = (
-        obj.FillerBottomWidth
-        if bool(getattr(obj, "FillerBottomEnabled", False))
-        else 0 * obj.yGridSize
+        params.fillers.bottom_width
+        if params.fillers.bottom_enabled
+        else 0 * params.fundamentals.y_grid_size
     )
     top_w = (
-        obj.FillerTopWidth if bool(getattr(obj, "FillerTopEnabled", False)) else 0 * obj.yGridSize
+        params.fillers.top_width
+        if params.fillers.top_enabled
+        else 0 * params.fundamentals.y_grid_size
     )
 
     use_fillers = any(float(v) > 0 for v in (left_w, right_w, bottom_w, top_w))
     if not use_fillers:
         return GridfinityLayoutGeometry(
             layout=[[bool(layout[ix][iy]) for iy in range(ny)] for ix in range(nx)],
-            x_lines=_build_grid_lines([obj.xGridSize] * nx),
-            y_lines=_build_grid_lines([obj.yGridSize] * ny),
+            x_lines=_build_grid_lines([params.fundamentals.x_grid_size] * nx),
+            y_lines=_build_grid_lines([params.fundamentals.y_grid_size] * ny),
         )
 
-    x_sizes: list[fc.Units.Quantity] = [left_w] + [obj.xGridSize] * nx + [right_w]
-    y_sizes: list[fc.Units.Quantity] = [bottom_w] + [obj.yGridSize] * ny + [top_w]
+    x_sizes: list[fc.Units.Quantity] = [left_w] + [params.fundamentals.x_grid_size] * nx + [right_w]
+    y_sizes: list[fc.Units.Quantity] = [bottom_w] + [params.fundamentals.y_grid_size] * ny + [top_w]
 
     expanded: GridfinityLayout = [[False for _ in range(ny + 2)] for _ in range(nx + 2)]
 
@@ -205,30 +215,30 @@ def _replicate_layout_variable(
     return pieces[0].multiFuse(pieces[1:]) if len(pieces) > 1 else pieces[0]
 
 
-def _build_cell_shape_for_size(
-    obj: fc.DocumentObject,
-    x_size: float,
-    y_size: float,
+def _build_filler_cell_shape(
+    params: BaseplateParams,
+    target_cell_width: float,
+    target_cell_height: float,
     options: BaseplateBuildOptions,
     *,
     include_springs: bool,
 ) -> Part.Shape:
-    old_x = obj.xGridSize
-    old_y = obj.yGridSize
-    try:
-        obj.xGridSize = x_size
-        obj.yGridSize = y_size
-        cell = build_single_cell_baseplate_core(obj, options)
-        if include_springs:
-            cell = apply_snap_springs(cell, obj, options)
-        return cell
-    finally:
-        obj.xGridSize = old_x
-        obj.yGridSize = old_y
+    filler_params = replace(
+        params,
+        fundamentals=replace(
+            params.fundamentals,
+            x_grid_size=target_cell_width,
+            y_grid_size=target_cell_height,
+        ),
+    )
+    cell = build_single_cell_baseplate_core(filler_params, options)
+    if include_springs:
+        cell = apply_snap_springs(cell, filler_params, options)
+    return cell
 
 
 def _replicate_layout_variable_generated(
-    obj: fc.DocumentObject,
+    params: BaseplateParams,
     layout: GridfinityLayout,
     x_lines: list[float],
     y_lines: list[float],
@@ -252,8 +262,8 @@ def _replicate_layout_variable_generated(
 
             key = (round(cell_w, 6), round(cell_h, 6), include_springs)
             if key not in cache:
-                cache[key] = _build_cell_shape_for_size(
-                    obj,
+                cache[key] = _build_filler_cell_shape(
+                    params,
                     cell_w,
                     cell_h,
                     options,
@@ -271,7 +281,7 @@ def _replicate_layout_variable_generated(
 
 def _apply_layout_corner_roundover(
     shape: Part.Shape,
-    obj: fc.DocumentObject,
+    params: BaseplateParams,
     layout: GridfinityLayout,
     x_lines: list[float],
     y_lines: list[float],
@@ -336,10 +346,10 @@ def _apply_layout_corner_roundover(
 
     rounded = shape
     if edges_pop1:
-        rounded = rounded.makeFillet(obj.BinOuterRadius, edges_pop1)
+        rounded = rounded.makeFillet(params.fundamentals.bin_outer_radius, edges_pop1)
     t3 = time.perf_counter()
     if edges_pop3:
-        rounded = rounded.makeFillet(obj.BinOuterRadius / 4, edges_pop3)
+        rounded = rounded.makeFillet(params.fundamentals.bin_outer_radius / 4, edges_pop3)
     t4 = time.perf_counter()
     fc.Console.PrintMessage(
         "[Gridfinity Timing] roundover "
@@ -367,15 +377,17 @@ def apply_junction_screws(
 
 
 def make_post_replication_cutter(
-    obj: fc.DocumentObject,
+    params: BaseplateParams,
     geometry: GridfinityLayoutGeometry,
     options: BaseplateBuildOptions,
 ) -> Part.Shape | None:
     cutters: list[Part.Shape] = []
 
     if options.include_junction_screws:
-        junction_holes = baseplate_feat.make_junction_screw_holes(
-            obj,
+        junction_holes = baseplate_feat.make_junction_screw_holes_from_params(
+            params.fundamentals,
+            params.core,
+            params.junction_screws,
             geometry.layout,
             geometry=geometry,
         )
@@ -383,8 +395,9 @@ def make_post_replication_cutter(
             cutters.append(junction_holes)
 
     if options.include_clip_cutouts:
-        clip_cutouts = baseplate_feat.make_clip_cutouts(
-            obj,
+        clip_cutouts = baseplate_feat.make_clip_cutouts_from_params(
+            params.fundamentals,
+            params.clip_cutouts,
             geometry.layout,
             geometry=geometry,
         )
@@ -410,19 +423,23 @@ def apply_clip_cutouts(
 
 def apply_snap_springs(
     shape: Part.Shape,
-    obj: fc.DocumentObject,
+    params: BaseplateParams,
     options: BaseplateBuildOptions,
 ) -> Part.Shape:
     if not options.include_snap_springs:
         return shape
-    params = params_from_obj(obj)
     spring_cutouts = feat.add_click_spring_notches_to_base_cutout_single(
         params.fundamentals,
         params.core,
         params.click_springs,
         feat.make_complex_bin_base_single_from_params(params.fundamentals, params.core),
     )
-    spring_cutouts.translate(fc.Vector(0, 0, obj.TotalHeight))
+    total_height = (
+        params.fundamentals.base_profile_main_height
+        + params.fundamentals.base_profile_main_half_width
+        - params.core.base_profile_top_crop
+    )
+    spring_cutouts.translate(fc.Vector(0, 0, total_height))
     shape = shape.cut(spring_cutouts)
     springs = feat.make_click_springs_two_sides_single(params.fundamentals, params.click_springs)
     springs = feat.trim_click_springs_to_top_crop(
@@ -439,24 +456,25 @@ def build_simple_baseplate(
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
 ) -> Part.Shape:
+    params = params_from_obj(obj)
     total_start = time.perf_counter()
 
     t0 = time.perf_counter()
-    shape = build_single_cell_baseplate_core(obj, options)
+    shape = build_single_cell_baseplate_core(params, options)
     t1 = time.perf_counter()
 
-    shape = apply_snap_springs(shape, obj, options)
+    shape = apply_snap_springs(shape, params, options)
     t2 = time.perf_counter()
 
-    shape = replicate_layout(shape, obj, layout)
+    shape = replicate_layout(shape, params, layout)
     t3 = time.perf_counter()
 
-    shape, geometry = add_filler_strips(shape, obj, layout, options)
+    shape, geometry = add_filler_strips(shape, params, layout, options)
     t3a = time.perf_counter()
 
     shape = _apply_layout_corner_roundover(
         shape,
-        obj,
+        params,
         geometry.layout,
         geometry.x_lines,
         geometry.y_lines,
@@ -464,7 +482,7 @@ def build_simple_baseplate(
     t3b = time.perf_counter()
 
     t4 = time.perf_counter()
-    post_cutter = make_post_replication_cutter(obj, geometry, options)
+    post_cutter = make_post_replication_cutter(params, geometry, options)
     t5 = time.perf_counter()
     if post_cutter is not None:
         shape = shape.cut(post_cutter)
