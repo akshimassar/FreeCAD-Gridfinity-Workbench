@@ -243,6 +243,11 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
 def params_from_obj(obj: fc.DocumentObject) -> BaseplateParams:
     x_grid_size = obj.xGridSize
     y_grid_size = obj.yGridSize
+    x_grid_count = int(getattr(obj, "xGridUnits", 1))
+    y_grid_count = int(getattr(obj, "yGridUnits", 1))
+
+    zero_x = 0 * x_grid_size
+    zero_y = 0 * y_grid_size
     return BaseplateParams(
         fundamentals=FundamentalsParams(
             x_grid_size=x_grid_size,
@@ -252,38 +257,40 @@ def params_from_obj(obj: fc.DocumentObject) -> BaseplateParams:
             base_profile_main_height=obj.BaseProfileMainHeight,
         ),
         core=BaseplateCoreParams(
-            x_grid_count=int(obj.xGridUnits),
-            y_grid_count=int(obj.yGridUnits),
-            base_profile_lower_chamfer_enabled=bool(obj.BaseProfileLowerChamferEnabled),
-            base_profile_lower_chamfer_size=obj.BaseProfileLowerChamferSize,
+            x_grid_count=x_grid_count,
+            y_grid_count=y_grid_count,
+            base_profile_lower_chamfer_enabled=bool(
+                getattr(obj, "BaseProfileLowerChamferEnabled", False)
+            ),
+            base_profile_lower_chamfer_size=getattr(obj, "BaseProfileLowerChamferSize", zero_x),
             base_profile_top_crop=obj.BaseProfileTopCrop,
-            clearance=obj.Clearance,
+            clearance=getattr(obj, "Clearance", zero_x),
         ),
         fillers=BaseplateFillersParams(
-            right_enabled=bool(obj.FillerRightEnabled),
-            right_width=obj.FillerRightWidth,
-            left_enabled=bool(obj.FillerLeftEnabled),
-            left_width=obj.FillerLeftWidth,
-            top_enabled=bool(obj.FillerTopEnabled),
-            top_width=obj.FillerTopWidth,
-            bottom_enabled=bool(obj.FillerBottomEnabled),
-            bottom_width=obj.FillerBottomWidth,
+            right_enabled=bool(getattr(obj, "FillerRightEnabled", False)),
+            right_width=getattr(obj, "FillerRightWidth", zero_x),
+            left_enabled=bool(getattr(obj, "FillerLeftEnabled", False)),
+            left_width=getattr(obj, "FillerLeftWidth", zero_x),
+            top_enabled=bool(getattr(obj, "FillerTopEnabled", False)),
+            top_width=getattr(obj, "FillerTopWidth", zero_y),
+            bottom_enabled=bool(getattr(obj, "FillerBottomEnabled", False)),
+            bottom_width=getattr(obj, "FillerBottomWidth", zero_y),
         ),
         click_springs=ClickSpringParams(
-            enabled=bool(obj.ClickSpringsEnabled),
-            click_thickness=obj.ClickThickness,
-            click_length=obj.ClickLength,
-            click_offset=obj.ClickOffset,
+            enabled=bool(getattr(obj, "ClickSpringsEnabled", False)),
+            click_thickness=getattr(obj, "ClickThickness", zero_x),
+            click_length=getattr(obj, "ClickLength", zero_x),
+            click_offset=getattr(obj, "ClickOffset", zero_x),
         ),
         junction_screws=JunctionScrewParams(
-            enabled=bool(obj.JunctionScrewHoles),
-            screw_diameter=obj.JunctionScrewDiameter,
-            counterbore_diameter=obj.JunctionCounterboreDiameter,
-            counterbore_depth=obj.JunctionCounterboreDepth,
+            enabled=bool(getattr(obj, "JunctionScrewHoles", False)),
+            screw_diameter=getattr(obj, "JunctionScrewDiameter", zero_x),
+            counterbore_diameter=getattr(obj, "JunctionCounterboreDiameter", zero_x),
+            counterbore_depth=getattr(obj, "JunctionCounterboreDepth", zero_x),
         ),
         clip_cutouts=ClipCutoutParams(
-            enabled=bool(obj.ClipCutoutsEnabled),
-            clip_length=obj.ClipLength,
+            enabled=bool(getattr(obj, "ClipCutoutsEnabled", False)),
+            clip_length=getattr(obj, "ClipLength", zero_x),
         ),
     )
 
