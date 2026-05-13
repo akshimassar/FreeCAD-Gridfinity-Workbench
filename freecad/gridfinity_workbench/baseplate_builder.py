@@ -251,8 +251,8 @@ def _filler_alignment_shift(
     cell_half_x = target_cell_width / 2
     cell_half_y = target_cell_height / 2
 
-    shift_x = 0.0 if sx == 0 else (-sx) * (cell_half_x + grid_half_x)
-    shift_y = 0.0 if sy == 0 else (-sy) * (cell_half_y + grid_half_y)
+    shift_x = sx * (grid_half_x - cell_half_x)
+    shift_y = sy * (grid_half_y - cell_half_y)
     return fc.Vector(shift_x, shift_y, 0)
 
 
