@@ -60,11 +60,20 @@ def replicate_layout(
     params: BaseplateParams,
     layout: GridfinityLayout,
 ) -> Part.Shape:
-    nx = len(layout)
-    ny = len(layout[0])
-    x_lines = _build_grid_lines([params.fundamentals.x_grid_size] * nx)
-    y_lines = _build_grid_lines([params.fundamentals.y_grid_size] * ny)
-    return _replicate_layout_variable(shape, layout, x_lines, y_lines)
+    base_cell = shape.copy()
+    base_cell.translate(
+        fc.Vector(
+            params.fundamentals.x_grid_size / 2,
+            params.fundamentals.y_grid_size / 2,
+            0,
+        )
+    )
+    return utils.copy_in_layout(
+        base_cell,
+        layout,
+        params.fundamentals.x_grid_size,
+        params.fundamentals.y_grid_size,
+    )
 
 
 def add_filler_strips(
@@ -78,24 +87,7 @@ def add_filler_strips(
     if not has_fillers:
         return shape, expanded
 
-    nx = len(expanded.layout)
-    ny = len(expanded.layout[0])
-    ring_only: GridfinityLayout = [[False for _ in range(ny)] for _ in range(nx)]
-    for ix in range(nx):
-        for iy in range(ny):
-            if not expanded.layout[ix][iy]:
-                continue
-            if ix == 0 or iy == 0 or ix == nx - 1 or iy == ny - 1:
-                ring_only[ix][iy] = True
-
-    filler_shape = _replicate_layout_variable_generated(
-        params,
-        ring_only,
-        expanded.x_lines,
-        expanded.y_lines,
-        options,
-        include_springs=False,
-    )
+    filler_shape = _build_filler_ring_shape(params, expanded, options)
     combined = shape.fuse(filler_shape).removeSplitter()
     return combined, expanded
 
@@ -183,38 +175,6 @@ def _build_grid_lines(sizes: list[fc.Units.Quantity]) -> list[float]:
     return lines
 
 
-def _replicate_layout_variable(
-    base_shape: Part.Shape,
-    layout: GridfinityLayout,
-    x_lines: list[float],
-    y_lines: list[float],
-) -> Part.Shape:
-    nx = len(layout)
-    ny = len(layout[0])
-    pieces: list[Part.Shape] = []
-    if len(x_lines) < 2 or len(y_lines) < 2:
-        raise ValueError("Invalid grid lines")
-    base_w = x_lines[1] - x_lines[0]
-    base_h = y_lines[1] - y_lines[0]
-    for ix in range(nx):
-        cell_w = x_lines[ix + 1] - x_lines[ix]
-        cx = x_lines[ix] + cell_w / 2
-        for iy in range(ny):
-            if not layout[ix][iy]:
-                continue
-            cell_h = y_lines[iy + 1] - y_lines[iy]
-            cy = y_lines[iy] + cell_h / 2
-            scale = fc.Matrix()
-            scale.scale(cell_w / base_w, cell_h / base_h, 1)
-            cell_shape = base_shape.transformGeometry(scale)
-            cell_shape.translate(fc.Vector(cx, cy, 0))
-            pieces.append(cell_shape)
-
-    if not pieces:
-        raise ValueError("Layout is empty")
-    return pieces[0].multiFuse(pieces[1:]) if len(pieces) > 1 else pieces[0]
-
-
 def _build_filler_cell_shape(
     params: BaseplateParams,
     target_cell_width: float,
@@ -237,46 +197,102 @@ def _build_filler_cell_shape(
     return cell
 
 
-def _replicate_layout_variable_generated(
+def _build_filler_ring_shape(
     params: BaseplateParams,
-    layout: GridfinityLayout,
-    x_lines: list[float],
-    y_lines: list[float],
+    geometry: GridfinityLayoutGeometry,
     options: BaseplateBuildOptions,
-    *,
-    include_springs: bool,
 ) -> Part.Shape:
-    nx = len(layout)
-    ny = len(layout[0])
+    nx_exp = len(geometry.layout)
+    ny_exp = len(geometry.layout[0])
+    nx = nx_exp - 2
+    ny = ny_exp - 2
+
+    left_on = params.fillers.left_enabled and float(params.fillers.left_width) > 0
+    right_on = params.fillers.right_enabled and float(params.fillers.right_width) > 0
+    bottom_on = params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
+    top_on = params.fillers.top_enabled and float(params.fillers.top_width) > 0
+
+    cache: dict[tuple[float, float], Part.Shape] = {}
+
+    def proto(width: float, height: float) -> Part.Shape:
+        key = (round(width, 6), round(height, 6))
+        if key not in cache:
+            cache[key] = _build_filler_cell_shape(
+                params,
+                width,
+                height,
+                options,
+                include_springs=False,
+            )
+        return cache[key]
+
+    def center(ix: int, iy: int) -> fc.Vector:
+        x = geometry.x_lines[ix] + (geometry.x_lines[ix + 1] - geometry.x_lines[ix]) / 2
+        y = geometry.y_lines[iy] + (geometry.y_lines[iy + 1] - geometry.y_lines[iy]) / 2
+        return fc.Vector(x, y, 0)
+
     pieces: list[Part.Shape] = []
-    cache: dict[tuple[float, float, bool], Part.Shape] = {}
 
-    for ix in range(nx):
-        cell_w = x_lines[ix + 1] - x_lines[ix]
-        cx = x_lines[ix] + cell_w / 2
-        for iy in range(ny):
-            if not layout[ix][iy]:
-                continue
-            cell_h = y_lines[iy + 1] - y_lines[iy]
-            cy = y_lines[iy] + cell_h / 2
+    if left_on:
+        width = geometry.x_lines[1] - geometry.x_lines[0]
+        height = geometry.y_lines[2] - geometry.y_lines[1]
+        left_proto = proto(width, height)
+        vectors = [center(0, iy) for iy in range(1, ny + 1)]
+        pieces.append(utils.copy_and_translate(left_proto, vectors))
 
-            key = (round(cell_w, 6), round(cell_h, 6), include_springs)
-            if key not in cache:
-                cache[key] = _build_filler_cell_shape(
-                    params,
-                    cell_w,
-                    cell_h,
-                    options,
-                    include_springs=include_springs,
-                )
+    if right_on:
+        width = geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1]
+        height = geometry.y_lines[2] - geometry.y_lines[1]
+        right_proto = proto(width, height)
+        vectors = [center(nx + 1, iy) for iy in range(1, ny + 1)]
+        pieces.append(utils.copy_and_translate(right_proto, vectors))
 
-            cell_shape = cache[key].copy()
-            cell_shape.translate(fc.Vector(cx, cy, 0))
-            pieces.append(cell_shape)
+    if bottom_on:
+        width = geometry.x_lines[2] - geometry.x_lines[1]
+        height = geometry.y_lines[1] - geometry.y_lines[0]
+        bottom_proto = proto(width, height)
+        vectors = [center(ix, 0) for ix in range(1, nx + 1)]
+        pieces.append(utils.copy_and_translate(bottom_proto, vectors))
+
+    if top_on:
+        width = geometry.x_lines[2] - geometry.x_lines[1]
+        height = geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1]
+        top_proto = proto(width, height)
+        vectors = [center(ix, ny + 1) for ix in range(1, nx + 1)]
+        pieces.append(utils.copy_and_translate(top_proto, vectors))
+
+    if left_on and bottom_on:
+        corner = proto(
+            geometry.x_lines[1] - geometry.x_lines[0],
+            geometry.y_lines[1] - geometry.y_lines[0],
+        ).copy()
+        corner.translate(center(0, 0))
+        pieces.append(corner)
+    if left_on and top_on:
+        corner = proto(
+            geometry.x_lines[1] - geometry.x_lines[0],
+            geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
+        ).copy()
+        corner.translate(center(0, ny + 1))
+        pieces.append(corner)
+    if right_on and bottom_on:
+        corner = proto(
+            geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
+            geometry.y_lines[1] - geometry.y_lines[0],
+        ).copy()
+        corner.translate(center(nx + 1, 0))
+        pieces.append(corner)
+    if right_on and top_on:
+        corner = proto(
+            geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
+            geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
+        ).copy()
+        corner.translate(center(nx + 1, ny + 1))
+        pieces.append(corner)
 
     if not pieces:
-        raise ValueError("Layout is empty")
-    return pieces[0].multiFuse(pieces[1:]) if len(pieces) > 1 else pieces[0]
+        raise ValueError("No filler pieces generated")
+    return utils.multi_fuse(pieces)
 
 
 def _apply_layout_corner_roundover(
