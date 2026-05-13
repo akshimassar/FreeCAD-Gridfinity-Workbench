@@ -595,27 +595,19 @@ def apply_snap_springs(
 ) -> Part.Shape:
     if not options.include_snap_springs:
         return shape
-    spring_cutouts = feat.add_click_spring_notches_to_base_cutout_single(
+    spring_slots = feat.make_click_spring_shape_slots(
         params.fundamentals,
         params.core,
         params.click_springs,
-        feat.make_complex_bin_base_single_from_params(params.fundamentals, params.core),
     )
-    total_height = (
-        params.fundamentals.base_profile_main_height
-        + params.fundamentals.base_profile_main_half_width
-        - params.core.base_profile_top_crop
-    )
-    spring_cutouts.translate(fc.Vector(0, 0, total_height))
-    shape = shape.cut(spring_cutouts)
-    springs = feat.make_click_springs_two_sides_single(params.fundamentals, params.click_springs)
-    springs = feat.trim_click_springs_to_top_crop(
+    return feat.apply_click_spring_slots_to_cell(
+        shape,
         params.fundamentals,
         params.core,
         params.click_springs,
-        springs,
+        spring_slots,
+        feat.SpringSlotMask.all_true(),
     )
-    return shape.fuse(springs).removeSplitter()
 
 
 def build_simple_baseplate(

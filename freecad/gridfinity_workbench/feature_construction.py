@@ -102,37 +102,32 @@ class SpringShapeSlots:
         _assert_2x2_shape_matrix("horizontal_negative", self.horizontal_negative)
         _assert_2x2_shape_matrix("horizontal_positive", self.horizontal_positive)
 
-    def fused_negative(self, mask: SpringSlotMask) -> Part.Shape | None:
-        shapes = [
-            self.vertical_negative[x][y].copy()
-            for x in range(2)
-            for y in range(2)
-            if mask.vertical_slots[x][y]
-        ] + [
-            self.horizontal_negative[x][y].copy()
-            for x in range(2)
-            for y in range(2)
-            if mask.horizontal_slots[x][y]
-        ]
+    def _fused_selected(
+        self,
+        mask: SpringSlotMask,
+        vertical_matrix: ShapeMatrix2x2,
+        horizontal_matrix: ShapeMatrix2x2,
+    ) -> Part.Shape | None:
+        shapes: list[Part.Shape] = []
+        for x in range(2):
+            for y in range(2):
+                if mask.vertical_slots[x][y]:
+                    shape = vertical_matrix[x][y].copy()
+                    shapes.append(shape)
+        for x in range(2):
+            for y in range(2):
+                if mask.horizontal_slots[x][y]:
+                    shape = horizontal_matrix[x][y].copy()
+                    shapes.append(shape)
         if not shapes:
             return None
         return utils.multi_fuse(shapes)
 
+    def fused_negative(self, mask: SpringSlotMask) -> Part.Shape | None:
+        return self._fused_selected(mask, self.vertical_negative, self.horizontal_negative)
+
     def fused_positive(self, mask: SpringSlotMask) -> Part.Shape | None:
-        shapes = [
-            self.vertical_positive[x][y].copy()
-            for x in range(2)
-            for y in range(2)
-            if mask.vertical_slots[x][y]
-        ] + [
-            self.horizontal_positive[x][y].copy()
-            for x in range(2)
-            for y in range(2)
-            if mask.horizontal_slots[x][y]
-        ]
-        if not shapes:
-            return None
-        return utils.multi_fuse(shapes)
+        return self._fused_selected(mask, self.vertical_positive, self.horizontal_positive)
 
 
 def label_shelf_properties(obj: fc.DocumentObject, *, label_style_default: str) -> None:
@@ -1418,7 +1413,7 @@ def _make_click_notch_right_single(
         click_width_x,
         click_length,
         total_height,
-        fc.Vector(x0 - click_width_x / 2, click_center_y - click_length / 2, -total_height),
+        fc.Vector(x0 - click_width_x / 2, click_center_y - click_length / 2, 0),
         fc.Vector(0, 0, 1),
     )
 
@@ -1440,19 +1435,15 @@ def make_click_spring_shape_slots(
     def mirror_y(shape: Part.Shape) -> Part.Shape:
         return shape.mirror(fc.Vector(0, 0, 0), fc.Vector(0, 1, 0))
 
-    v_pos: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
-    v_neg: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
-
-    # Matrix indexing is X-first then Y, with y=0 as the top row.
-    # Seed starts in top-right slot [1][0], then mirrored across X and Y.
-    v_pos[1][0] = v_pos_seed
-    v_neg[1][0] = v_neg_seed
-    v_pos[0][0] = mirror_x(v_pos[1][0])
-    v_neg[0][0] = mirror_x(v_neg[1][0])
-    v_pos[0][1] = mirror_y(v_pos[0][0])
-    v_neg[0][1] = mirror_y(v_neg[0][0])
-    v_pos[1][1] = mirror_y(v_pos[1][0])
-    v_neg[1][1] = mirror_y(v_neg[1][0])
+    def expand_vertical_slots(seed: Part.Shape) -> ShapeMatrix2x2:
+        matrix: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
+        # Matrix indexing is X-first then Y, with y=0 as the top row.
+        # Seed starts in top-right slot [1][0], then mirrored across X and Y.
+        matrix[1][0] = seed
+        matrix[0][0] = mirror_x(matrix[1][0])
+        matrix[0][1] = mirror_y(matrix[0][0])
+        matrix[1][1] = mirror_y(matrix[1][0])
+        return matrix
 
     def rot90_clockwise(shape: Part.Shape) -> Part.Shape:
         out = shape.copy()
@@ -1468,8 +1459,13 @@ def make_click_spring_shape_slots(
                 out[x_new][y_new] = matrix[x][y]
         return out
 
-    v_pos_rot = [[rot90_clockwise(v_pos[x][y]) for y in range(2)] for x in range(2)]
-    v_neg_rot = [[rot90_clockwise(v_neg[x][y]) for y in range(2)] for x in range(2)]
+    def rotate_shapes_clockwise(matrix: ShapeMatrix2x2) -> ShapeMatrix2x2:
+        return [[rot90_clockwise(matrix[x][y]) for y in range(2)] for x in range(2)]
+
+    v_pos = expand_vertical_slots(v_pos_seed)
+    v_neg = expand_vertical_slots(v_neg_seed)
+    v_pos_rot = rotate_shapes_clockwise(v_pos)
+    v_neg_rot = rotate_shapes_clockwise(v_neg)
 
     h_pos: ShapeMatrix2x2 = rotate_matrix_clockwise(v_pos_rot)
     h_neg: ShapeMatrix2x2 = rotate_matrix_clockwise(v_neg_rot)
