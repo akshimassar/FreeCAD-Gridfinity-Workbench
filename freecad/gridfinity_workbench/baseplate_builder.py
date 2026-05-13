@@ -187,12 +187,13 @@ def _build_filler_cell_shape(
     *,
     include_springs: bool,
 ) -> Part.Shape:
+    unitmm = fc.Units.Quantity("1 mm")
     filler_params = replace(
         params,
         fundamentals=replace(
             params.fundamentals,
-            x_grid_size=target_cell_width,
-            y_grid_size=target_cell_height,
+            x_grid_size=target_cell_width * unitmm,
+            y_grid_size=target_cell_height * unitmm,
         ),
     )
     cell = build_single_cell_baseplate_core(filler_params, options)
