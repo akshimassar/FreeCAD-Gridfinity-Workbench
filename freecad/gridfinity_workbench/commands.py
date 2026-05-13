@@ -19,13 +19,19 @@ from PySide.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QLabel,
+    QLayout,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from . import custom_shape, features, utils
-from .baseplate_params import BaseplateParams, apply_params_to_obj, params_from_obj
+from .baseplate_params import (
+    BaseplateParams,
+    apply_params_to_obj,
+    params_from_dialog,
+    params_from_obj,
+)
 from .settings import defaults, factory_defaults
 
 if TYPE_CHECKING:
@@ -437,6 +443,9 @@ class CreateBaseplateTaskPanel:
         self._original_values: BaseplateParams | None = None
         self._original_view: dict[str, Any] | None = None
         self._preview_applied = False
+        self._last_valid_params: BaseplateParams | None = None
+        self._error_labels: dict[str, QLabel] = {}
+        self._error_containers: dict[str, QWidget] = {}
         self.form = QWidget()
         self.form.setWindowTitle("Edit Baseplate" if target_obj is not None else "Create Baseplate")
         layout = QVBoxLayout(self.form)
@@ -448,6 +457,8 @@ class CreateBaseplateTaskPanel:
         )
         for key, widget in controls.items():
             setattr(self, key, widget)
+
+        self._install_inline_error_rows()
 
         if self._target_obj is None:
             self._target_obj = utils.new_object("Baseplate")
@@ -477,71 +488,152 @@ class CreateBaseplateTaskPanel:
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         params = params_from_obj(obj)
-        self.x_grid_units.setValue(int(params.x_grid_units + 1e-6))
-        self.y_grid_units.setValue(int(params.y_grid_units + 1e-6))
-        self.grid_size.setValue(params.grid_size)
-        self.base_profile_main_half_width.setValue(params.base_profile_main_half_width)
-        self.base_profile_main_height.setValue(params.base_profile_main_height)
-        self.bin_outer_radius.setValue(params.bin_outer_radius)
-        self.enable_lower_chamfer.setChecked(params.base_profile_lower_chamfer_enabled)
-        self.base_profile_lower_chamfer_size.setValue(params.base_profile_lower_chamfer_size)
-        self.top_crop.setValue(params.base_profile_top_crop)
-        self.clearance.setValue(params.clearance)
-        self.click_springs_enabled.setChecked(params.click_springs_enabled)
-        self.click_thickness.setValue(params.click_thickness)
-        self.click_length.setValue(params.click_length)
-        self.click_offset.setValue(params.click_offset)
-        self.junction_screw_holes.setChecked(params.junction_screw_holes)
-        self.junction_screw_diameter.setValue(params.junction_screw_diameter)
-        self.junction_counterbore_diameter.setValue(params.junction_counterbore_diameter)
-        self.junction_counterbore_depth.setValue(params.junction_counterbore_depth)
-        self.clip_cutouts_enabled.setChecked(params.clip_cutouts_enabled)
-        self.clip_length.setValue(params.clip_length)
-        self.filler_right_enabled.setChecked(params.filler_right_enabled)
-        self.filler_right_width.setValue(params.filler_right_width)
-        self.filler_left_enabled.setChecked(params.filler_left_enabled)
-        self.filler_left_width.setValue(params.filler_left_width)
-        self.filler_top_enabled.setChecked(params.filler_top_enabled)
-        self.filler_top_width.setValue(params.filler_top_width)
-        self.filler_bottom_enabled.setChecked(params.filler_bottom_enabled)
-        self.filler_bottom_width.setValue(params.filler_bottom_width)
-
-    def _params_from_controls(self, *, preview_mode: bool) -> BaseplateParams:
-        return BaseplateParams(
-            x_grid_units=float(self.x_grid_units.value()),
-            y_grid_units=float(self.y_grid_units.value()),
-            grid_size=float(self.grid_size.value()),
-            base_profile_main_half_width=float(self.base_profile_main_half_width.value()),
-            base_profile_main_height=float(self.base_profile_main_height.value()),
-            bin_outer_radius=float(self.bin_outer_radius.value()),
-            base_profile_lower_chamfer_enabled=self.enable_lower_chamfer.isChecked(),
-            base_profile_lower_chamfer_size=float(self.base_profile_lower_chamfer_size.value()),
-            base_profile_top_crop=float(self.top_crop.value()),
-            clearance=float(self.clearance.value()),
-            click_springs_enabled=self.click_springs_enabled.isChecked(),
-            click_thickness=float(self.click_thickness.value()),
-            click_length=float(self.click_length.value()),
-            click_offset=float(self.click_offset.value()),
-            junction_screw_holes=self.junction_screw_holes.isChecked(),
-            junction_screw_diameter=float(self.junction_screw_diameter.value()),
-            junction_counterbore_diameter=float(self.junction_counterbore_diameter.value()),
-            junction_counterbore_depth=float(self.junction_counterbore_depth.value()),
-            clip_cutouts_enabled=self.clip_cutouts_enabled.isChecked(),
-            clip_length=float(self.clip_length.value()),
-            filler_right_enabled=self.filler_right_enabled.isChecked(),
-            filler_right_width=float(self.filler_right_width.value()),
-            filler_left_enabled=self.filler_left_enabled.isChecked(),
-            filler_left_width=float(self.filler_left_width.value()),
-            filler_top_enabled=self.filler_top_enabled.isChecked(),
-            filler_top_width=float(self.filler_top_width.value()),
-            filler_bottom_enabled=self.filler_bottom_enabled.isChecked(),
-            filler_bottom_width=float(self.filler_bottom_width.value()),
+        self.x_grid_units.setValue(int(params.core.x_grid_count))
+        self.y_grid_units.setValue(int(params.core.y_grid_count))
+        self.grid_size.setValue(float(params.fundamentals.x_grid_size))
+        self.base_profile_main_half_width.setValue(
+            float(params.fundamentals.base_profile_main_half_width)
         )
+        self.base_profile_main_height.setValue(float(params.fundamentals.base_profile_main_height))
+        self.bin_outer_radius.setValue(float(params.fundamentals.bin_outer_radius))
+        self.enable_lower_chamfer.setChecked(params.core.base_profile_lower_chamfer_enabled)
+        self.base_profile_lower_chamfer_size.setValue(
+            float(params.core.base_profile_lower_chamfer_size)
+        )
+        self.top_crop.setValue(float(params.core.base_profile_top_crop))
+        self.clearance.setValue(float(params.core.clearance))
+        self.click_springs_enabled.setChecked(params.click_springs.enabled)
+        self.click_thickness.setValue(float(params.click_springs.click_thickness))
+        self.click_length.setValue(float(params.click_springs.click_length))
+        self.click_offset.setValue(float(params.click_springs.click_offset))
+        self.junction_screw_holes.setChecked(params.junction_screws.enabled)
+        self.junction_screw_diameter.setValue(float(params.junction_screws.screw_diameter))
+        self.junction_counterbore_diameter.setValue(
+            float(params.junction_screws.counterbore_diameter)
+        )
+        self.junction_counterbore_depth.setValue(float(params.junction_screws.counterbore_depth))
+        self.clip_cutouts_enabled.setChecked(params.clip_cutouts.enabled)
+        self.clip_length.setValue(float(params.clip_cutouts.clip_length))
+        self.filler_right_enabled.setChecked(params.fillers.right_enabled)
+        self.filler_right_width.setValue(float(params.fillers.right_width))
+        self.filler_left_enabled.setChecked(params.fillers.left_enabled)
+        self.filler_left_width.setValue(float(params.fillers.left_width))
+        self.filler_top_enabled.setChecked(params.fillers.top_enabled)
+        self.filler_top_width.setValue(float(params.fillers.top_width))
+        self.filler_bottom_enabled.setChecked(params.fillers.bottom_enabled)
+        self.filler_bottom_width.setValue(float(params.fillers.bottom_width))
 
-    def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> None:
-        apply_params_to_obj(obj, self._params_from_controls(preview_mode=preview_mode))
+    def _control_values(self) -> dict[str, Any]:
+        return {
+            "x_grid_units": int(self.x_grid_units.value()),
+            "y_grid_units": int(self.y_grid_units.value()),
+            "grid_size": float(self.grid_size.value()),
+            "base_profile_main_half_width": float(self.base_profile_main_half_width.value()),
+            "base_profile_main_height": float(self.base_profile_main_height.value()),
+            "bin_outer_radius": float(self.bin_outer_radius.value()),
+            "enable_lower_chamfer": self.enable_lower_chamfer.isChecked(),
+            "base_profile_lower_chamfer_size": float(self.base_profile_lower_chamfer_size.value()),
+            "top_crop": float(self.top_crop.value()),
+            "clearance": float(self.clearance.value()),
+            "click_springs_enabled": self.click_springs_enabled.isChecked(),
+            "click_thickness": float(self.click_thickness.value()),
+            "click_length": float(self.click_length.value()),
+            "click_offset": float(self.click_offset.value()),
+            "junction_screw_holes": self.junction_screw_holes.isChecked(),
+            "junction_screw_diameter": float(self.junction_screw_diameter.value()),
+            "junction_counterbore_diameter": float(self.junction_counterbore_diameter.value()),
+            "junction_counterbore_depth": float(self.junction_counterbore_depth.value()),
+            "clip_cutouts_enabled": self.clip_cutouts_enabled.isChecked(),
+            "clip_length": float(self.clip_length.value()),
+            "filler_right_enabled": self.filler_right_enabled.isChecked(),
+            "filler_right_width": float(self.filler_right_width.value()),
+            "filler_left_enabled": self.filler_left_enabled.isChecked(),
+            "filler_left_width": float(self.filler_left_width.value()),
+            "filler_top_enabled": self.filler_top_enabled.isChecked(),
+            "filler_top_width": float(self.filler_top_width.value()),
+            "filler_bottom_enabled": self.filler_bottom_enabled.isChecked(),
+            "filler_bottom_width": float(self.filler_bottom_width.value()),
+        }
+
+    def _validate_controls(self, *, preview_mode: bool) -> BaseplateParams | None:
+        result = params_from_dialog(self._control_values(), preview_mode=preview_mode)
+        self._render_validation_errors(result.errors)
+        if result.params is not None:
+            self._last_valid_params = result.params
+        return result.params
+
+    def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
+        params = self._validate_controls(preview_mode=preview_mode)
+        if params is None:
+            return False
+        apply_params_to_obj(obj, params)
         if hasattr(obj, "PreviewBuildMode"):
             obj.PreviewBuildMode = preview_mode
+        return True
+
+    def _find_form_layout_for_widget(self, widget: QWidget) -> QFormLayout | None:
+        def visit(layout: QLayout) -> QFormLayout | None:
+            if isinstance(layout, QFormLayout):
+                row, _ = layout.getWidgetPosition(widget)
+                if row >= 0:
+                    return layout
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                child_layout = item.layout()
+                if child_layout is None:
+                    continue
+                found = visit(child_layout)
+                if found is not None:
+                    return found
+            return None
+
+        root = self.form.layout()
+        if root is None:
+            return None
+        return visit(root)
+
+    def _install_inline_error_rows(self) -> None:
+        field_keys = [
+            "top_crop",
+            "click_thickness",
+            "click_length",
+            "filler_left_width",
+            "filler_right_width",
+            "filler_top_width",
+            "filler_bottom_width",
+        ]
+        for key in field_keys:
+            widget = getattr(self, key)
+            layout = self._find_form_layout_for_widget(widget)
+            if layout is None:
+                continue
+            row, _ = layout.getWidgetPosition(widget)
+            if row < 0:
+                continue
+            container = QWidget()
+            box = QVBoxLayout(container)
+            box.setContentsMargins(0, 0, 0, 0)
+            box.setSpacing(2)
+            box.addWidget(widget)
+            label = QLabel("")
+            label.setStyleSheet("font-style: italic; font-size: 11px;")
+            label.hide()
+            box.addWidget(label)
+            layout.setWidget(row, QFormLayout.FieldRole, container)
+            self._error_labels[key] = label
+            self._error_containers[key] = container
+
+    def _render_validation_errors(self, errors: dict[str, str]) -> None:
+        for key, label in self._error_labels.items():
+            control = getattr(self, key)
+            if key in errors:
+                control.setStyleSheet("border: 1px solid #cc3d3d;")
+                label.setText(errors[key])
+                label.show()
+            else:
+                control.setStyleSheet("")
+                label.setText("")
+                label.hide()
 
     def _preview_color(self) -> tuple[float, float, float]:
         """Return FreeCAD standard-ish preview color from preferences, fallback orange."""
@@ -610,14 +702,21 @@ class CreateBaseplateTaskPanel:
     def _update_preview(self) -> None:
         if self._target_obj is None:
             return
-        self._apply_dialog_values(self._target_obj, preview_mode=True)
+        applied = self._apply_dialog_values(self._target_obj, preview_mode=True)
+        if not applied:
+            return
         fc.ActiveDocument.recompute()
         self._preview_applied = True
 
     def accept(self) -> bool:
         if self._target_obj is None:
             return False
-        self._apply_dialog_values(self._target_obj, preview_mode=False)
+        params = self._validate_controls(preview_mode=False)
+        if params is None:
+            return False
+        apply_params_to_obj(self._target_obj, params)
+        if hasattr(self._target_obj, "PreviewBuildMode"):
+            self._target_obj.PreviewBuildMode = False
         fc.ActiveDocument.recompute()
         self._restore_preview_visuals()
         fcg.SendMsgToActiveView("ViewFit")

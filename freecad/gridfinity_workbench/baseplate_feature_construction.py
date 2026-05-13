@@ -465,13 +465,13 @@ def make_clip_cutouts(
                 continue
 
             if geometry is None:
-                x = ix * obj.xGridSize - obj.xLocationOffset
+                x = ix * obj.xGridSize
             else:
-                x = geometry.x_lines[ix] - obj.xLocationOffset
+                x = geometry.x_lines[ix]
             if geometry is None:
-                y = iy * obj.yGridSize - obj.yLocationOffset
+                y = iy * obj.yGridSize
             else:
-                y = geometry.y_lines[iy] - obj.yLocationOffset
+                y = geometry.y_lines[iy]
             if horizontal:
                 cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
             else:
@@ -512,13 +512,13 @@ def make_junction_screw_holes(
                 continue
 
             if geometry is None:
-                x = ix * obj.xGridSize - obj.xLocationOffset
+                x = ix * obj.xGridSize
             else:
-                x = geometry.x_lines[ix] - obj.xLocationOffset
+                x = geometry.x_lines[ix]
             if geometry is None:
-                y = iy * obj.yGridSize - obj.yLocationOffset
+                y = iy * obj.yGridSize
             else:
-                y = geometry.y_lines[iy] - obj.yLocationOffset
+                y = geometry.y_lines[iy]
 
             through = Part.makeCylinder(
                 obj.JunctionScrewDiameter / 2,

@@ -11,6 +11,7 @@ import Part
 from . import baseplate_feature_construction as baseplate_feat
 from . import feature_construction as feat
 from . import utils
+from .baseplate_params import params_from_obj
 from .utils import GridfinityLayout, GridfinityLayoutGeometry
 
 
@@ -57,9 +58,7 @@ def replicate_layout(
     ny = len(layout[0])
     x_lines = _build_grid_lines([obj.xGridSize] * nx)
     y_lines = _build_grid_lines([obj.yGridSize] * ny)
-    replicated = _replicate_layout_variable(shape, layout, x_lines, y_lines)
-    replicated = replicated.translate(fc.Vector(-obj.xLocationOffset, -obj.yLocationOffset, 0))
-    return replicated
+    return _replicate_layout_variable(shape, layout, x_lines, y_lines)
 
 
 def add_filler_strips(
@@ -91,7 +90,6 @@ def add_filler_strips(
         options,
         include_springs=False,
     )
-    filler_shape = filler_shape.translate(fc.Vector(-obj.xLocationOffset, -obj.yLocationOffset, 0))
     combined = shape.fuse(filler_shape).removeSplitter()
     return combined, expanded
 
@@ -298,8 +296,8 @@ def _apply_layout_corner_roundover(
             populated = sw + se + nw + ne
             if populated not in (1, 3):
                 continue
-            x = x_lines[ix] - float(obj.xLocationOffset)
-            y = y_lines[iy] - float(obj.yLocationOffset)
+            x = x_lines[ix]
+            y = y_lines[iy]
             corner_points[(x, y)] = populated
     t1 = time.perf_counter()
 
@@ -417,14 +415,22 @@ def apply_snap_springs(
 ) -> Part.Shape:
     if not options.include_snap_springs:
         return shape
+    params = params_from_obj(obj)
     spring_cutouts = feat.add_click_spring_notches_to_base_cutout_single(
-        obj,
-        feat.make_complex_bin_base_single(obj, for_cutout=True),
+        params.fundamentals,
+        params.core,
+        params.click_springs,
+        feat.make_complex_bin_base_single_from_params(params.fundamentals, params.core),
     )
     spring_cutouts.translate(fc.Vector(0, 0, obj.TotalHeight))
     shape = shape.cut(spring_cutouts)
-    springs = feat.make_click_springs_two_sides_single(obj)
-    springs = feat.trim_click_springs_to_top_crop(obj, springs)
+    springs = feat.make_click_springs_two_sides_single(params.fundamentals, params.click_springs)
+    springs = feat.trim_click_springs_to_top_crop(
+        params.fundamentals,
+        params.core,
+        params.click_springs,
+        springs,
+    )
     return shape.fuse(springs).removeSplitter()
 
 

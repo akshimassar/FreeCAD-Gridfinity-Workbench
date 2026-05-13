@@ -11,6 +11,7 @@ import Part
 from . import const, utils
 from . import label_shelf as label_shelf_module
 from . import magnet_hole as magnet_hole_module
+from .baseplate_params import BaseplateCoreParams, ClickSpringParams, FundamentalsParams
 
 unitmm = fc.Units.Quantity("1 mm")
 zeromm = fc.Units.Quantity("0 mm")
@@ -1041,48 +1042,129 @@ def make_complex_bin_base_single(
     return assembly
 
 
+def make_complex_bin_base_single_from_params(
+    fundamentals: FundamentalsParams,
+    core: BaseplateCoreParams,
+) -> Part.Shape:
+    """Create one-cell complex shaped bin base centered at origin from baseplate params."""
+    if core.base_profile_top_crop >= fundamentals.base_profile_main_half_width:
+        raise ValueError(
+            f"BaseProfileTopCrop ({core.base_profile_top_crop}) must be smaller than "
+            f"BaseProfileMainHalfWidth ({fundamentals.base_profile_main_half_width})"
+        )
+
+    lower_enabled = bool(core.base_profile_lower_chamfer_enabled)
+    lower_size = core.base_profile_lower_chamfer_size if lower_enabled else 0 * unitmm
+    upper_size = fundamentals.base_profile_main_half_width
+    total_height = (
+        fundamentals.base_profile_main_height
+        + fundamentals.base_profile_main_half_width
+        - core.base_profile_top_crop
+    )
+    bin_vertical_radius = fundamentals.bin_outer_radius - fundamentals.base_profile_main_half_width
+
+    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
+    y_vert_width = fundamentals.y_grid_size - 2 * fundamentals.base_profile_main_half_width
+
+    x_bt_cmf_width = x_vert_width - 2 * lower_size
+    y_bt_cmf_width = y_vert_width - 2 * lower_size
+    vertical_section_height = fundamentals.base_profile_main_height - lower_size
+
+    vertical_section = utils.rounded_rectangle_extrude(
+        x_vert_width,
+        y_vert_width,
+        -total_height + lower_size,
+        vertical_section_height,
+        bin_vertical_radius,
+    )
+
+    if lower_enabled:
+        bottom_chamfer = utils.rounded_rectangle_chamfer(
+            x_bt_cmf_width,
+            y_bt_cmf_width,
+            -total_height,
+            lower_size,
+            bin_vertical_radius - lower_size,
+            bin_vertical_radius,
+        )
+        assembly = bottom_chamfer.fuse(vertical_section)
+    else:
+        assembly = vertical_section
+
+    top_chamfer = utils.rounded_rectangle_chamfer(
+        x_vert_width,
+        y_vert_width,
+        -total_height + lower_size + vertical_section_height,
+        upper_size,
+        bin_vertical_radius,
+        fundamentals.bin_outer_radius,
+    )
+
+    if lower_enabled:
+        assembly = bottom_chamfer.multiFuse([vertical_section, top_chamfer])
+    else:
+        assembly = vertical_section.fuse(top_chamfer)
+
+    top_crop = core.base_profile_top_crop
+    crop_slab = Part.makeBox(
+        fundamentals.x_grid_size * 2,
+        fundamentals.y_grid_size * 2,
+        top_crop + total_height,
+        fc.Vector(-fundamentals.x_grid_size, -fundamentals.y_grid_size, 0),
+        fc.Vector(0, 0, 1),
+    )
+    return assembly.cut(crop_slab)
+
+
 def add_click_spring_notches_to_base_cutout_single(
-    obj: fc.DocumentObject,
+    fundamentals: FundamentalsParams,
+    core: BaseplateCoreParams,
+    click_springs: ClickSpringParams,
     cutout: Part.Shape,
 ) -> Part.Shape:
     """Add one-cell click spring notch solids to a base cutout shape."""
-    _validate_click_spring_geometry(obj)
+    _validate_click_spring_geometry(fundamentals, click_springs)
+    total_height = (
+        fundamentals.base_profile_main_height
+        + fundamentals.base_profile_main_half_width
+        - core.base_profile_top_crop
+    )
 
-    x_vert_width = obj.xGridSize - 2 * obj.BaseProfileMainHalfWidth
-    y_vert_width = obj.yGridSize - 2 * obj.BaseProfileMainHalfWidth
-    click_width_x = x_vert_width + 2 * obj.ClickThickness
-    click_width_y = y_vert_width + 2 * obj.ClickThickness
-    click_length = obj.ClickLength
-    click_center_y = obj.yGridSize / 4
+    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
+    y_vert_width = fundamentals.y_grid_size - 2 * fundamentals.base_profile_main_half_width
+    click_width_x = x_vert_width + 2 * click_springs.click_thickness
+    click_width_y = y_vert_width + 2 * click_springs.click_thickness
+    click_length = click_springs.click_length
+    click_center_y = fundamentals.y_grid_size / 4
 
     click_notch = Part.makeBox(
         click_width_x,
         click_length,
-        obj.TotalHeight,
-        fc.Vector(-click_width_x / 2, click_center_y - click_length / 2, -obj.TotalHeight),
+        total_height,
+        fc.Vector(-click_width_x / 2, click_center_y - click_length / 2, -total_height),
         fc.Vector(0, 0, 1),
     )
     click_notch_mirror = Part.makeBox(
         click_width_x,
         click_length,
-        obj.TotalHeight,
-        fc.Vector(-click_width_x / 2, -click_center_y - click_length / 2, -obj.TotalHeight),
+        total_height,
+        fc.Vector(-click_width_x / 2, -click_center_y - click_length / 2, -total_height),
         fc.Vector(0, 0, 1),
     )
 
-    click_center_x = obj.xGridSize / 4
+    click_center_x = fundamentals.x_grid_size / 4
     click_notch_t = Part.makeBox(
         click_length,
         click_width_y,
-        obj.TotalHeight,
-        fc.Vector(click_center_x - click_length / 2, -click_width_y / 2, -obj.TotalHeight),
+        total_height,
+        fc.Vector(click_center_x - click_length / 2, -click_width_y / 2, -total_height),
         fc.Vector(0, 0, 1),
     )
     click_notch_t_mirror = Part.makeBox(
         click_length,
         click_width_y,
-        obj.TotalHeight,
-        fc.Vector(-click_center_x - click_length / 2, -click_width_y / 2, -obj.TotalHeight),
+        total_height,
+        fc.Vector(-click_center_x - click_length / 2, -click_width_y / 2, -total_height),
         fc.Vector(0, 0, 1),
     )
 
@@ -1202,19 +1284,22 @@ def make_baseplate_top_support(
     return support_solid.cut(cutters).removeSplitter()
 
 
-def _make_click_spring_right_single(obj: fc.DocumentObject) -> Part.Shape:
+def _make_click_spring_right_single(
+    fundamentals: FundamentalsParams,
+    click_springs: ClickSpringParams,
+) -> Part.Shape:
     """Create one right-side click spring pipe for a single grid cell at local origin."""
-    x_vert_width = obj.xGridSize - 2 * obj.BaseProfileMainHalfWidth
+    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
 
-    click_length = obj.ClickLength
-    click_center_y = obj.yGridSize / 4
+    click_length = click_springs.click_length
+    click_center_y = fundamentals.y_grid_size / 4
     click_top_y = click_center_y + click_length / 2
 
     step = click_length / 3
     x0 = x_vert_width / 2
-    x1 = x0 - obj.ClickOffset
+    x1 = x0 - click_springs.click_offset
     x2 = x1
-    x3 = x2 + obj.ClickOffset
+    x3 = x2 + click_springs.click_offset
     y0 = click_top_y
     y1 = y0 - step
     y2 = y1 - step
@@ -1231,9 +1316,9 @@ def _make_click_spring_right_single(obj: fc.DocumentObject) -> Part.Shape:
     ]
     spine = Part.Wire(Part.makePolygon(path_points))
 
-    z1 = obj.BaseProfileMainHeight
-    x2 = x0 + obj.ClickThickness
-    z2 = z1 + obj.ClickThickness
+    z1 = fundamentals.base_profile_main_height
+    x2 = x0 + click_springs.click_thickness
+    z2 = z1 + click_springs.click_thickness
     profile_points = [
         fc.Vector(x0, y0, z_mid),
         fc.Vector(x0, y0, z1),
@@ -1247,17 +1332,21 @@ def _make_click_spring_right_single(obj: fc.DocumentObject) -> Part.Shape:
     return spine.makePipeShell([profile], True, False).removeSplitter()
 
 
-def _validate_click_spring_geometry(obj: fc.DocumentObject) -> None:
+def _validate_click_spring_geometry(
+    fundamentals: FundamentalsParams,
+    click_springs: ClickSpringParams,
+) -> None:
     """Validate click spring length against available quarter-cell span."""
-    if obj.ClickThickness >= obj.BaseProfileMainHalfWidth:
+    if click_springs.click_thickness >= fundamentals.base_profile_main_half_width:
         raise ValueError(
-            f"Invalid click spring geometry: ClickThickness ({obj.ClickThickness}) must be "
-            f"smaller than BaseProfileMainHalfWidth ({obj.BaseProfileMainHalfWidth})"
+            f"Invalid click spring geometry: ClickThickness ({click_springs.click_thickness}) must be "
+            f"smaller than BaseProfileMainHalfWidth ({fundamentals.base_profile_main_half_width})"
         )
 
-    half_len = obj.ClickLength / 2
-    x_limit = obj.xGridSize / 4 - obj.BinVerticalRadius
-    y_limit = obj.yGridSize / 4 - obj.BinVerticalRadius
+    half_len = click_springs.click_length / 2
+    bin_vertical_radius = fundamentals.bin_outer_radius - fundamentals.base_profile_main_half_width
+    x_limit = fundamentals.x_grid_size / 4 - bin_vertical_radius
+    y_limit = fundamentals.y_grid_size / 4 - bin_vertical_radius
 
     if half_len >= x_limit or half_len >= y_limit:
         raise ValueError(
@@ -1278,17 +1367,33 @@ def make_click_spring_right(obj: fc.DocumentObject, layout: GridfinityLayout) ->
 
 def make_click_springs_two_sides(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape:
     """Create click springs on all four sides of each grid cell."""
-    full_single = make_click_springs_two_sides_single(obj)
+    fundamentals = FundamentalsParams(
+        x_grid_size=obj.xGridSize,
+        y_grid_size=obj.yGridSize,
+        bin_outer_radius=obj.BinOuterRadius,
+        base_profile_main_half_width=obj.BaseProfileMainHalfWidth,
+        base_profile_main_height=obj.BaseProfileMainHeight,
+    )
+    click_springs = ClickSpringParams(
+        enabled=bool(getattr(obj, "ClickSpringsEnabled", False)),
+        click_thickness=obj.ClickThickness,
+        click_length=obj.ClickLength,
+        click_offset=obj.ClickOffset,
+    )
+    full_single = make_click_springs_two_sides_single(fundamentals, click_springs)
     full = utils.copy_in_layout(full_single, layout, obj.xGridSize, obj.yGridSize)
     return full.translate(
         fc.Vector(obj.xGridSize / 2 - obj.xLocationOffset, obj.yGridSize / 2 - obj.yLocationOffset),
     )
 
 
-def make_click_springs_two_sides_single(obj: fc.DocumentObject) -> Part.Shape:
+def make_click_springs_two_sides_single(
+    fundamentals: FundamentalsParams,
+    click_springs: ClickSpringParams,
+) -> Part.Shape:
     """Create click springs on all four sides for one cell centered at origin."""
-    _validate_click_spring_geometry(obj)
-    right_single = _make_click_spring_right_single(obj)
+    _validate_click_spring_geometry(fundamentals, click_springs)
+    right_single = _make_click_spring_right_single(fundamentals, click_springs)
     left_single = right_single.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
     pair_single = right_single.fuse(left_single).removeSplitter()
     pair_single_mirror_y = pair_single.mirror(fc.Vector(0, 0, 0), fc.Vector(0, 1, 0))
@@ -1300,10 +1405,19 @@ def make_click_springs_two_sides_single(obj: fc.DocumentObject) -> Part.Shape:
     return full_single_y.fuse(full_single_x).removeSplitter()
 
 
-def trim_click_springs_to_top_crop(obj: fc.DocumentObject, springs: Part.Shape) -> Part.Shape:
+def trim_click_springs_to_top_crop(
+    fundamentals: FundamentalsParams,
+    core: BaseplateCoreParams,
+    click_springs: ClickSpringParams,
+    springs: Part.Shape,
+) -> Part.Shape:
     """Trim click springs above the base-profile top-crop cap height."""
-    z_limit = obj.BaseProfileMainHeight + obj.BaseProfileMainHalfWidth - obj.BaseProfileTopCrop
-    z2 = obj.BaseProfileMainHeight + obj.ClickThickness
+    z_limit = (
+        fundamentals.base_profile_main_height
+        + fundamentals.base_profile_main_half_width
+        - core.base_profile_top_crop
+    )
+    z2 = fundamentals.base_profile_main_height + click_springs.click_thickness
     if z2 <= z_limit:
         return springs
 
