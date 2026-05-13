@@ -94,7 +94,9 @@ class UtilsTest(unittest.TestCase):
 
     def test_rounded_rectangle_chamfer(self) -> None:
         x_width, y_width, height, radius = 5, 10, 4, 2
-        shape = utils.rounded_rectangle_chamfer(x_width, y_width, 0, height, radius)
+        shape = utils.rounded_rectangle_chamfer(
+            x_width, y_width, 0, height, radius, radius + height
+        )
         self.assertAlmostEqual(shape.BoundBox.XLength, x_width + 2 * height)
         self.assertAlmostEqual(shape.BoundBox.YLength, y_width + 2 * height)
         self.assertAlmostEqual(shape.BoundBox.ZLength, height)
