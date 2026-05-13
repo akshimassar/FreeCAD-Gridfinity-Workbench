@@ -213,11 +213,13 @@ def _filler_spring_mask(
 ) -> feat.SpringSlotMask:
     mask = feat.SpringSlotMask.all_true()
 
+    # X-first matrix indexing with y=0 as top row:
+    # left  -> x=0 column, right -> x=1 column, top -> y=0 row, bottom -> y=1 row.
     side_masks = [
-        (leftmost, [[True, False], [True, False]]),
-        (rightmost, [[False, True], [False, True]]),
-        (bottommost, [[True, True], [False, False]]),
-        (topmost, [[False, False], [True, True]]),
+        (leftmost, [[True, True], [False, False]]),
+        (rightmost, [[False, False], [True, True]]),
+        (topmost, [[True, False], [True, False]]),
+        (bottommost, [[False, True], [False, True]]),
     ]
     for enabled, side_mask in side_masks:
         if not enabled:
@@ -251,8 +253,8 @@ def _filler_alignment_shift(
     cell_half_x = target_cell_width / 2
     cell_half_y = target_cell_height / 2
 
-    shift_x = sx * (grid_half_x - cell_half_x)
-    shift_y = sy * (grid_half_y - cell_half_y)
+    shift_x = sx * (cell_half_x - grid_half_x)
+    shift_y = sy * (cell_half_y - grid_half_y)
     return fc.Vector(shift_x, shift_y, 0)
 
 

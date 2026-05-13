@@ -1410,14 +1410,15 @@ def _make_click_notch_right_single(
         - core.base_profile_top_crop
     )
     x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
-    click_width_x = x_vert_width + 2 * click_springs.click_thickness
+    x0 = x_vert_width / 2
+    click_width_x = 2 * click_springs.click_thickness
     click_length = click_springs.click_length
     click_center_y = fundamentals.y_grid_size / 4
     return Part.makeBox(
         click_width_x,
         click_length,
         total_height,
-        fc.Vector(-click_width_x / 2, click_center_y - click_length / 2, -total_height),
+        fc.Vector(x0 - click_width_x / 2, click_center_y - click_length / 2, -total_height),
         fc.Vector(0, 0, 1),
     )
 
@@ -1442,22 +1443,36 @@ def make_click_spring_shape_slots(
     v_pos: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
     v_neg: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
 
-    v_pos[1][1] = v_pos_seed
-    v_neg[1][1] = v_neg_seed
-    v_pos[0][1] = mirror_x(v_pos[1][1])
-    v_neg[0][1] = mirror_x(v_neg[1][1])
-    v_pos[0][0] = mirror_y(v_pos[0][1])
-    v_neg[0][0] = mirror_y(v_neg[0][1])
-    v_pos[1][0] = mirror_y(v_pos[1][1])
-    v_neg[1][0] = mirror_y(v_neg[1][1])
+    # Matrix indexing is X-first then Y, with y=0 as the top row.
+    # Seed starts in top-right slot [1][0], then mirrored across X and Y.
+    v_pos[1][0] = v_pos_seed
+    v_neg[1][0] = v_neg_seed
+    v_pos[0][0] = mirror_x(v_pos[1][0])
+    v_neg[0][0] = mirror_x(v_neg[1][0])
+    v_pos[0][1] = mirror_y(v_pos[0][0])
+    v_neg[0][1] = mirror_y(v_neg[0][0])
+    v_pos[1][1] = mirror_y(v_pos[1][0])
+    v_neg[1][1] = mirror_y(v_neg[1][0])
 
-    def rot90(shape: Part.Shape) -> Part.Shape:
+    def rot90_clockwise(shape: Part.Shape) -> Part.Shape:
         out = shape.copy()
-        out.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
+        out.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), -90)
         return out
 
-    h_pos: ShapeMatrix2x2 = [[rot90(v_pos[x][y]) for y in range(2)] for x in range(2)]
-    h_neg: ShapeMatrix2x2 = [[rot90(v_neg[x][y]) for y in range(2)] for x in range(2)]
+    def rotate_matrix_clockwise(matrix: ShapeMatrix2x2) -> ShapeMatrix2x2:
+        out: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
+        for x in range(2):
+            for y in range(2):
+                x_new = 1 - y
+                y_new = x
+                out[x_new][y_new] = matrix[x][y]
+        return out
+
+    v_pos_rot = [[rot90_clockwise(v_pos[x][y]) for y in range(2)] for x in range(2)]
+    v_neg_rot = [[rot90_clockwise(v_neg[x][y]) for y in range(2)] for x in range(2)]
+
+    h_pos: ShapeMatrix2x2 = rotate_matrix_clockwise(v_pos_rot)
+    h_neg: ShapeMatrix2x2 = rotate_matrix_clockwise(v_neg_rot)
     return SpringShapeSlots(
         vertical_negative=v_neg,
         vertical_positive=v_pos,
