@@ -169,8 +169,8 @@ def _build_expanded_layout_with_fillers(
 
     return GridfinityLayoutGeometry(
         layout=expanded,
-        x_lines=_build_grid_lines(x_sizes),
-        y_lines=_build_grid_lines(y_sizes),
+        x_lines=[x - float(left_w) for x in _build_grid_lines(x_sizes)],
+        y_lines=[y - float(bottom_w) for y in _build_grid_lines(y_sizes)],
     )
 
 

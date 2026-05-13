@@ -288,29 +288,29 @@ def _build_baseplate_section(
         filler_form = QFormLayout()
         filler_form.setContentsMargins(40, 0, 0, 0)
 
-        filler_right_enabled = QCheckBox()
-        filler_right_enabled.setChecked(False)
-        filler_form.addRow("Right", filler_right_enabled)
-        filler_right_width = _mm_spinbox(30.0, maximum=1000.0)
-        filler_form.addRow("Right width", filler_right_width)
-
-        filler_left_enabled = QCheckBox()
-        filler_left_enabled.setChecked(False)
-        filler_form.addRow("Left", filler_left_enabled)
-        filler_left_width = _mm_spinbox(30.0, maximum=1000.0)
-        filler_form.addRow("Left width", filler_left_width)
-
         filler_top_enabled = QCheckBox()
         filler_top_enabled.setChecked(False)
         filler_form.addRow("Top", filler_top_enabled)
         filler_top_width = _mm_spinbox(30.0, maximum=1000.0)
         filler_form.addRow("Top width", filler_top_width)
 
+        filler_right_enabled = QCheckBox()
+        filler_right_enabled.setChecked(False)
+        filler_form.addRow("Right", filler_right_enabled)
+        filler_right_width = _mm_spinbox(30.0, maximum=1000.0)
+        filler_form.addRow("Right width", filler_right_width)
+
         filler_bottom_enabled = QCheckBox()
         filler_bottom_enabled.setChecked(False)
         filler_form.addRow("Bottom", filler_bottom_enabled)
         filler_bottom_width = _mm_spinbox(30.0, maximum=1000.0)
         filler_form.addRow("Bottom width", filler_bottom_width)
+
+        filler_left_enabled = QCheckBox()
+        filler_left_enabled.setChecked(False)
+        filler_form.addRow("Left", filler_left_enabled)
+        filler_left_width = _mm_spinbox(30.0, maximum=1000.0)
+        filler_form.addRow("Left width", filler_left_width)
 
         layout.addLayout(filler_form)
         controls.update(
