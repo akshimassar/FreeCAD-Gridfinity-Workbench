@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Literal
 
 import FreeCAD as fc  # noqa: N813
@@ -20,6 +21,118 @@ ECO_USABLE_HEIGHT = 14
 SMALL_NUMBER = 0.01
 
 GridfinityLayout = list[list[bool]]
+
+
+BoolMatrix2x2 = list[list[bool]]
+ShapeMatrix2x2 = list[list[Part.Shape]]
+
+
+def _assert_2x2_bool_matrix(name: str, matrix: BoolMatrix2x2) -> None:
+    if len(matrix) != 2 or any(len(col) != 2 for col in matrix):
+        raise ValueError(f"{name} must be a 2x2 bool matrix")
+    for col in matrix:
+        for value in col:
+            if not isinstance(value, bool):
+                raise ValueError(f"{name} must contain only bool values")
+
+
+def _assert_2x2_shape_matrix(name: str, matrix: ShapeMatrix2x2) -> None:
+    if len(matrix) != 2 or any(len(col) != 2 for col in matrix):
+        raise ValueError(f"{name} must be a 2x2 shape matrix")
+
+
+@dataclass(frozen=True)
+class SpringSlotMask:
+    """Selection mask for vertical/horizontal spring slots with X-first indexing."""
+
+    vertical_slots: BoolMatrix2x2
+    horizontal_slots: BoolMatrix2x2
+
+    def __post_init__(self) -> None:
+        _assert_2x2_bool_matrix("vertical_slots", self.vertical_slots)
+        _assert_2x2_bool_matrix("horizontal_slots", self.horizontal_slots)
+
+    @classmethod
+    def all_true(cls) -> SpringSlotMask:
+        return cls(
+            vertical_slots=[[True, True], [True, True]],
+            horizontal_slots=[[True, True], [True, True]],
+        )
+
+    def with_vertical_disabled(self, disable: BoolMatrix2x2) -> SpringSlotMask:
+        _assert_2x2_bool_matrix("disable", disable)
+        matrix = [
+            [self.vertical_slots[x][y] and (not disable[x][y]) for y in range(2)] for x in range(2)
+        ]
+        return SpringSlotMask(vertical_slots=matrix, horizontal_slots=self.horizontal_slots)
+
+    def with_horizontal_disabled(self, disable: BoolMatrix2x2) -> SpringSlotMask:
+        _assert_2x2_bool_matrix("disable", disable)
+        matrix = [
+            [self.horizontal_slots[x][y] and (not disable[x][y]) for y in range(2)]
+            for x in range(2)
+        ]
+        return SpringSlotMask(vertical_slots=self.vertical_slots, horizontal_slots=matrix)
+
+    def with_all_vertical_disabled(self) -> SpringSlotMask:
+        return SpringSlotMask(
+            vertical_slots=[[False, False], [False, False]],
+            horizontal_slots=self.horizontal_slots,
+        )
+
+    def with_all_horizontal_disabled(self) -> SpringSlotMask:
+        return SpringSlotMask(
+            vertical_slots=self.vertical_slots,
+            horizontal_slots=[[False, False], [False, False]],
+        )
+
+
+@dataclass(frozen=True)
+class SpringShapeSlots:
+    """Prebuilt slot libraries for negative/positive and vertical/horizontal springs."""
+
+    vertical_negative: ShapeMatrix2x2
+    vertical_positive: ShapeMatrix2x2
+    horizontal_negative: ShapeMatrix2x2
+    horizontal_positive: ShapeMatrix2x2
+
+    def __post_init__(self) -> None:
+        _assert_2x2_shape_matrix("vertical_negative", self.vertical_negative)
+        _assert_2x2_shape_matrix("vertical_positive", self.vertical_positive)
+        _assert_2x2_shape_matrix("horizontal_negative", self.horizontal_negative)
+        _assert_2x2_shape_matrix("horizontal_positive", self.horizontal_positive)
+
+    def fused_negative(self, mask: SpringSlotMask) -> Part.Shape | None:
+        shapes = [
+            self.vertical_negative[x][y].copy()
+            for x in range(2)
+            for y in range(2)
+            if mask.vertical_slots[x][y]
+        ] + [
+            self.horizontal_negative[x][y].copy()
+            for x in range(2)
+            for y in range(2)
+            if mask.horizontal_slots[x][y]
+        ]
+        if not shapes:
+            return None
+        return utils.multi_fuse(shapes)
+
+    def fused_positive(self, mask: SpringSlotMask) -> Part.Shape | None:
+        shapes = [
+            self.vertical_positive[x][y].copy()
+            for x in range(2)
+            for y in range(2)
+            if mask.vertical_slots[x][y]
+        ] + [
+            self.horizontal_positive[x][y].copy()
+            for x in range(2)
+            for y in range(2)
+            if mask.horizontal_slots[x][y]
+        ]
+        if not shapes:
+            return None
+        return utils.multi_fuse(shapes)
 
 
 def label_shelf_properties(obj: fc.DocumentObject, *, label_style_default: str) -> None:
@@ -1123,57 +1236,11 @@ def add_click_spring_notches_to_base_cutout_single(
     cutout: Part.Shape,
 ) -> Part.Shape:
     """Add one-cell click spring notch solids to a base cutout shape."""
-    _validate_click_spring_geometry(fundamentals, click_springs)
-    total_height = (
-        fundamentals.base_profile_main_height
-        + fundamentals.base_profile_main_half_width
-        - core.base_profile_top_crop
-    )
-
-    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
-    y_vert_width = fundamentals.y_grid_size - 2 * fundamentals.base_profile_main_half_width
-    click_width_x = x_vert_width + 2 * click_springs.click_thickness
-    click_width_y = y_vert_width + 2 * click_springs.click_thickness
-    click_length = click_springs.click_length
-    click_center_y = fundamentals.y_grid_size / 4
-
-    click_notch = Part.makeBox(
-        click_width_x,
-        click_length,
-        total_height,
-        fc.Vector(-click_width_x / 2, click_center_y - click_length / 2, -total_height),
-        fc.Vector(0, 0, 1),
-    )
-    click_notch_mirror = Part.makeBox(
-        click_width_x,
-        click_length,
-        total_height,
-        fc.Vector(-click_width_x / 2, -click_center_y - click_length / 2, -total_height),
-        fc.Vector(0, 0, 1),
-    )
-
-    click_center_x = fundamentals.x_grid_size / 4
-    click_notch_t = Part.makeBox(
-        click_length,
-        click_width_y,
-        total_height,
-        fc.Vector(click_center_x - click_length / 2, -click_width_y / 2, -total_height),
-        fc.Vector(0, 0, 1),
-    )
-    click_notch_t_mirror = Part.makeBox(
-        click_length,
-        click_width_y,
-        total_height,
-        fc.Vector(-click_center_x - click_length / 2, -click_width_y / 2, -total_height),
-        fc.Vector(0, 0, 1),
-    )
-
-    notches = (
-        click_notch.fuse(click_notch_mirror)
-        .fuse(click_notch_t)
-        .fuse(click_notch_t_mirror)
-        .removeSplitter()
-    )
+    slots = make_click_spring_shape_slots(fundamentals, core, click_springs)
+    mask = SpringSlotMask.all_true()
+    notches = slots.fused_negative(mask)
+    if notches is None:
+        return cutout
     return cutout.fuse(notches).removeSplitter()
 
 
@@ -1332,6 +1399,92 @@ def _make_click_spring_right_single(
     return spine.makePipeShell([profile], True, False).removeSplitter()
 
 
+def _make_click_notch_right_single(
+    fundamentals: FundamentalsParams,
+    core: BaseplateCoreParams,
+    click_springs: ClickSpringParams,
+) -> Part.Shape:
+    total_height = (
+        fundamentals.base_profile_main_height
+        + fundamentals.base_profile_main_half_width
+        - core.base_profile_top_crop
+    )
+    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
+    click_width_x = x_vert_width + 2 * click_springs.click_thickness
+    click_length = click_springs.click_length
+    click_center_y = fundamentals.y_grid_size / 4
+    return Part.makeBox(
+        click_width_x,
+        click_length,
+        total_height,
+        fc.Vector(-click_width_x / 2, click_center_y - click_length / 2, -total_height),
+        fc.Vector(0, 0, 1),
+    )
+
+
+def make_click_spring_shape_slots(
+    fundamentals: FundamentalsParams,
+    core: BaseplateCoreParams,
+    click_springs: ClickSpringParams,
+) -> SpringShapeSlots:
+    """Build full vertical/horizontal 2x2 spring slot shape libraries."""
+    _validate_click_spring_geometry(fundamentals, click_springs)
+
+    v_pos_seed = _make_click_spring_right_single(fundamentals, click_springs)
+    v_neg_seed = _make_click_notch_right_single(fundamentals, core, click_springs)
+
+    def mirror_x(shape: Part.Shape) -> Part.Shape:
+        return shape.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
+
+    def mirror_y(shape: Part.Shape) -> Part.Shape:
+        return shape.mirror(fc.Vector(0, 0, 0), fc.Vector(0, 1, 0))
+
+    v_pos: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
+    v_neg: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
+
+    v_pos[1][1] = v_pos_seed
+    v_neg[1][1] = v_neg_seed
+    v_pos[0][1] = mirror_x(v_pos[1][1])
+    v_neg[0][1] = mirror_x(v_neg[1][1])
+    v_pos[0][0] = mirror_y(v_pos[0][1])
+    v_neg[0][0] = mirror_y(v_neg[0][1])
+    v_pos[1][0] = mirror_y(v_pos[1][1])
+    v_neg[1][0] = mirror_y(v_neg[1][1])
+
+    def rot90(shape: Part.Shape) -> Part.Shape:
+        out = shape.copy()
+        out.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
+        return out
+
+    h_pos: ShapeMatrix2x2 = [[rot90(v_pos[x][y]) for y in range(2)] for x in range(2)]
+    h_neg: ShapeMatrix2x2 = [[rot90(v_neg[x][y]) for y in range(2)] for x in range(2)]
+    return SpringShapeSlots(
+        vertical_negative=v_neg,
+        vertical_positive=v_pos,
+        horizontal_negative=h_neg,
+        horizontal_positive=h_pos,
+    )
+
+
+def apply_click_spring_slots_to_cell(
+    shape: Part.Shape,
+    fundamentals: FundamentalsParams,
+    core: BaseplateCoreParams,
+    click_springs: ClickSpringParams,
+    slots: SpringShapeSlots,
+    mask: SpringSlotMask,
+) -> Part.Shape:
+    negative = slots.fused_negative(mask)
+    if negative is not None:
+        shape = shape.cut(negative)
+
+    positive = slots.fused_positive(mask)
+    if positive is not None:
+        positive = trim_click_springs_to_top_crop(fundamentals, core, click_springs, positive)
+        shape = shape.fuse(positive)
+    return shape
+
+
 def _validate_click_spring_geometry(
     fundamentals: FundamentalsParams,
     click_springs: ClickSpringParams,
@@ -1392,17 +1545,23 @@ def make_click_springs_two_sides_single(
     click_springs: ClickSpringParams,
 ) -> Part.Shape:
     """Create click springs on all four sides for one cell centered at origin."""
-    _validate_click_spring_geometry(fundamentals, click_springs)
-    right_single = _make_click_spring_right_single(fundamentals, click_springs)
-    left_single = right_single.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
-    pair_single = right_single.fuse(left_single).removeSplitter()
-    pair_single_mirror_y = pair_single.mirror(fc.Vector(0, 0, 0), fc.Vector(0, 1, 0))
-    full_single_y = pair_single.fuse(pair_single_mirror_y).removeSplitter()
-
-    # Transposed pair (X <-> Y) by rotating around Z.
-    full_single_x = full_single_y.copy()
-    full_single_x.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
-    return full_single_y.fuse(full_single_x).removeSplitter()
+    slots = make_click_spring_shape_slots(
+        fundamentals,
+        BaseplateCoreParams(
+            x_grid_count=1,
+            y_grid_count=1,
+            base_profile_lower_chamfer_enabled=False,
+            base_profile_lower_chamfer_size=0 * unitmm,
+            base_profile_top_crop=0 * unitmm,
+            clearance=0 * unitmm,
+        ),
+        click_springs,
+    )
+    # core is not used for positive shape creation; pass zero core placeholder.
+    springs = slots.fused_positive(SpringSlotMask.all_true())
+    if springs is None:
+        raise ValueError("No springs generated")
+    return springs
 
 
 def trim_click_springs_to_top_crop(

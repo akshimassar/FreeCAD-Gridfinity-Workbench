@@ -15,6 +15,10 @@ from .baseplate_params import BaseplateParams, params_from_obj
 from .utils import GridfinityLayout, GridfinityLayoutGeometry
 
 
+def _matrix_not(mask: list[list[bool]]) -> list[list[bool]]:
+    return [[not mask[x][y] for y in range(2)] for x in range(2)]
+
+
 @dataclass
 class BaseplateBuildOptions:
     include_junction_screws: bool = True
@@ -197,6 +201,67 @@ def _build_filler_cell_shape(
     return cell
 
 
+def _filler_spring_mask(
+    params: BaseplateParams,
+    *,
+    leftmost: bool,
+    rightmost: bool,
+    bottommost: bool,
+    topmost: bool,
+    target_cell_width: float,
+    target_cell_height: float,
+) -> feat.SpringSlotMask:
+    mask = feat.SpringSlotMask.all_true()
+
+    left_side = [[True, False], [True, False]]
+    right_side = [[False, True], [False, True]]
+    bottom_side = [[True, True], [False, False]]
+    top_side = [[False, False], [True, True]]
+
+    if leftmost:
+        mask = mask.with_vertical_disabled(left_side)
+        mask = mask.with_horizontal_disabled(left_side)
+    if rightmost:
+        mask = mask.with_vertical_disabled(right_side)
+        mask = mask.with_horizontal_disabled(right_side)
+    if bottommost:
+        mask = mask.with_vertical_disabled(bottom_side)
+        mask = mask.with_horizontal_disabled(bottom_side)
+    if topmost:
+        mask = mask.with_vertical_disabled(top_side)
+        mask = mask.with_horizontal_disabled(top_side)
+
+    if target_cell_width < float(params.fundamentals.x_grid_size) / 2:
+        mask = mask.with_all_horizontal_disabled()
+    if target_cell_height < float(params.fundamentals.y_grid_size) / 2:
+        mask = mask.with_all_vertical_disabled()
+
+    return mask
+
+
+def _filler_alignment_shift(
+    params: BaseplateParams,
+    *,
+    leftmost: bool,
+    rightmost: bool,
+    bottommost: bool,
+    topmost: bool,
+    target_cell_width: float,
+    target_cell_height: float,
+) -> fc.Vector:
+    sx = -1 if leftmost else (1 if rightmost else 0)
+    sy = -1 if bottommost else (1 if topmost else 0)
+
+    grid_half_x = float(params.fundamentals.x_grid_size) / 2
+    grid_half_y = float(params.fundamentals.y_grid_size) / 2
+    cell_half_x = target_cell_width / 2
+    cell_half_y = target_cell_height / 2
+
+    shift_x = 0.0 if sx == 0 else (-sx) * (cell_half_x + grid_half_x)
+    shift_y = 0.0 if sy == 0 else (-sy) * (cell_half_y + grid_half_y)
+    return fc.Vector(shift_x, shift_y, 0)
+
+
 def _build_filler_ring_shape(
     params: BaseplateParams,
     geometry: GridfinityLayoutGeometry,
@@ -212,18 +277,70 @@ def _build_filler_ring_shape(
     bottom_on = params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
     top_on = params.fillers.top_enabled and float(params.fillers.top_width) > 0
 
-    cache: dict[tuple[float, float], Part.Shape] = {}
+    cache: dict[tuple[float, float, bool, bool, bool, bool], Part.Shape] = {}
+    spring_slots = None
+    if options.include_snap_springs and params.click_springs.enabled:
+        spring_slots = feat.make_click_spring_shape_slots(
+            params.fundamentals,
+            params.core,
+            params.click_springs,
+        )
 
-    def proto(width: float, height: float) -> Part.Shape:
-        key = (round(width, 6), round(height, 6))
+    def proto(
+        width: float,
+        height: float,
+        *,
+        leftmost: bool,
+        rightmost: bool,
+        bottommost: bool,
+        topmost: bool,
+    ) -> Part.Shape:
+        key = (
+            round(width, 6),
+            round(height, 6),
+            leftmost,
+            rightmost,
+            bottommost,
+            topmost,
+        )
         if key not in cache:
-            cache[key] = _build_filler_cell_shape(
+            cell = _build_filler_cell_shape(
                 params,
                 width,
                 height,
                 options,
                 include_springs=False,
             )
+            if spring_slots is not None:
+                align_shift = _filler_alignment_shift(
+                    params,
+                    leftmost=leftmost,
+                    rightmost=rightmost,
+                    bottommost=bottommost,
+                    topmost=topmost,
+                    target_cell_width=width,
+                    target_cell_height=height,
+                )
+                cell.translate(align_shift)
+                mask = _filler_spring_mask(
+                    params,
+                    leftmost=leftmost,
+                    rightmost=rightmost,
+                    bottommost=bottommost,
+                    topmost=topmost,
+                    target_cell_width=width,
+                    target_cell_height=height,
+                )
+                cell = feat.apply_click_spring_slots_to_cell(
+                    cell,
+                    params.fundamentals,
+                    params.core,
+                    params.click_springs,
+                    spring_slots,
+                    mask,
+                )
+                cell.translate(fc.Vector(-align_shift.x, -align_shift.y, 0))
+            cache[key] = cell
         return cache[key]
 
     def center(ix: int, iy: int) -> fc.Vector:
@@ -236,28 +353,56 @@ def _build_filler_ring_shape(
     if left_on:
         width = geometry.x_lines[1] - geometry.x_lines[0]
         height = geometry.y_lines[2] - geometry.y_lines[1]
-        left_proto = proto(width, height)
+        left_proto = proto(
+            width,
+            height,
+            leftmost=True,
+            rightmost=False,
+            bottommost=False,
+            topmost=False,
+        )
         vectors = [center(0, iy) for iy in range(1, ny + 1)]
         pieces.append(utils.copy_and_translate(left_proto, vectors))
 
     if right_on:
         width = geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1]
         height = geometry.y_lines[2] - geometry.y_lines[1]
-        right_proto = proto(width, height)
+        right_proto = proto(
+            width,
+            height,
+            leftmost=False,
+            rightmost=True,
+            bottommost=False,
+            topmost=False,
+        )
         vectors = [center(nx + 1, iy) for iy in range(1, ny + 1)]
         pieces.append(utils.copy_and_translate(right_proto, vectors))
 
     if bottom_on:
         width = geometry.x_lines[2] - geometry.x_lines[1]
         height = geometry.y_lines[1] - geometry.y_lines[0]
-        bottom_proto = proto(width, height)
+        bottom_proto = proto(
+            width,
+            height,
+            leftmost=False,
+            rightmost=False,
+            bottommost=True,
+            topmost=False,
+        )
         vectors = [center(ix, 0) for ix in range(1, nx + 1)]
         pieces.append(utils.copy_and_translate(bottom_proto, vectors))
 
     if top_on:
         width = geometry.x_lines[2] - geometry.x_lines[1]
         height = geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1]
-        top_proto = proto(width, height)
+        top_proto = proto(
+            width,
+            height,
+            leftmost=False,
+            rightmost=False,
+            bottommost=False,
+            topmost=True,
+        )
         vectors = [center(ix, ny + 1) for ix in range(1, nx + 1)]
         pieces.append(utils.copy_and_translate(top_proto, vectors))
 
@@ -265,6 +410,10 @@ def _build_filler_ring_shape(
         corner = proto(
             geometry.x_lines[1] - geometry.x_lines[0],
             geometry.y_lines[1] - geometry.y_lines[0],
+            leftmost=True,
+            rightmost=False,
+            bottommost=True,
+            topmost=False,
         ).copy()
         corner.translate(center(0, 0))
         pieces.append(corner)
@@ -272,6 +421,10 @@ def _build_filler_ring_shape(
         corner = proto(
             geometry.x_lines[1] - geometry.x_lines[0],
             geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
+            leftmost=True,
+            rightmost=False,
+            bottommost=False,
+            topmost=True,
         ).copy()
         corner.translate(center(0, ny + 1))
         pieces.append(corner)
@@ -279,6 +432,10 @@ def _build_filler_ring_shape(
         corner = proto(
             geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
             geometry.y_lines[1] - geometry.y_lines[0],
+            leftmost=False,
+            rightmost=True,
+            bottommost=True,
+            topmost=False,
         ).copy()
         corner.translate(center(nx + 1, 0))
         pieces.append(corner)
@@ -286,6 +443,10 @@ def _build_filler_ring_shape(
         corner = proto(
             geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
             geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
+            leftmost=False,
+            rightmost=True,
+            bottommost=False,
+            topmost=True,
         ).copy()
         corner.translate(center(nx + 1, ny + 1))
         pieces.append(corner)
