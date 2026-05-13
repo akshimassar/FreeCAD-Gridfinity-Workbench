@@ -176,6 +176,30 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
                 f"(max half-length {_fmt_mm(max_half)})",
             )
 
+    if params.junction_screws.enabled:
+        screw_d = float(params.junction_screws.screw_diameter)
+        counterbore_d = float(params.junction_screws.counterbore_diameter)
+        counterbore_depth = float(params.junction_screws.counterbore_depth)
+        if not screw_d > 0:
+            add_error("junction_screw_diameter", f"Must be > {_fmt_mm(0)}")
+        if not counterbore_d > 0:
+            add_error("junction_counterbore_diameter", f"Must be > {_fmt_mm(0)}")
+        if not counterbore_depth > 0:
+            add_error("junction_counterbore_depth", f"Must be > {_fmt_mm(0)}")
+        if not counterbore_d > screw_d:
+            add_error(
+                "junction_counterbore_diameter",
+                f"Must be greater than screw diameter ({_fmt_mm(screw_d)})",
+            )
+
+    if params.clip_cutouts.enabled:
+        clip_length = float(params.clip_cutouts.clip_length)
+        max_clip = 2 * float(params.fundamentals.base_profile_main_half_width)
+        if not clip_length > 0:
+            add_error("clip_length", f"Must be > {_fmt_mm(0)}")
+        if not clip_length < max_clip:
+            add_error("clip_length", f"Must be < {_fmt_mm(max_clip)}")
+
     x_grid_size = float(params.fundamentals.x_grid_size)
     y_grid_size = float(params.fundamentals.y_grid_size)
 
