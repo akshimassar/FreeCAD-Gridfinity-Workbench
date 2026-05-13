@@ -213,23 +213,17 @@ def _filler_spring_mask(
 ) -> feat.SpringSlotMask:
     mask = feat.SpringSlotMask.all_true()
 
-    left_side = [[True, False], [True, False]]
-    right_side = [[False, True], [False, True]]
-    bottom_side = [[True, True], [False, False]]
-    top_side = [[False, False], [True, True]]
-
-    if leftmost:
-        mask = mask.with_vertical_disabled(left_side)
-        mask = mask.with_horizontal_disabled(left_side)
-    if rightmost:
-        mask = mask.with_vertical_disabled(right_side)
-        mask = mask.with_horizontal_disabled(right_side)
-    if bottommost:
-        mask = mask.with_vertical_disabled(bottom_side)
-        mask = mask.with_horizontal_disabled(bottom_side)
-    if topmost:
-        mask = mask.with_vertical_disabled(top_side)
-        mask = mask.with_horizontal_disabled(top_side)
+    side_masks = [
+        (leftmost, [[True, False], [True, False]]),
+        (rightmost, [[False, True], [False, True]]),
+        (bottommost, [[True, True], [False, False]]),
+        (topmost, [[False, False], [True, True]]),
+    ]
+    for enabled, side_mask in side_masks:
+        if not enabled:
+            continue
+        mask = mask.with_vertical_disabled(side_mask)
+        mask = mask.with_horizontal_disabled(side_mask)
 
     if target_cell_width < float(params.fundamentals.x_grid_size) / 2:
         mask = mask.with_all_horizontal_disabled()
@@ -350,105 +344,99 @@ def _build_filler_ring_shape(
 
     pieces: list[Part.Shape] = []
 
-    if left_on:
-        width = geometry.x_lines[1] - geometry.x_lines[0]
-        height = geometry.y_lines[2] - geometry.y_lines[1]
-        left_proto = proto(
-            width,
-            height,
-            leftmost=True,
-            rightmost=False,
-            bottommost=False,
-            topmost=False,
-        )
-        vectors = [center(0, iy) for iy in range(1, ny + 1)]
-        pieces.append(utils.copy_and_translate(left_proto, vectors))
+    side_specs = [
+        {
+            "enabled": left_on,
+            "width": geometry.x_lines[1] - geometry.x_lines[0],
+            "height": geometry.y_lines[2] - geometry.y_lines[1],
+            "flags": (True, False, False, False),
+            "vectors": [center(0, iy) for iy in range(1, ny + 1)],
+        },
+        {
+            "enabled": right_on,
+            "width": geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
+            "height": geometry.y_lines[2] - geometry.y_lines[1],
+            "flags": (False, True, False, False),
+            "vectors": [center(nx + 1, iy) for iy in range(1, ny + 1)],
+        },
+        {
+            "enabled": bottom_on,
+            "width": geometry.x_lines[2] - geometry.x_lines[1],
+            "height": geometry.y_lines[1] - geometry.y_lines[0],
+            "flags": (False, False, True, False),
+            "vectors": [center(ix, 0) for ix in range(1, nx + 1)],
+        },
+        {
+            "enabled": top_on,
+            "width": geometry.x_lines[2] - geometry.x_lines[1],
+            "height": geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
+            "flags": (False, False, False, True),
+            "vectors": [center(ix, ny + 1) for ix in range(1, nx + 1)],
+        },
+    ]
 
-    if right_on:
-        width = geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1]
-        height = geometry.y_lines[2] - geometry.y_lines[1]
-        right_proto = proto(
-            width,
-            height,
-            leftmost=False,
-            rightmost=True,
-            bottommost=False,
-            topmost=False,
+    for spec in side_specs:
+        if not spec["enabled"]:
+            continue
+        leftmost, rightmost, bottommost, topmost = spec["flags"]
+        side_proto = proto(
+            spec["width"],
+            spec["height"],
+            leftmost=leftmost,
+            rightmost=rightmost,
+            bottommost=bottommost,
+            topmost=topmost,
         )
-        vectors = [center(nx + 1, iy) for iy in range(1, ny + 1)]
-        pieces.append(utils.copy_and_translate(right_proto, vectors))
+        pieces.append(utils.copy_and_translate(side_proto, spec["vectors"]))
 
-    if bottom_on:
-        width = geometry.x_lines[2] - geometry.x_lines[1]
-        height = geometry.y_lines[1] - geometry.y_lines[0]
-        bottom_proto = proto(
-            width,
-            height,
-            leftmost=False,
-            rightmost=False,
-            bottommost=True,
-            topmost=False,
-        )
-        vectors = [center(ix, 0) for ix in range(1, nx + 1)]
-        pieces.append(utils.copy_and_translate(bottom_proto, vectors))
+    corner_specs = [
+        {
+            "enabled": left_on and bottom_on,
+            "ix": 0,
+            "iy": 0,
+            "width": geometry.x_lines[1] - geometry.x_lines[0],
+            "height": geometry.y_lines[1] - geometry.y_lines[0],
+            "flags": (True, False, True, False),
+        },
+        {
+            "enabled": left_on and top_on,
+            "ix": 0,
+            "iy": ny + 1,
+            "width": geometry.x_lines[1] - geometry.x_lines[0],
+            "height": geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
+            "flags": (True, False, False, True),
+        },
+        {
+            "enabled": right_on and bottom_on,
+            "ix": nx + 1,
+            "iy": 0,
+            "width": geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
+            "height": geometry.y_lines[1] - geometry.y_lines[0],
+            "flags": (False, True, True, False),
+        },
+        {
+            "enabled": right_on and top_on,
+            "ix": nx + 1,
+            "iy": ny + 1,
+            "width": geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
+            "height": geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
+            "flags": (False, True, False, True),
+        },
+    ]
 
-    if top_on:
-        width = geometry.x_lines[2] - geometry.x_lines[1]
-        height = geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1]
-        top_proto = proto(
-            width,
-            height,
-            leftmost=False,
-            rightmost=False,
-            bottommost=False,
-            topmost=True,
-        )
-        vectors = [center(ix, ny + 1) for ix in range(1, nx + 1)]
-        pieces.append(utils.copy_and_translate(top_proto, vectors))
-
-    if left_on and bottom_on:
+    for spec in corner_specs:
+        if not spec["enabled"]:
+            continue
+        leftmost, rightmost, bottommost, topmost = spec["flags"]
         corner = proto(
-            geometry.x_lines[1] - geometry.x_lines[0],
-            geometry.y_lines[1] - geometry.y_lines[0],
-            leftmost=True,
-            rightmost=False,
-            bottommost=True,
-            topmost=False,
+            spec["width"],
+            spec["height"],
+            leftmost=leftmost,
+            rightmost=rightmost,
+            bottommost=bottommost,
+            topmost=topmost,
         ).copy()
-        corner.translate(center(0, 0))
-        pieces.append(corner)
-    if left_on and top_on:
-        corner = proto(
-            geometry.x_lines[1] - geometry.x_lines[0],
-            geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
-            leftmost=True,
-            rightmost=False,
-            bottommost=False,
-            topmost=True,
-        ).copy()
-        corner.translate(center(0, ny + 1))
-        pieces.append(corner)
-    if right_on and bottom_on:
-        corner = proto(
-            geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
-            geometry.y_lines[1] - geometry.y_lines[0],
-            leftmost=False,
-            rightmost=True,
-            bottommost=True,
-            topmost=False,
-        ).copy()
-        corner.translate(center(nx + 1, 0))
-        pieces.append(corner)
-    if right_on and top_on:
-        corner = proto(
-            geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
-            geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
-            leftmost=False,
-            rightmost=True,
-            bottommost=False,
-            topmost=True,
-        ).copy()
-        corner.translate(center(nx + 1, ny + 1))
+        corner.translate(center(spec["ix"], spec["iy"]))
         pieces.append(corner)
 
     if not pieces:
