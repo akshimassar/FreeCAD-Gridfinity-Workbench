@@ -193,7 +193,9 @@ def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict
     }
 
 
-def _build_baseplate_section(layout: QVBoxLayout, *, include_clearance: bool) -> dict[str, QWidget]:
+def _build_baseplate_section(
+    layout: QVBoxLayout, *, include_clearance: bool, include_filler: bool
+) -> dict[str, QWidget]:
     layout.addWidget(_section_label("Baseplate"))
     form = QFormLayout()
     form.setContentsMargins(20, 0, 0, 0)
@@ -274,6 +276,49 @@ def _build_baseplate_section(layout: QVBoxLayout, *, include_clearance: bool) ->
     clip_form.addRow("Clip length", clip_length)
     layout.addLayout(clip_form)
     controls.update({"clip_cutouts_enabled": clip_cutouts_enabled, "clip_length": clip_length})
+
+    if include_filler:
+        layout.addWidget(_section_label("Filler strips", indent_px=20))
+        filler_form = QFormLayout()
+        filler_form.setContentsMargins(40, 0, 0, 0)
+
+        filler_right_enabled = QCheckBox()
+        filler_right_enabled.setChecked(False)
+        filler_form.addRow("Right", filler_right_enabled)
+        filler_right_width = _mm_spinbox(30.0, maximum=1000.0)
+        filler_form.addRow("Right width", filler_right_width)
+
+        filler_left_enabled = QCheckBox()
+        filler_left_enabled.setChecked(False)
+        filler_form.addRow("Left", filler_left_enabled)
+        filler_left_width = _mm_spinbox(30.0, maximum=1000.0)
+        filler_form.addRow("Left width", filler_left_width)
+
+        filler_top_enabled = QCheckBox()
+        filler_top_enabled.setChecked(False)
+        filler_form.addRow("Top", filler_top_enabled)
+        filler_top_width = _mm_spinbox(30.0, maximum=1000.0)
+        filler_form.addRow("Top width", filler_top_width)
+
+        filler_bottom_enabled = QCheckBox()
+        filler_bottom_enabled.setChecked(False)
+        filler_form.addRow("Bottom", filler_bottom_enabled)
+        filler_bottom_width = _mm_spinbox(30.0, maximum=1000.0)
+        filler_form.addRow("Bottom width", filler_bottom_width)
+
+        layout.addLayout(filler_form)
+        controls.update(
+            {
+                "filler_right_enabled": filler_right_enabled,
+                "filler_right_width": filler_right_width,
+                "filler_left_enabled": filler_left_enabled,
+                "filler_left_width": filler_left_width,
+                "filler_top_enabled": filler_top_enabled,
+                "filler_top_width": filler_top_width,
+                "filler_bottom_enabled": filler_bottom_enabled,
+                "filler_bottom_width": filler_bottom_width,
+            }
+        )
     return controls
 
 
@@ -398,7 +443,9 @@ class CreateBaseplateTaskPanel:
         controls: dict[str, QWidget] = {}
         controls.update(_build_size_section(layout))
         controls.update(_build_fundamentals_section(layout, show_note=False))
-        controls.update(_build_baseplate_section(layout, include_clearance=True))
+        controls.update(
+            _build_baseplate_section(layout, include_clearance=True, include_filler=True)
+        )
         for key, widget in controls.items():
             setattr(self, key, widget)
 
@@ -450,6 +497,14 @@ class CreateBaseplateTaskPanel:
         self.junction_counterbore_depth.setValue(params.junction_counterbore_depth)
         self.clip_cutouts_enabled.setChecked(params.clip_cutouts_enabled)
         self.clip_length.setValue(params.clip_length)
+        self.filler_right_enabled.setChecked(params.filler_right_enabled)
+        self.filler_right_width.setValue(params.filler_right_width)
+        self.filler_left_enabled.setChecked(params.filler_left_enabled)
+        self.filler_left_width.setValue(params.filler_left_width)
+        self.filler_top_enabled.setChecked(params.filler_top_enabled)
+        self.filler_top_width.setValue(params.filler_top_width)
+        self.filler_bottom_enabled.setChecked(params.filler_bottom_enabled)
+        self.filler_bottom_width.setValue(params.filler_bottom_width)
 
     def _params_from_controls(self, *, preview_mode: bool) -> BaseplateParams:
         return BaseplateParams(
@@ -473,6 +528,14 @@ class CreateBaseplateTaskPanel:
             junction_counterbore_depth=float(self.junction_counterbore_depth.value()),
             clip_cutouts_enabled=self.clip_cutouts_enabled.isChecked(),
             clip_length=float(self.clip_length.value()),
+            filler_right_enabled=self.filler_right_enabled.isChecked(),
+            filler_right_width=float(self.filler_right_width.value()),
+            filler_left_enabled=self.filler_left_enabled.isChecked(),
+            filler_left_width=float(self.filler_left_width.value()),
+            filler_top_enabled=self.filler_top_enabled.isChecked(),
+            filler_top_width=float(self.filler_top_width.value()),
+            filler_bottom_enabled=self.filler_bottom_enabled.isChecked(),
+            filler_bottom_width=float(self.filler_bottom_width.value()),
         )
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> None:
@@ -529,6 +592,14 @@ class CreateBaseplateTaskPanel:
             self.junction_counterbore_depth,
             self.clip_cutouts_enabled,
             self.clip_length,
+            self.filler_right_enabled,
+            self.filler_right_width,
+            self.filler_left_enabled,
+            self.filler_left_width,
+            self.filler_top_enabled,
+            self.filler_top_width,
+            self.filler_bottom_enabled,
+            self.filler_bottom_width,
         ]
         for control in controls:
             if isinstance(control, (QDoubleSpinBox, QSpinBox)):
@@ -613,7 +684,9 @@ class GridfinitySettingsTaskPanel:
         layout = QVBoxLayout(self.form)
         controls: dict[str, QWidget] = {}
         controls.update(_build_fundamentals_section(layout, show_note=True))
-        controls.update(_build_baseplate_section(layout, include_clearance=False))
+        controls.update(
+            _build_baseplate_section(layout, include_clearance=False, include_filler=False)
+        )
         controls.update(_build_bin_section(layout))
         for key, widget in controls.items():
             setattr(self, key, widget)
@@ -698,7 +771,6 @@ class GridfinitySettingsTaskPanel:
         defaults.junction_counterbore_depth = self.junction_counterbore_depth.value()
         defaults.clip_cutouts_enabled = self.clip_cutouts_enabled.isChecked()
         defaults.clip_length = self.clip_length.value()
-
         defaults.save()
         fcg.Control.closeDialog()
         return True

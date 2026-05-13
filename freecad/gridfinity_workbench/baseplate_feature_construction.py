@@ -12,7 +12,7 @@ from . import clip_profiles
 from . import const, utils
 from . import magnet_hole as magnet_hole_module
 from .settings import defaults
-from .utils import GridfinityLayout
+from .utils import GridfinityLayout, GridfinityLayoutGeometry
 
 
 def magnet_holes_properties(obj: fc.DocumentObject) -> None:
@@ -347,6 +347,58 @@ def clip_cutouts_properties(obj: fc.DocumentObject) -> None:
         "Length of clip cutout along X <br> <br> default = 3 mm",
     ).ClipLength = defaults.clip_length
 
+    obj.addProperty(
+        "App::PropertyBool",
+        "FillerRightEnabled",
+        "GridfinityNonStandard",
+        "Enable filler strip on +X side",
+    ).FillerRightEnabled = False
+    obj.addProperty(
+        "App::PropertyLength",
+        "FillerRightWidth",
+        "GridfinityNonStandard",
+        "Width of filler strip on +X side <br> <br> default = 30 mm",
+    ).FillerRightWidth = 30
+
+    obj.addProperty(
+        "App::PropertyBool",
+        "FillerLeftEnabled",
+        "GridfinityNonStandard",
+        "Enable filler strip on -X side",
+    ).FillerLeftEnabled = False
+    obj.addProperty(
+        "App::PropertyLength",
+        "FillerLeftWidth",
+        "GridfinityNonStandard",
+        "Width of filler strip on -X side <br> <br> default = 30 mm",
+    ).FillerLeftWidth = 30
+
+    obj.addProperty(
+        "App::PropertyBool",
+        "FillerTopEnabled",
+        "GridfinityNonStandard",
+        "Enable filler strip on +Y side",
+    ).FillerTopEnabled = False
+    obj.addProperty(
+        "App::PropertyLength",
+        "FillerTopWidth",
+        "GridfinityNonStandard",
+        "Width of filler strip on +Y side <br> <br> default = 30 mm",
+    ).FillerTopWidth = 30
+
+    obj.addProperty(
+        "App::PropertyBool",
+        "FillerBottomEnabled",
+        "GridfinityNonStandard",
+        "Enable filler strip on -Y side",
+    ).FillerBottomEnabled = False
+    obj.addProperty(
+        "App::PropertyLength",
+        "FillerBottomWidth",
+        "GridfinityNonStandard",
+        "Width of filler strip on -Y side <br> <br> default = 30 mm",
+    ).FillerBottomWidth = 30
+
 
 def _profile_wire_to_centered_x_solid(profile_wire: Part.Wire, length: float) -> Part.Shape:
     """Extrude profile along X and center it around x=0."""
@@ -355,7 +407,12 @@ def _profile_wire_to_centered_x_solid(profile_wire: Part.Wire, length: float) ->
     return solid
 
 
-def make_clip_cutouts(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.Shape | None:
+def make_clip_cutouts(
+    obj: fc.DocumentObject,
+    layout: GridfinityLayout,
+    *,
+    geometry: GridfinityLayoutGeometry | None = None,
+) -> Part.Shape | None:
     """Create clip cutouts at junctions with exactly 2 orthogonal neighbors."""
     unitmm = fc.Units.Quantity("1 mm")
 
@@ -366,8 +423,9 @@ def make_clip_cutouts(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.
             f"2*BaseProfileMainHalfWidth ({max_clip_length})"
         )
 
-    nx = len(layout)
-    ny = len(layout[0])
+    use_layout = geometry.layout if geometry is not None else layout
+    nx = len(use_layout)
+    ny = len(use_layout[0])
     clip_wire = clip_profiles.build_clip_cutout_profile_wire(
         obj.BaseProfileMainHalfWidth,
         obj.BaseProfileMainHeight,
@@ -386,7 +444,7 @@ def make_clip_cutouts(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.
 
     def cell(x: int, y: int) -> bool:
         if 0 <= x < nx and 0 <= y < ny:
-            return bool(layout[x][y])
+            return bool(use_layout[x][y])
         return False
 
     cutouts = []
@@ -406,8 +464,14 @@ def make_clip_cutouts(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.
             if not (horizontal or vertical):
                 continue
 
-            x = ix * obj.xGridSize - obj.xLocationOffset
-            y = iy * obj.yGridSize - obj.yLocationOffset
+            if geometry is None:
+                x = ix * obj.xGridSize - obj.xLocationOffset
+            else:
+                x = geometry.x_lines[ix] - obj.xLocationOffset
+            if geometry is None:
+                y = iy * obj.yGridSize - obj.yLocationOffset
+            else:
+                y = geometry.y_lines[iy] - obj.yLocationOffset
             if horizontal:
                 cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
             else:
@@ -419,15 +483,19 @@ def make_clip_cutouts(obj: fc.DocumentObject, layout: GridfinityLayout) -> Part.
 
 
 def make_junction_screw_holes(
-    obj: fc.DocumentObject, layout: GridfinityLayout
+    obj: fc.DocumentObject,
+    layout: GridfinityLayout,
+    *,
+    geometry: GridfinityLayoutGeometry | None = None,
 ) -> Part.Shape | None:
     """Create internal junction screw holes with top-side counterbores.
 
     For custom layouts, a junction hole is only created where all four surrounding
     cells exist in the layout.
     """
-    nx = len(layout)
-    ny = len(layout[0])
+    use_layout = geometry.layout if geometry is not None else layout
+    nx = len(use_layout)
+    ny = len(use_layout[0])
 
     through_depth = obj.TotalHeight + 0.1 * fc.Units.Quantity("1 mm")
     top_z = obj.TotalHeight
@@ -436,15 +504,21 @@ def make_junction_screw_holes(
     for ix in range(1, nx):
         for iy in range(1, ny):
             if not (
-                layout[ix - 1][iy - 1]
-                and layout[ix][iy - 1]
-                and layout[ix - 1][iy]
-                and layout[ix][iy]
+                use_layout[ix - 1][iy - 1]
+                and use_layout[ix][iy - 1]
+                and use_layout[ix - 1][iy]
+                and use_layout[ix][iy]
             ):
                 continue
 
-            x = ix * obj.xGridSize - obj.xLocationOffset
-            y = iy * obj.yGridSize - obj.yLocationOffset
+            if geometry is None:
+                x = ix * obj.xGridSize - obj.xLocationOffset
+            else:
+                x = geometry.x_lines[ix] - obj.xLocationOffset
+            if geometry is None:
+                y = iy * obj.yGridSize - obj.yLocationOffset
+            else:
+                y = geometry.y_lines[iy] - obj.yLocationOffset
 
             through = Part.makeCylinder(
                 obj.JunctionScrewDiameter / 2,

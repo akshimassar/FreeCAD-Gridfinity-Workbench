@@ -29,6 +29,14 @@ class BaseplateParams:
     junction_counterbore_depth: float
     clip_cutouts_enabled: bool
     clip_length: float
+    filler_right_enabled: bool
+    filler_right_width: float
+    filler_left_enabled: bool
+    filler_left_width: float
+    filler_top_enabled: bool
+    filler_top_width: float
+    filler_bottom_enabled: bool
+    filler_bottom_width: float
 
 
 def params_from_obj(obj: fc.DocumentObject) -> BaseplateParams:
@@ -53,6 +61,14 @@ def params_from_obj(obj: fc.DocumentObject) -> BaseplateParams:
         junction_counterbore_depth=float(obj.JunctionCounterboreDepth.Value),
         clip_cutouts_enabled=bool(obj.ClipCutoutsEnabled),
         clip_length=float(obj.ClipLength.Value),
+        filler_right_enabled=bool(obj.FillerRightEnabled),
+        filler_right_width=float(obj.FillerRightWidth.Value),
+        filler_left_enabled=bool(obj.FillerLeftEnabled),
+        filler_left_width=float(obj.FillerLeftWidth.Value),
+        filler_top_enabled=bool(obj.FillerTopEnabled),
+        filler_top_width=float(obj.FillerTopWidth.Value),
+        filler_bottom_enabled=bool(obj.FillerBottomEnabled),
+        filler_bottom_width=float(obj.FillerBottomWidth.Value),
     )
 
 
@@ -78,3 +94,11 @@ def apply_params_to_obj(obj: fc.DocumentObject, params: BaseplateParams) -> None
     obj.JunctionCounterboreDepth = params.junction_counterbore_depth
     obj.ClipCutoutsEnabled = params.clip_cutouts_enabled
     obj.ClipLength = params.clip_length
+    obj.FillerRightEnabled = params.filler_right_enabled
+    obj.FillerRightWidth = params.filler_right_width
+    obj.FillerLeftEnabled = params.filler_left_enabled
+    obj.FillerLeftWidth = params.filler_left_width
+    obj.FillerTopEnabled = params.filler_top_enabled
+    obj.FillerTopWidth = params.filler_top_width
+    obj.FillerBottomEnabled = params.filler_bottom_enabled
+    obj.FillerBottomWidth = params.filler_bottom_width

@@ -11,7 +11,7 @@ import Part
 from . import baseplate_feature_construction as baseplate_feat
 from . import feature_construction as feat
 from . import utils
-from .utils import GridfinityLayout
+from .utils import GridfinityLayout, GridfinityLayoutGeometry
 
 
 @dataclass
@@ -53,35 +53,230 @@ def build_single_cell_baseplate_core(
 def replicate_layout(
     shape: Part.Shape, obj: fc.DocumentObject, layout: GridfinityLayout
 ) -> Part.Shape:
-    t0 = time.perf_counter()
-    base_cell = shape.copy()
-    base_cell.translate(fc.Vector(obj.xGridSize / 2, obj.yGridSize / 2, 0))
-    t1 = time.perf_counter()
-    replicated = utils.copy_in_layout(base_cell, layout, obj.xGridSize, obj.yGridSize)
-    t2 = time.perf_counter()
-    # Intentionally skip global refine/removeSplitter here for performance.
-    t3 = time.perf_counter()
-    replicated = replicated.translate(
-        fc.Vector(-obj.xLocationOffset, -obj.yLocationOffset),
+    nx = len(layout)
+    ny = len(layout[0])
+    x_lines = _build_grid_lines([obj.xGridSize] * nx)
+    y_lines = _build_grid_lines([obj.yGridSize] * ny)
+    replicated = _replicate_layout_variable(shape, layout, x_lines, y_lines)
+    replicated = replicated.translate(fc.Vector(-obj.xLocationOffset, -obj.yLocationOffset, 0))
+    return replicated
+
+
+def add_filler_strips(
+    shape: Part.Shape,
+    obj: fc.DocumentObject,
+    layout: GridfinityLayout,
+    options: BaseplateBuildOptions,
+) -> tuple[Part.Shape, GridfinityLayoutGeometry]:
+    expanded = _build_expanded_layout_with_fillers(obj, layout)
+    has_fillers = len(expanded.layout) != len(layout) or len(expanded.layout[0]) != len(layout[0])
+    if not has_fillers:
+        return shape, expanded
+
+    nx = len(expanded.layout)
+    ny = len(expanded.layout[0])
+    ring_only: GridfinityLayout = [[False for _ in range(ny)] for _ in range(nx)]
+    for ix in range(nx):
+        for iy in range(ny):
+            if not expanded.layout[ix][iy]:
+                continue
+            if ix == 0 or iy == 0 or ix == nx - 1 or iy == ny - 1:
+                ring_only[ix][iy] = True
+
+    filler_shape = _replicate_layout_variable_generated(
+        obj,
+        ring_only,
+        expanded.x_lines,
+        expanded.y_lines,
+        options,
+        include_springs=False,
     )
-    t4 = time.perf_counter()
-    rounded = _apply_layout_corner_roundover(replicated, obj, layout)
-    t5 = time.perf_counter()
-    fc.Console.PrintMessage(
-        "[Gridfinity Timing] replicate "
-        f"copy={t2 - t1:.3f}s "
-        f"cleanup={t3 - t2:.3f}s "
-        f"offset={t4 - t3:.3f}s "
-        f"roundover={t5 - t4:.3f}s "
-        f"total={t5 - t0:.3f}s\n"
+    filler_shape = filler_shape.translate(fc.Vector(-obj.xLocationOffset, -obj.yLocationOffset, 0))
+    combined = shape.fuse(filler_shape).removeSplitter()
+    return combined, expanded
+
+
+def _build_expanded_layout_with_fillers(
+    obj: fc.DocumentObject,
+    layout: GridfinityLayout,
+) -> GridfinityLayoutGeometry:
+    nx = len(layout)
+    ny = len(layout[0])
+
+    left_w = (
+        obj.FillerLeftWidth if bool(getattr(obj, "FillerLeftEnabled", False)) else 0 * obj.xGridSize
     )
-    return rounded
+    right_w = (
+        obj.FillerRightWidth
+        if bool(getattr(obj, "FillerRightEnabled", False))
+        else 0 * obj.xGridSize
+    )
+    bottom_w = (
+        obj.FillerBottomWidth
+        if bool(getattr(obj, "FillerBottomEnabled", False))
+        else 0 * obj.yGridSize
+    )
+    top_w = (
+        obj.FillerTopWidth if bool(getattr(obj, "FillerTopEnabled", False)) else 0 * obj.yGridSize
+    )
+
+    use_fillers = any(float(v) > 0 for v in (left_w, right_w, bottom_w, top_w))
+    if not use_fillers:
+        return GridfinityLayoutGeometry(
+            layout=[[bool(layout[ix][iy]) for iy in range(ny)] for ix in range(nx)],
+            x_lines=_build_grid_lines([obj.xGridSize] * nx),
+            y_lines=_build_grid_lines([obj.yGridSize] * ny),
+        )
+
+    x_sizes: list[fc.Units.Quantity] = [left_w] + [obj.xGridSize] * nx + [right_w]
+    y_sizes: list[fc.Units.Quantity] = [bottom_w] + [obj.yGridSize] * ny + [top_w]
+
+    expanded: GridfinityLayout = [[False for _ in range(ny + 2)] for _ in range(nx + 2)]
+
+    for ix in range(nx):
+        for iy in range(ny):
+            expanded[ix + 1][iy + 1] = bool(layout[ix][iy])
+
+    if float(left_w) > 0:
+        for iy in range(1, ny + 1):
+            expanded[0][iy] = True
+    if float(right_w) > 0:
+        for iy in range(1, ny + 1):
+            expanded[nx + 1][iy] = True
+    if float(bottom_w) > 0:
+        for ix in range(1, nx + 1):
+            expanded[ix][0] = True
+    if float(top_w) > 0:
+        for ix in range(1, nx + 1):
+            expanded[ix][ny + 1] = True
+
+    if float(left_w) > 0 and float(bottom_w) > 0:
+        expanded[0][0] = True
+    if float(left_w) > 0 and float(top_w) > 0:
+        expanded[0][ny + 1] = True
+    if float(right_w) > 0 and float(bottom_w) > 0:
+        expanded[nx + 1][0] = True
+    if float(right_w) > 0 and float(top_w) > 0:
+        expanded[nx + 1][ny + 1] = True
+
+    return GridfinityLayoutGeometry(
+        layout=expanded,
+        x_lines=_build_grid_lines(x_sizes),
+        y_lines=_build_grid_lines(y_sizes),
+    )
+
+
+def _build_grid_lines(sizes: list[fc.Units.Quantity]) -> list[float]:
+    lines = [0.0]
+    total = 0.0
+    for size in sizes:
+        total += float(size)
+        lines.append(total)
+    return lines
+
+
+def _replicate_layout_variable(
+    base_shape: Part.Shape,
+    layout: GridfinityLayout,
+    x_lines: list[float],
+    y_lines: list[float],
+) -> Part.Shape:
+    nx = len(layout)
+    ny = len(layout[0])
+    pieces: list[Part.Shape] = []
+    if len(x_lines) < 2 or len(y_lines) < 2:
+        raise ValueError("Invalid grid lines")
+    base_w = x_lines[1] - x_lines[0]
+    base_h = y_lines[1] - y_lines[0]
+    for ix in range(nx):
+        cell_w = x_lines[ix + 1] - x_lines[ix]
+        cx = x_lines[ix] + cell_w / 2
+        for iy in range(ny):
+            if not layout[ix][iy]:
+                continue
+            cell_h = y_lines[iy + 1] - y_lines[iy]
+            cy = y_lines[iy] + cell_h / 2
+            scale = fc.Matrix()
+            scale.scale(cell_w / base_w, cell_h / base_h, 1)
+            cell_shape = base_shape.transformGeometry(scale)
+            cell_shape.translate(fc.Vector(cx, cy, 0))
+            pieces.append(cell_shape)
+
+    if not pieces:
+        raise ValueError("Layout is empty")
+    return pieces[0].multiFuse(pieces[1:]) if len(pieces) > 1 else pieces[0]
+
+
+def _build_cell_shape_for_size(
+    obj: fc.DocumentObject,
+    x_size: float,
+    y_size: float,
+    options: BaseplateBuildOptions,
+    *,
+    include_springs: bool,
+) -> Part.Shape:
+    old_x = obj.xGridSize
+    old_y = obj.yGridSize
+    try:
+        obj.xGridSize = x_size
+        obj.yGridSize = y_size
+        cell = build_single_cell_baseplate_core(obj, options)
+        if include_springs:
+            cell = apply_snap_springs(cell, obj, options)
+        return cell
+    finally:
+        obj.xGridSize = old_x
+        obj.yGridSize = old_y
+
+
+def _replicate_layout_variable_generated(
+    obj: fc.DocumentObject,
+    layout: GridfinityLayout,
+    x_lines: list[float],
+    y_lines: list[float],
+    options: BaseplateBuildOptions,
+    *,
+    include_springs: bool,
+) -> Part.Shape:
+    nx = len(layout)
+    ny = len(layout[0])
+    pieces: list[Part.Shape] = []
+    cache: dict[tuple[float, float, bool], Part.Shape] = {}
+
+    for ix in range(nx):
+        cell_w = x_lines[ix + 1] - x_lines[ix]
+        cx = x_lines[ix] + cell_w / 2
+        for iy in range(ny):
+            if not layout[ix][iy]:
+                continue
+            cell_h = y_lines[iy + 1] - y_lines[iy]
+            cy = y_lines[iy] + cell_h / 2
+
+            key = (round(cell_w, 6), round(cell_h, 6), include_springs)
+            if key not in cache:
+                cache[key] = _build_cell_shape_for_size(
+                    obj,
+                    cell_w,
+                    cell_h,
+                    options,
+                    include_springs=include_springs,
+                )
+
+            cell_shape = cache[key].copy()
+            cell_shape.translate(fc.Vector(cx, cy, 0))
+            pieces.append(cell_shape)
+
+    if not pieces:
+        raise ValueError("Layout is empty")
+    return pieces[0].multiFuse(pieces[1:]) if len(pieces) > 1 else pieces[0]
 
 
 def _apply_layout_corner_roundover(
     shape: Part.Shape,
     obj: fc.DocumentObject,
     layout: GridfinityLayout,
+    x_lines: list[float],
+    y_lines: list[float],
 ) -> Part.Shape:
     t0 = time.perf_counter()
     nx = len(layout)
@@ -103,8 +298,8 @@ def _apply_layout_corner_roundover(
             populated = sw + se + nw + ne
             if populated not in (1, 3):
                 continue
-            x = float(ix * obj.xGridSize - obj.xLocationOffset)
-            y = float(iy * obj.yGridSize - obj.yLocationOffset)
+            x = x_lines[ix] - float(obj.xLocationOffset)
+            y = y_lines[iy] - float(obj.yLocationOffset)
             corner_points[(x, y)] = populated
     t1 = time.perf_counter()
 
@@ -175,18 +370,26 @@ def apply_junction_screws(
 
 def make_post_replication_cutter(
     obj: fc.DocumentObject,
-    layout: GridfinityLayout,
+    geometry: GridfinityLayoutGeometry,
     options: BaseplateBuildOptions,
 ) -> Part.Shape | None:
     cutters: list[Part.Shape] = []
 
     if options.include_junction_screws:
-        junction_holes = baseplate_feat.make_junction_screw_holes(obj, layout)
+        junction_holes = baseplate_feat.make_junction_screw_holes(
+            obj,
+            geometry.layout,
+            geometry=geometry,
+        )
         if junction_holes is not None:
             cutters.append(junction_holes)
 
     if options.include_clip_cutouts:
-        clip_cutouts = baseplate_feat.make_clip_cutouts(obj, layout)
+        clip_cutouts = baseplate_feat.make_clip_cutouts(
+            obj,
+            geometry.layout,
+            geometry=geometry,
+        )
         if clip_cutouts is not None:
             cutters.append(clip_cutouts)
 
@@ -242,8 +445,20 @@ def build_simple_baseplate(
     shape = replicate_layout(shape, obj, layout)
     t3 = time.perf_counter()
 
+    shape, geometry = add_filler_strips(shape, obj, layout, options)
+    t3a = time.perf_counter()
+
+    shape = _apply_layout_corner_roundover(
+        shape,
+        obj,
+        geometry.layout,
+        geometry.x_lines,
+        geometry.y_lines,
+    )
+    t3b = time.perf_counter()
+
     t4 = time.perf_counter()
-    post_cutter = make_post_replication_cutter(obj, layout, options)
+    post_cutter = make_post_replication_cutter(obj, geometry, options)
     t5 = time.perf_counter()
     if post_cutter is not None:
         shape = shape.cut(post_cutter)
@@ -253,7 +468,9 @@ def build_simple_baseplate(
         "[Gridfinity Timing] baseplate "
         f"core={t1 - t0:.3f}s "
         f"springs={t2 - t1:.3f}s "
-        f"replicate_round={t3 - t2:.3f}s "
+        f"replicate={t3 - t2:.3f}s "
+        f"filler={t3a - t3:.3f}s "
+        f"roundover={t3b - t3a:.3f}s "
         f"build_cutter={t5 - t4:.3f}s "
         f"post_cut={t6 - t5:.3f}s "
         f"total={t6 - total_start:.3f}s\n"
