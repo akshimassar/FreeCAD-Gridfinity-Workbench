@@ -641,6 +641,19 @@ def build_simple_baseplate_from_params(
     t0 = time.perf_counter()
     nx = max(0, int(params.core.x_grid_count))
     ny = max(0, int(params.core.y_grid_count))
+
+    left_fill_present = params.fillers.left_enabled and float(params.fillers.left_width) > 0
+    right_fill_present = params.fillers.right_enabled and float(params.fillers.right_width) > 0
+    top_fill_present = params.fillers.top_enabled and float(params.fillers.top_width) > 0
+    bottom_fill_present = params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
+
+    if nx == 0 and ny == 0:
+        raise ValueError("X and Y grid units cannot both be 0")
+    if nx == 0 and not (left_fill_present or right_fill_present):
+        raise ValueError("X grid units = 0 requires Left or Right filler")
+    if ny == 0 and not (top_fill_present or bottom_fill_present):
+        raise ValueError("Y grid units = 0 requires Top or Bottom filler")
+
     if nx == 0 or ny == 0:
         empty_shape = Part.Shape()
         shape, geometry = add_filler_strips(empty_shape, params, layout, options)

@@ -947,6 +947,8 @@ class CreateBaseplateTaskPanel:
 
     def _install_inline_error_rows(self) -> None:
         field_keys = [
+            "x_grid_units",
+            "y_grid_units",
             "top_crop",
             "click_thickness",
             "click_length",

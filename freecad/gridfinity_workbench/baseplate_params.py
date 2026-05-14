@@ -202,6 +202,21 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
 
     x_grid_size = float(params.fundamentals.x_grid_size)
     y_grid_size = float(params.fundamentals.y_grid_size)
+    x_units = int(params.core.x_grid_count)
+    y_units = int(params.core.y_grid_count)
+
+    left_present = params.fillers.left_enabled and float(params.fillers.left_width) > 0
+    right_present = params.fillers.right_enabled and float(params.fillers.right_width) > 0
+    top_present = params.fillers.top_enabled and float(params.fillers.top_width) > 0
+    bottom_present = params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
+
+    if x_units == 0 and not (left_present or right_present):
+        add_error("x_grid_units", "X grid units = 0 requires Left or Right filler")
+    if y_units == 0 and not (top_present or bottom_present):
+        add_error("y_grid_units", "Y grid units = 0 requires Top or Bottom filler")
+    if x_units == 0 and y_units == 0:
+        add_error("x_grid_units", "X and Y grid units cannot both be 0")
+        add_error("y_grid_units", "X and Y grid units cannot both be 0")
 
     filler_checks = [
         (
