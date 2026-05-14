@@ -8,9 +8,9 @@ This Clickfinity variant is tuned for simpler, more reliable 3D printing with fe
 
 ![Clickfinity versions](clickfinity_versions.jpg)
 
-[Pre-generated baseplates and supports](https://www.printables.com/model/1714411)
+[Pre-generated baseplates and supports at printables.com](https://www.printables.com/model/1714411)
 
-[Connecting clip install tool](https://www.printables.com/model/1714350)
+[Connecting clip install tool at printables.com](https://www.printables.com/model/1714350)
 
 Previously generated objects are not supported. Input parameters were heavily reworked to provide stable, compatible sizing.
 
