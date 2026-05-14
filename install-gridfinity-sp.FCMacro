@@ -1,0 +1,110 @@
+"""Install or update Gridfinity Workbench from a ZIP URL.
+
+Usage:
+1) Open this file in FreeCAD Macro editor.
+2) Update ZIP_URL if you host a fork/release.
+3) Run macro.
+"""
+
+import datetime
+import os
+import shutil
+import tempfile
+import urllib.request
+import zipfile
+
+import FreeCAD as App
+
+
+# Replace this with your own release ZIP URL for best stability.
+# Example: https://github.com/<user>/<repo>/archive/refs/tags/v1.2.3.zip
+ZIP_URL = "https://github.com/akshimassar/FreeCAD-Gridfinity-Workbench/archive/refs/heads/master.zip"
+
+# Folder name inside FreeCAD Mod directory.
+ADDON_DIR_NAME = "Gridfinity"
+
+
+def _log(message):
+    App.Console.PrintMessage("[Gridfinity Installer] " + message + "\n")
+
+
+def _err(message):
+    App.Console.PrintError("[Gridfinity Installer] " + message + "\n")
+
+
+def _pick_source_root(extract_dir):
+    entries = [
+        os.path.join(extract_dir, name)
+        for name in os.listdir(extract_dir)
+        if os.path.isdir(os.path.join(extract_dir, name))
+    ]
+    if len(entries) == 1:
+        return entries[0]
+
+    for root in entries:
+        if os.path.exists(os.path.join(root, "package.xml")):
+            return root
+    raise RuntimeError("Could not find add-on root in extracted ZIP")
+
+
+def _validate_source(source_root):
+    expected = [
+        os.path.join(source_root, "package.xml"),
+        os.path.join(source_root, "freecad", "gridfinity_workbench", "init_gui.py"),
+    ]
+    missing = [path for path in expected if not os.path.exists(path)]
+    if missing:
+        raise RuntimeError("ZIP content does not look like Gridfinity workbench")
+
+
+def install_from_zip(zip_url, addon_dir_name):
+    user_data_dir = App.getUserAppDataDir()
+    mod_dir = os.path.join(user_data_dir, "Mod")
+    target_dir = os.path.join(mod_dir, addon_dir_name)
+    backup_dir = "{0}.bak-{1}".format(
+        target_dir,
+        datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
+    )
+
+    _log("User data dir: {0}".format(user_data_dir))
+    _log("Installing to: {0}".format(target_dir))
+
+    os.makedirs(mod_dir, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="gridfinity_installer_") as tmpdir:
+        zip_path = os.path.join(tmpdir, "addon.zip")
+        extract_dir = os.path.join(tmpdir, "extract")
+        os.makedirs(extract_dir, exist_ok=True)
+
+        _log("Downloading: {0}".format(zip_url))
+        urllib.request.urlretrieve(zip_url, zip_path)
+
+        _log("Extracting ZIP")
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(extract_dir)
+
+        source_root = _pick_source_root(extract_dir)
+        _validate_source(source_root)
+
+        if os.path.isdir(target_dir):
+            _log("Existing installation found; moving to backup")
+            shutil.move(target_dir, backup_dir)
+
+        try:
+            shutil.copytree(source_root, target_dir)
+        except Exception:
+            if os.path.isdir(target_dir):
+                shutil.rmtree(target_dir, ignore_errors=True)
+            if os.path.isdir(backup_dir):
+                shutil.move(backup_dir, target_dir)
+            raise
+
+    _log("Install complete")
+    _log("Restart FreeCAD to load the updated workbench")
+
+
+try:
+    install_from_zip(ZIP_URL, ADDON_DIR_NAME)
+except Exception as exc:
+    _err(str(exc))
+    raise
