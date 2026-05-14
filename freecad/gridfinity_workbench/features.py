@@ -8,6 +8,11 @@ from dataclasses import replace
 import FreeCAD as fc  # noqa: N813
 import Part
 
+try:
+    import FreeCADGui as fcg  # noqa: N813
+except ImportError:  # pragma: no cover
+    fcg = None
+
 from . import baseplate_feature_construction as baseplate_feat
 from . import baseplate_builder
 from . import clip_profiles
@@ -499,6 +504,16 @@ class DrawerBaseplate(FoundationGridfinity):
         pieces: list[Part.Shape] = []
         bed_w = float(obj.PrinterBedWidth)
         bed_d = float(obj.PrinterBedDepth)
+        plate_gap_x = 42.0
+        plate_gap_y = 42.0
+        total_pieces = k * m
+        built_pieces = 0
+        status_bar = None
+        if fc.GuiUp and fcg is not None:
+            try:
+                status_bar = fcg.getMainWindow().statusBar()
+            except Exception:
+                status_bar = None
 
         for iy in range(m):
             for ix in range(k):
@@ -544,14 +559,30 @@ class DrawerBaseplate(FoundationGridfinity):
                 bbox = shape.BoundBox
                 shape_center_x = (bbox.XMin + bbox.XMax) / 2
                 shape_center_y = (bbox.YMin + bbox.YMax) / 2
-                tile_center_x = (ix + 0.5) * bed_w
-                tile_center_y = (m - iy - 0.5) * bed_d
+                tile_center_x = (ix * (bed_w + plate_gap_x)) + (0.5 * bed_w)
+                tile_center_y = ((m - 1 - iy) * (bed_d + plate_gap_y)) + (0.5 * bed_d)
                 shape.translate(
                     fc.Vector(tile_center_x - shape_center_x, tile_center_y - shape_center_y, 0),
                 )
                 pieces.append(shape)
 
+                built_pieces += 1
+                progress_msg = (
+                    f"Drawer baseplate: built {built_pieces}/{total_pieces} ({piece_name})"
+                )
+                fc.Console.PrintMessage(f"[Gridfinity] {progress_msg}\n")
+                if status_bar is not None:
+                    status_bar.showMessage(progress_msg)
+                if fc.GuiUp and fcg is not None:
+                    try:
+                        fcg.updateGui()
+                    except Exception:
+                        pass
+
         obj.PieceNames = piece_names
+        if status_bar is not None:
+            # Use timeout so normal FreeCAD status updates (selection/hover/etc.) resume.
+            status_bar.showMessage("Drawer baseplate build complete", 2500)
         if not pieces:
             raise ValueError("No drawer baseplate pieces generated")
         return Part.makeCompound(pieces)
