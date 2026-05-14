@@ -15,6 +15,13 @@ from .baseplate_params import BaseplateParams, params_from_obj
 from .utils import GridfinityLayout, GridfinityLayoutGeometry
 
 
+def _layout_dims(layout: GridfinityLayout, params: BaseplateParams) -> tuple[int, int]:
+    nx = len(layout)
+    if nx == 0:
+        return 0, max(0, int(params.core.y_grid_count))
+    return nx, len(layout[0])
+
+
 def _matrix_not(mask: list[list[bool]]) -> list[list[bool]]:
     return [[not mask[x][y] for y in range(2)] for x in range(2)]
 
@@ -87,11 +94,14 @@ def add_filler_strips(
     options: BaseplateBuildOptions,
 ) -> tuple[Part.Shape, GridfinityLayoutGeometry]:
     expanded = _build_expanded_layout_with_fillers(params, layout)
-    has_fillers = len(expanded.layout) != len(layout) or len(expanded.layout[0]) != len(layout[0])
+    nx, ny = _layout_dims(layout, params)
+    has_fillers = len(expanded.layout) != nx or len(expanded.layout[0]) != ny
     if not has_fillers:
         return shape, expanded
 
     filler_shape = _build_filler_ring_shape(params, expanded, options)
+    if shape.isNull():
+        return filler_shape, expanded
     combined = shape.fuse(filler_shape).removeSplitter()
     return combined, expanded
 
@@ -100,8 +110,7 @@ def _build_expanded_layout_with_fillers(
     params: BaseplateParams,
     layout: GridfinityLayout,
 ) -> GridfinityLayoutGeometry:
-    nx = len(layout)
-    ny = len(layout[0])
+    nx, ny = _layout_dims(layout, params)
 
     left_w = (
         params.fillers.left_width
@@ -127,7 +136,9 @@ def _build_expanded_layout_with_fillers(
     use_fillers = any(float(v) > 0 for v in (left_w, right_w, bottom_w, top_w))
     if not use_fillers:
         return GridfinityLayoutGeometry(
-            layout=[[bool(layout[ix][iy]) for iy in range(ny)] for ix in range(nx)],
+            layout=[[bool(layout[ix][iy]) for iy in range(ny)] for ix in range(nx)]
+            if nx > 0
+            else [],
             x_lines=_build_grid_lines([params.fundamentals.x_grid_size] * nx),
             y_lines=_build_grid_lines([params.fundamentals.y_grid_size] * ny),
         )
@@ -628,6 +639,22 @@ def build_simple_baseplate_from_params(
     total_start = time.perf_counter()
 
     t0 = time.perf_counter()
+    nx = max(0, int(params.core.x_grid_count))
+    ny = max(0, int(params.core.y_grid_count))
+    if nx == 0 or ny == 0:
+        empty_shape = Part.Shape()
+        shape, geometry = add_filler_strips(empty_shape, params, layout, options)
+        if shape.isNull():
+            raise ValueError("No core cells and no fillers to build")
+        shape = _apply_layout_corner_roundover(
+            shape,
+            params,
+            geometry.layout,
+            geometry.x_lines,
+            geometry.y_lines,
+        )
+        return shape
+
     shape = build_single_cell_baseplate_core(params, options)
     t1 = time.perf_counter()
 

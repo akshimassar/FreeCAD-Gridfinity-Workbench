@@ -156,13 +156,13 @@ def _build_size_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     form.setContentsMargins(20, 0, 0, 0)
 
     x_grid_units = QSpinBox()
-    x_grid_units.setMinimum(1)
+    x_grid_units.setMinimum(0)
     x_grid_units.setMaximum(200)
     x_grid_units.setValue(2)
     form.addRow("X grid units", x_grid_units)
 
     y_grid_units = QSpinBox()
-    y_grid_units.setMinimum(1)
+    y_grid_units.setMinimum(0)
     y_grid_units.setMaximum(200)
     y_grid_units.setValue(2)
     form.addRow("Y grid units", y_grid_units)
