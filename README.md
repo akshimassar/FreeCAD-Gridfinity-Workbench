@@ -26,6 +26,8 @@ This is a work in progress, and breaking changes are likely.
 * Custom sized fillers added for baseplates
 * Working with FreeCAD 1.1 and FreeCAD Link
 
+![Dialog in FreeCAD](dialog.png)
+
 ## TODO
 
 * Incorporate magnets and screw holes into single design
