@@ -89,6 +89,9 @@ def install_from_zip(zip_url, addon_dir_name):
         if os.path.isdir(target_dir):
             _log("Existing installation found; moving to backup")
             shutil.move(target_dir, backup_dir)
+            disabled_marker = os.path.join(backup_dir, "ADDON_DISABLED")
+            with open(disabled_marker, "w", encoding="utf-8") as marker_file:
+                marker_file.write("Disabled by Gridfinity installer backup move\n")
 
         try:
             shutil.copytree(source_root, target_dir)
