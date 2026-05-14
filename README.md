@@ -25,6 +25,7 @@ This is a work in progress, and breaking changes are likely.
 * Support generation added for baseplate stacking
 * Custom sized fillers added for baseplates
 * Working with FreeCAD 1.1 and FreeCAD Link
+* Drawers filling with baseplates & printer bed splitting
 
 ![Dialog in FreeCAD](dialog.png)
 
