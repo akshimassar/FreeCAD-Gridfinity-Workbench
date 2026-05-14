@@ -14,7 +14,7 @@ from . import clip_profiles
 from . import check_version, const, grid_initial_layout, label_shelf, utils
 from . import feature_construction as feat
 from .baseplate_params import BaseplateParams, params_from_obj
-from .drawer_split import plan_axis_simulated_pieces
+from .drawer_split import plan_axis_split
 from .custom_shape_features import (
     clean_up_layout,
     custom_shape_solid,
@@ -441,7 +441,7 @@ class DrawerBaseplate(FoundationGridfinity):
         alignment: str,
         low_name: str,
         high_name: str,
-    ) -> tuple[list[list[str]], float, float]:
+    ) -> tuple[list, float, float]:
         if bed_mm < grid_mm:
             raise ValueError(f"{low_name}/{high_name} axis bed too small for one full grid cell")
 
@@ -457,12 +457,13 @@ class DrawerBaseplate(FoundationGridfinity):
             low_fill = remainder / 2
             high_fill = remainder - low_fill
 
-        chunks = plan_axis_simulated_pieces(
-            cell_count=cell_count,
-            bed_cells_capacity=int(bed_mm // grid_mm),
-            low_filler_slot=low_fill > 0,
-            high_filler_slot=high_fill > 0,
-            start_from_high=True,
+        chunks = plan_axis_split(
+            length_mm=length_mm,
+            grid_mm=grid_mm,
+            bed_mm=bed_mm,
+            alignment="low"
+            if alignment == low_name
+            else ("high" if alignment == high_name else "both"),
         )
         return chunks, low_fill, high_fill
 
@@ -475,7 +476,7 @@ class DrawerBaseplate(FoundationGridfinity):
         )
 
         grid_mm = float(params.fundamentals.x_grid_size)
-        x_chunks, x_low_fill, x_high_fill = self._axis_split(
+        x_chunks, _x_low_fill, _x_high_fill = self._axis_split(
             length_mm=float(obj.DrawerWidth),
             bed_mm=float(obj.PrinterBedWidth),
             grid_mm=grid_mm,
@@ -483,7 +484,7 @@ class DrawerBaseplate(FoundationGridfinity):
             low_name="Left",
             high_name="Right",
         )
-        y_chunks, y_low_fill, y_high_fill = self._axis_split(
+        y_chunks, _y_low_fill, _y_high_fill = self._axis_split(
             length_mm=float(obj.DrawerDepth),
             bed_mm=float(obj.PrinterBedDepth),
             grid_mm=grid_mm,
@@ -504,17 +505,20 @@ class DrawerBaseplate(FoundationGridfinity):
                 piece_name = f"X{ix}_Y{iy}"
                 piece_names.append(piece_name)
                 x_chunk = x_chunks[ix]
-                y_chunk = y_chunks[iy]
+                # Matrix rows are traversed top->down, while axis split output is low->high.
+                # For Y axis this means bottom->top, so reverse mapping is required here.
+                y_chunk = y_chunks[m - 1 - iy]
 
-                x_units = x_chunk.count("C")
-                y_units = y_chunk.count("C")
+                x_units = x_chunk.cells
+                y_units = y_chunk.cells
                 if x_units < 1 or y_units < 1:
                     continue
 
-                left_fill = x_low_fill if ix == 0 else 0.0
-                right_fill = x_high_fill if ix == k - 1 else 0.0
-                bottom_fill = y_low_fill if iy == m - 1 else 0.0
-                top_fill = y_high_fill if iy == 0 else 0.0
+                # Filler ownership comes from splitter output; do not recompute by row/column index.
+                left_fill = x_chunk.low_fill_mm
+                right_fill = x_chunk.high_fill_mm
+                bottom_fill = y_chunk.low_fill_mm
+                top_fill = y_chunk.high_fill_mm
 
                 piece_params: BaseplateParams = replace(
                     params,

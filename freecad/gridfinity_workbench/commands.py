@@ -27,7 +27,7 @@ from PySide.QtWidgets import (
 )
 
 from . import custom_shape, features, utils
-from .drawer_split import plan_axis_simulated_pieces
+from .drawer_split import plan_axis_split
 from .baseplate_params import (
     BaseplateParams,
     apply_params_to_obj,
@@ -86,7 +86,10 @@ class ViewProviderGridfinity:
         if obj is None:
             return False
         if not isinstance(getattr(obj, "Proxy", None), features.Baseplate):
-            return False
+            if not isinstance(getattr(obj, "Proxy", None), features.DrawerBaseplate):
+                return False
+            fcg.Control.showDialog(CreateDrawerBaseplateTaskPanel(self.icon_path, target_obj=obj))
+            return True
         fcg.Control.showDialog(CreateBaseplateTaskPanel(self.icon_path, target_obj=obj))
         return True
 
@@ -451,10 +454,13 @@ class CreateDrawerBaseplate(BaseCommand):
 class CreateDrawerBaseplateTaskPanel:
     """Task panel for planning drawer baseplate splits (no geometry yet)."""
 
-    def __init__(self, pixmap: Path | str) -> None:
+    def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
         self._pixmap = pixmap
+        self._target_obj = target_obj
         self.form = QWidget()
-        self.form.setWindowTitle("Create Drawer Baseplate")
+        self.form.setWindowTitle(
+            "Edit Drawer Baseplate" if target_obj is not None else "Create Drawer Baseplate"
+        )
 
         layout = QVBoxLayout(self.form)
 
@@ -500,7 +506,60 @@ class CreateDrawerBaseplateTaskPanel:
         layout.addWidget(self.summary)
 
         self._connect_signals()
+        if self._target_obj is not None:
+            self._load_from_object(self._target_obj)
         self._refresh_summary()
+
+    def _load_from_object(self, obj: fc.DocumentObject) -> None:
+        if hasattr(obj, "DrawerWidth"):
+            self.drawer_width.setValue(float(obj.DrawerWidth))
+        if hasattr(obj, "DrawerDepth"):
+            self.drawer_depth.setValue(float(obj.DrawerDepth))
+        if hasattr(obj, "WidthFillerAlignment"):
+            self.width_alignment.setCurrentText(str(obj.WidthFillerAlignment))
+        if hasattr(obj, "DepthFillerAlignment"):
+            self.depth_alignment.setCurrentText(str(obj.DepthFillerAlignment))
+        if hasattr(obj, "PrinterBedWidth"):
+            self.bed_width.setValue(float(obj.PrinterBedWidth))
+        if hasattr(obj, "PrinterBedDepth"):
+            self.bed_depth.setValue(float(obj.PrinterBedDepth))
+
+        if hasattr(obj, "xGridSize"):
+            self.grid_size.setValue(float(obj.xGridSize))
+        if hasattr(obj, "BaseProfileMainHalfWidth"):
+            self.base_profile_main_half_width.setValue(float(obj.BaseProfileMainHalfWidth))
+        if hasattr(obj, "BaseProfileMainHeight"):
+            self.base_profile_main_height.setValue(float(obj.BaseProfileMainHeight))
+        if hasattr(obj, "BinOuterRadius"):
+            self.bin_outer_radius.setValue(float(obj.BinOuterRadius))
+        if hasattr(obj, "BaseProfileLowerChamferEnabled"):
+            self.enable_lower_chamfer.setChecked(bool(obj.BaseProfileLowerChamferEnabled))
+        if hasattr(obj, "BaseProfileLowerChamferSize"):
+            self.base_profile_lower_chamfer_size.setValue(float(obj.BaseProfileLowerChamferSize))
+        if hasattr(obj, "BaseProfileTopCrop"):
+            self.top_crop.setValue(float(obj.BaseProfileTopCrop))
+        if hasattr(obj, "Clearance"):
+            self.clearance.setValue(float(obj.Clearance))
+        if hasattr(obj, "ClickSpringsEnabled"):
+            self.click_springs_enabled.setChecked(bool(obj.ClickSpringsEnabled))
+        if hasattr(obj, "ClickThickness"):
+            self.click_thickness.setValue(float(obj.ClickThickness))
+        if hasattr(obj, "ClickLength"):
+            self.click_length.setValue(float(obj.ClickLength))
+        if hasattr(obj, "ClickOffset"):
+            self.click_offset.setValue(float(obj.ClickOffset))
+        if hasattr(obj, "JunctionScrewHoles"):
+            self.junction_screw_holes.setChecked(bool(obj.JunctionScrewHoles))
+        if hasattr(obj, "JunctionScrewDiameter"):
+            self.junction_screw_diameter.setValue(float(obj.JunctionScrewDiameter))
+        if hasattr(obj, "JunctionCounterboreDiameter"):
+            self.junction_counterbore_diameter.setValue(float(obj.JunctionCounterboreDiameter))
+        if hasattr(obj, "JunctionCounterboreDepth"):
+            self.junction_counterbore_depth.setValue(float(obj.JunctionCounterboreDepth))
+        if hasattr(obj, "ClipCutoutsEnabled"):
+            self.clip_cutouts_enabled.setChecked(bool(obj.ClipCutoutsEnabled))
+        if hasattr(obj, "ClipLength"):
+            self.clip_length.setValue(float(obj.ClipLength))
 
     def getStandardButtons(self) -> int:  # noqa: N802
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -514,7 +573,7 @@ class CreateDrawerBaseplateTaskPanel:
         alignment: str,
         low_label: str,
         high_label: str,
-    ) -> tuple[list[list[str]], float, float]:
+    ) -> tuple[list[Any], float, float]:
         if bed_mm < grid_mm:
             raise ValueError(f"{low_label}/{high_label} axis bed too small for one full grid cell")
 
@@ -530,12 +589,13 @@ class CreateDrawerBaseplateTaskPanel:
             low_filler_mm = remainder / 2
             high_filler_mm = remainder - low_filler_mm
 
-        chunks = plan_axis_simulated_pieces(
-            cell_count=cell_count,
-            bed_cells_capacity=int(bed_mm // grid_mm),
-            low_filler_slot=low_filler_mm > 0,
-            high_filler_slot=high_filler_mm > 0,
-            start_from_high=True,
+        chunks = plan_axis_split(
+            length_mm=length_mm,
+            grid_mm=grid_mm,
+            bed_mm=bed_mm,
+            alignment="low"
+            if alignment == low_label
+            else ("high" if alignment == high_label else "both"),
         )
         return chunks, low_filler_mm, high_filler_mm
 
@@ -590,15 +650,14 @@ class CreateDrawerBaseplateTaskPanel:
     def _format_axis(
         self,
         *,
-        chunks: list[list[str]],
+        chunks: list[Any],
         grid_mm: float,
         low_filler_mm: float,
         high_filler_mm: float,
     ) -> str:
-        widths: list[float] = [chunk.count("C") * grid_mm for chunk in chunks]
-        if widths:
-            widths[0] += low_filler_mm
-            widths[-1] += high_filler_mm
+        widths: list[float] = [
+            chunk.cells * grid_mm + chunk.low_fill_mm + chunk.high_fill_mm for chunk in chunks
+        ]
         return ", ".join(f"{w:.2f}mm" for w in widths)
 
     def _refresh_summary(self) -> None:
@@ -670,11 +729,13 @@ class CreateDrawerBaseplateTaskPanel:
         ):
             return False
 
-        obj = utils.new_object("DrawerBaseplate")
-        if fc.GuiUp:
-            view_object: fcg.ViewProviderDocumentObject = obj.ViewObject
-            ViewProviderGridfinity(view_object, str(self._pixmap))
-        features.DrawerBaseplate(obj)
+        obj = self._target_obj
+        if obj is None:
+            obj = utils.new_object("DrawerBaseplate")
+            if fc.GuiUp:
+                view_object: fcg.ViewProviderDocumentObject = obj.ViewObject
+                ViewProviderGridfinity(view_object, str(self._pixmap))
+            features.DrawerBaseplate(obj)
 
         obj.DrawerWidth = float(self.drawer_width.value()) * fc.Units.Quantity("1 mm")
         obj.DrawerDepth = float(self.drawer_depth.value()) * fc.Units.Quantity("1 mm")

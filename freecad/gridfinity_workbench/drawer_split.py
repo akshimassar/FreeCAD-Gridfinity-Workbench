@@ -2,28 +2,26 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 
-def arrange_piece_sizes(total: int, pieces: int) -> list[int]:
-    """Split total into near-uniform piece sizes (max diff 1).
 
-    Returns a list with deterministic ordering that prefers symmetry by placing
-    the even-count bucket first when possible.
-    """
+@dataclass(frozen=True)
+class AxisPiece:
+    cells: int
+    low_fill_mm: float
+    high_fill_mm: float
+
+
+def _arrange_piece_sizes(total: int, pieces: int) -> list[int]:
     if pieces < 1:
         raise ValueError("pieces must be >= 1")
-    if total < 0:
-        raise ValueError("total must be >= 0")
-
     q, r = divmod(total, pieces)
-    a_count = pieces - r  # q
-    b_count = r  # q+1
-
+    a_count = pieces - r
+    b_count = r
     if b_count == 0:
         return [q] * pieces
-
     low = [q] * a_count
     high = [q + 1] * b_count
-
     if a_count % 2 == 0 and b_count % 2 != 0:
         return low + high
     if b_count % 2 == 0 and a_count % 2 != 0:
@@ -31,59 +29,96 @@ def arrange_piece_sizes(total: int, pieces: int) -> list[int]:
     return low + high
 
 
-def plan_axis_simulated_pieces(
+def plan_axis_split(
     *,
-    cell_count: int,
-    bed_cells_capacity: int,
-    low_filler_slot: bool,
-    high_filler_slot: bool,
-    start_from_high: bool = True,
-) -> list[list[str]]:
-    """Plan axis split using simulated cells and alternating side bites.
+    length_mm: float,
+    grid_mm: float,
+    bed_mm: float,
+    alignment: str,
+) -> list[AxisPiece]:
+    if grid_mm <= 0 or bed_mm <= 0 or length_mm <= 0:
+        raise ValueError("length, grid and bed must be > 0")
+    if bed_mm < grid_mm:
+        raise ValueError("Bed too small for one full grid cell")
 
-    Token legend:
-    - "C": real grid cell
-    - "F": filler-overhead slot
-    """
-    if cell_count < 0:
-        raise ValueError("cell_count must be >= 0")
-    if bed_cells_capacity < 1:
-        raise ValueError("bed_cells_capacity must be >= 1")
-    if cell_count > 0 and bed_cells_capacity < 1:
-        raise ValueError("bed too small for one cell")
+    cell_count = int(length_mm // grid_mm)
+    remainder = max(length_mm - cell_count * grid_mm, 0.0)
 
-    simulated_total = cell_count + int(low_filler_slot) + int(high_filler_slot)
-    if simulated_total == 0:
+    low_fill = 0.0
+    high_fill = 0.0
+    if alignment == "low":
+        low_fill = remainder
+    elif alignment == "high":
+        high_fill = remainder
+    elif alignment == "both":
+        low_fill = remainder / 2
+        high_fill = remainder - low_fill
+    else:
+        raise ValueError("alignment must be low/high/both")
+
+    cap_cells = int(bed_mm // grid_mm)
+    low_slot = low_fill > 0 and ((cap_cells * grid_mm) + low_fill > bed_mm)
+    high_slot = high_fill > 0 and ((cap_cells * grid_mm) + high_fill > bed_mm)
+    sim_total = cell_count + int(low_slot) + int(high_slot)
+    if sim_total == 0:
         return []
 
-    pieces = (simulated_total + bed_cells_capacity - 1) // bed_cells_capacity
-    sizes = arrange_piece_sizes(simulated_total, pieces)
+    pieces_n = (sim_total + cap_cells - 1) // cap_cells
+    sizes = sorted(_arrange_piece_sizes(sim_total, pieces_n))
 
     tokens = ["C"] * cell_count
-    if low_filler_slot:
+    if low_slot:
         tokens.insert(0, "F")
-    if high_filler_slot:
+    if high_slot:
         tokens.append("F")
 
     out: list[list[str] | None] = [None] * len(sizes)
-    left_idx = 0
-    right_idx = len(sizes) - 1
-    take_high = start_from_high
+    low_idx, high_idx = 0, len(sizes) - 1
+
+    pick_low = low_fill > 0
+    pick_high = high_fill > 0
+    if not pick_low and not pick_high:
+        pick_low = True
+        pick_high = True
+    take_low = True
+
+    def choose_side() -> str:
+        nonlocal take_low
+        if pick_low and not pick_high:
+            return "low"
+        if pick_high and not pick_low:
+            return "high"
+        side = "low" if take_low else "high"
+        take_low = not take_low
+        return side
+
     for size in sizes:
-        if size > len(tokens):
-            raise ValueError("internal split error: size exceeds remaining tokens")
-        if take_high:
+        side = choose_side()
+        if side == "high":
             chunk = tokens[-size:]
             del tokens[-size:]
-            out[right_idx] = chunk
-            right_idx -= 1
+            out[high_idx] = chunk
+            high_idx -= 1
         else:
             chunk = tokens[:size]
             del tokens[:size]
-            out[left_idx] = chunk
-            left_idx += 1
-        take_high = not take_high
+            out[low_idx] = chunk
+            low_idx += 1
+    chunks = [c for c in out if c is not None]
 
-    if tokens:
-        raise ValueError("internal split error: tokens left over")
-    return [chunk for chunk in out if chunk is not None]
+    if chunks and low_fill > 0 and all("F" not in c for c in chunks):
+        chunks[0].append("F")
+    if chunks and high_fill > 0 and all("F" not in c for c in chunks):
+        chunks[-1].append("F")
+
+    pieces: list[AxisPiece] = []
+    for i, chunk in enumerate(chunks):
+        p_low = low_fill if i == 0 else 0.0
+        p_high = high_fill if i == len(chunks) - 1 else 0.0
+        piece = AxisPiece(cells=chunk.count("C"), low_fill_mm=p_low, high_fill_mm=p_high)
+        width = piece.cells * grid_mm + piece.low_fill_mm + piece.high_fill_mm
+        if width > bed_mm + 1e-9:
+            raise ValueError("Generated piece exceeds bed size")
+        pieces.append(piece)
+
+    return pieces
