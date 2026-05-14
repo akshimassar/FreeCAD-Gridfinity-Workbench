@@ -15,6 +15,7 @@ import FreeCADGui as fcg  # noqa: N813
 from PySide.QtCore import Qt, QTimer
 from PySide.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
@@ -26,6 +27,7 @@ from PySide.QtWidgets import (
 )
 
 from . import custom_shape, features, utils
+from .drawer_split import plan_axis_simulated_pieces
 from .baseplate_params import (
     BaseplateParams,
     apply_params_to_obj,
@@ -431,6 +433,296 @@ class CreateBaseplate(CreateCommand):
 
     def Activated(self) -> None:
         fcg.Control.showDialog(CreateBaseplateTaskPanel(self.pixmap))
+
+
+class CreateDrawerBaseplate(BaseCommand):
+    def __init__(self) -> None:
+        super().__init__(
+            name="DrawerBaseplate",
+            pixmap=ICONDIR / "Baseplate.svg",
+            menu_text="Gridfinity Drawer Baseplate",
+            tooltip="Plan a split baseplate for a drawer size.",
+        )
+
+    def Activated(self) -> None:
+        fcg.Control.showDialog(CreateDrawerBaseplateTaskPanel(self.pixmap))
+
+
+class CreateDrawerBaseplateTaskPanel:
+    """Task panel for planning drawer baseplate splits (no geometry yet)."""
+
+    def __init__(self, pixmap: Path | str) -> None:
+        self._pixmap = pixmap
+        self.form = QWidget()
+        self.form.setWindowTitle("Create Drawer Baseplate")
+
+        layout = QVBoxLayout(self.form)
+
+        layout.addWidget(_section_label("Drawer"))
+        drawer_form = QFormLayout()
+        drawer_form.setContentsMargins(20, 0, 0, 0)
+        self.drawer_width = _mm_spinbox(600.0, minimum=1.0, maximum=5000.0)
+        drawer_form.addRow("Drawer width", self.drawer_width)
+        self.drawer_depth = _mm_spinbox(600.0, minimum=1.0, maximum=5000.0)
+        drawer_form.addRow("Drawer depth", self.drawer_depth)
+
+        self.width_alignment = QComboBox()
+        self.width_alignment.addItems(["Left", "Right", "Both"])
+        self.width_alignment.setCurrentText("Right")
+        drawer_form.addRow("Width filler alignment", self.width_alignment)
+
+        self.depth_alignment = QComboBox()
+        self.depth_alignment.addItems(["Bottom", "Top", "Both"])
+        self.depth_alignment.setCurrentText("Top")
+        drawer_form.addRow("Depth filler alignment", self.depth_alignment)
+        layout.addLayout(drawer_form)
+
+        layout.addWidget(_section_label("Printer bed"))
+        bed_form = QFormLayout()
+        bed_form.setContentsMargins(20, 0, 0, 0)
+        self.bed_width = _mm_spinbox(256.0, minimum=1.0, maximum=2000.0)
+        bed_form.addRow("Bed width", self.bed_width)
+        self.bed_depth = _mm_spinbox(240.0, minimum=1.0, maximum=2000.0)
+        bed_form.addRow("Bed depth", self.bed_depth)
+        layout.addLayout(bed_form)
+
+        controls: dict[str, QWidget] = {}
+        controls.update(_build_fundamentals_section(layout, show_note=False))
+        controls.update(
+            _build_baseplate_section(layout, include_clearance=True, include_filler=False)
+        )
+        for key, widget in controls.items():
+            setattr(self, key, widget)
+
+        self.summary = QLabel("")
+        self.summary.setWordWrap(True)
+        layout.addWidget(_section_label("Split plan"))
+        layout.addWidget(self.summary)
+
+        self._connect_signals()
+        self._refresh_summary()
+
+    def getStandardButtons(self) -> int:  # noqa: N802
+        return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+
+    def _axis_plan(
+        self,
+        *,
+        length_mm: float,
+        bed_mm: float,
+        grid_mm: float,
+        alignment: str,
+        low_label: str,
+        high_label: str,
+    ) -> tuple[list[list[str]], float, float]:
+        if bed_mm < grid_mm:
+            raise ValueError(f"{low_label}/{high_label} axis bed too small for one full grid cell")
+
+        cell_count = int(length_mm // grid_mm)
+        remainder = max(length_mm - cell_count * grid_mm, 0.0)
+        low_filler_mm = 0.0
+        high_filler_mm = 0.0
+        if alignment == low_label:
+            low_filler_mm = remainder
+        elif alignment == high_label:
+            high_filler_mm = remainder
+        else:
+            low_filler_mm = remainder / 2
+            high_filler_mm = remainder - low_filler_mm
+
+        chunks = plan_axis_simulated_pieces(
+            cell_count=cell_count,
+            bed_cells_capacity=int(bed_mm // grid_mm),
+            low_filler_slot=low_filler_mm > 0,
+            high_filler_slot=high_filler_mm > 0,
+            start_from_high=True,
+        )
+        return chunks, low_filler_mm, high_filler_mm
+
+    def _validation_payload(self) -> dict[str, Any]:
+        return {
+            "x_grid_units": 1,
+            "y_grid_units": 1,
+            "grid_size": float(self.grid_size.value()),
+            "base_profile_main_half_width": float(self.base_profile_main_half_width.value()),
+            "base_profile_main_height": float(self.base_profile_main_height.value()),
+            "bin_outer_radius": float(self.bin_outer_radius.value()),
+            "enable_lower_chamfer": self.enable_lower_chamfer.isChecked(),
+            "base_profile_lower_chamfer_size": float(self.base_profile_lower_chamfer_size.value()),
+            "top_crop": float(self.top_crop.value()),
+            "clearance": float(self.clearance.value()),
+            "click_springs_enabled": self.click_springs_enabled.isChecked(),
+            "click_thickness": float(self.click_thickness.value()),
+            "click_length": float(self.click_length.value()),
+            "click_offset": float(self.click_offset.value()),
+            "junction_screw_holes": self.junction_screw_holes.isChecked(),
+            "junction_screw_diameter": float(self.junction_screw_diameter.value()),
+            "junction_counterbore_diameter": float(self.junction_counterbore_diameter.value()),
+            "junction_counterbore_depth": float(self.junction_counterbore_depth.value()),
+            "clip_cutouts_enabled": self.clip_cutouts_enabled.isChecked(),
+            "clip_length": float(self.clip_length.value()),
+            "filler_right_enabled": False,
+            "filler_right_width": 0.0,
+            "filler_left_enabled": False,
+            "filler_left_width": 0.0,
+            "filler_top_enabled": False,
+            "filler_top_width": 0.0,
+            "filler_bottom_enabled": False,
+            "filler_bottom_width": 0.0,
+        }
+
+    def _set_validation_visuals(self, errors: dict[str, str]) -> None:
+        mapping = {
+            "top_crop": self.top_crop,
+            "click_thickness": self.click_thickness,
+            "click_length": self.click_length,
+            "junction_screw_diameter": self.junction_screw_diameter,
+            "junction_counterbore_diameter": self.junction_counterbore_diameter,
+            "junction_counterbore_depth": self.junction_counterbore_depth,
+            "clip_length": self.clip_length,
+        }
+        for key, widget in mapping.items():
+            if key in errors:
+                widget.setStyleSheet("border: 1px solid #cc3d3d;")
+            else:
+                widget.setStyleSheet("")
+
+    def _format_axis(
+        self,
+        *,
+        chunks: list[list[str]],
+        grid_mm: float,
+        low_filler_mm: float,
+        high_filler_mm: float,
+    ) -> str:
+        widths: list[float] = [chunk.count("C") * grid_mm for chunk in chunks]
+        if widths:
+            widths[0] += low_filler_mm
+            widths[-1] += high_filler_mm
+        return ", ".join(f"{w:.2f}mm" for w in widths)
+
+    def _refresh_summary(self) -> None:
+        result = params_from_dialog(self._validation_payload(), preview_mode=False)
+        self._set_validation_visuals(result.errors)
+        if result.errors:
+            msg = "\n".join(f"{k}: {v}" for k, v in sorted(result.errors.items()))
+            self.summary.setText(f"Validation errors:\n{msg}")
+            return
+        try:
+            grid_mm = float(self.grid_size.value())
+            if float(self.drawer_width.value()) <= 0 or float(self.drawer_depth.value()) <= 0:
+                raise ValueError("Drawer dimensions must be > 0")
+            if float(self.bed_width.value()) <= 0 or float(self.bed_depth.value()) <= 0:
+                raise ValueError("Bed dimensions must be > 0")
+            x_chunks, x_low, x_high = self._axis_plan(
+                length_mm=float(self.drawer_width.value()),
+                bed_mm=float(self.bed_width.value()),
+                grid_mm=grid_mm,
+                alignment=self.width_alignment.currentText(),
+                low_label="Left",
+                high_label="Right",
+            )
+            y_chunks, y_low, y_high = self._axis_plan(
+                length_mm=float(self.drawer_depth.value()),
+                bed_mm=float(self.bed_depth.value()),
+                grid_mm=grid_mm,
+                alignment=self.depth_alignment.currentText(),
+                low_label="Bottom",
+                high_label="Top",
+            )
+        except ValueError as exc:
+            self.summary.setText(f"Error: {exc}")
+            return
+
+        x_desc = self._format_axis(
+            chunks=x_chunks, grid_mm=grid_mm, low_filler_mm=x_low, high_filler_mm=x_high
+        )
+        y_desc = self._format_axis(
+            chunks=y_chunks, grid_mm=grid_mm, low_filler_mm=y_low, high_filler_mm=y_high
+        )
+        pieces = len(x_chunks) * len(y_chunks)
+        self.summary.setText(
+            f"X chunks: {len(x_chunks)} [{x_desc}]\n"
+            f"Y chunks: {len(y_chunks)} [{y_desc}]\n"
+            f"Total printable pieces: {pieces}"
+        )
+
+    def _connect_signals(self) -> None:
+        controls: list[QWidget] = [
+            self.drawer_width,
+            self.drawer_depth,
+            self.bed_width,
+            self.bed_depth,
+            self.grid_size,
+            self.width_alignment,
+            self.depth_alignment,
+        ]
+        for control in controls:
+            if isinstance(control, QDoubleSpinBox):
+                control.valueChanged.connect(lambda *_: self._refresh_summary())
+            elif isinstance(control, QComboBox):
+                control.currentIndexChanged.connect(lambda *_: self._refresh_summary())
+
+    def accept(self) -> bool:
+        self._refresh_summary()
+        if self.summary.text().startswith("Error:") or self.summary.text().startswith(
+            "Validation errors:"
+        ):
+            return False
+
+        obj = utils.new_object("DrawerBaseplate")
+        if fc.GuiUp:
+            view_object: fcg.ViewProviderDocumentObject = obj.ViewObject
+            ViewProviderGridfinity(view_object, str(self._pixmap))
+        features.DrawerBaseplate(obj)
+
+        obj.DrawerWidth = float(self.drawer_width.value()) * fc.Units.Quantity("1 mm")
+        obj.DrawerDepth = float(self.drawer_depth.value()) * fc.Units.Quantity("1 mm")
+        obj.WidthFillerAlignment = self.width_alignment.currentText()
+        obj.DepthFillerAlignment = self.depth_alignment.currentText()
+        obj.PrinterBedWidth = float(self.bed_width.value()) * fc.Units.Quantity("1 mm")
+        obj.PrinterBedDepth = float(self.bed_depth.value()) * fc.Units.Quantity("1 mm")
+
+        obj.xGridSize = float(self.grid_size.value()) * fc.Units.Quantity("1 mm")
+        obj.yGridSize = float(self.grid_size.value()) * fc.Units.Quantity("1 mm")
+        obj.BaseProfileMainHalfWidth = float(
+            self.base_profile_main_half_width.value()
+        ) * fc.Units.Quantity("1 mm")
+        obj.BaseProfileMainHeight = float(
+            self.base_profile_main_height.value()
+        ) * fc.Units.Quantity("1 mm")
+        obj.BinOuterRadius = float(self.bin_outer_radius.value()) * fc.Units.Quantity("1 mm")
+        obj.BaseProfileLowerChamferEnabled = self.enable_lower_chamfer.isChecked()
+        obj.BaseProfileLowerChamferSize = float(
+            self.base_profile_lower_chamfer_size.value()
+        ) * fc.Units.Quantity("1 mm")
+        obj.BaseProfileTopCrop = float(self.top_crop.value()) * fc.Units.Quantity("1 mm")
+        obj.Clearance = float(self.clearance.value()) * fc.Units.Quantity("1 mm")
+        obj.ClickSpringsEnabled = self.click_springs_enabled.isChecked()
+        obj.ClickThickness = float(self.click_thickness.value()) * fc.Units.Quantity("1 mm")
+        obj.ClickLength = float(self.click_length.value()) * fc.Units.Quantity("1 mm")
+        obj.ClickOffset = float(self.click_offset.value()) * fc.Units.Quantity("1 mm")
+        obj.JunctionScrewHoles = self.junction_screw_holes.isChecked()
+        obj.JunctionScrewDiameter = float(self.junction_screw_diameter.value()) * fc.Units.Quantity(
+            "1 mm"
+        )
+        obj.JunctionCounterboreDiameter = float(
+            self.junction_counterbore_diameter.value()
+        ) * fc.Units.Quantity("1 mm")
+        obj.JunctionCounterboreDepth = float(
+            self.junction_counterbore_depth.value()
+        ) * fc.Units.Quantity("1 mm")
+        obj.ClipCutoutsEnabled = self.clip_cutouts_enabled.isChecked()
+        obj.ClipLength = float(self.clip_length.value()) * fc.Units.Quantity("1 mm")
+
+        fc.ActiveDocument.recompute()
+        fcg.SendMsgToActiveView("ViewFit")
+        fcg.Control.closeDialog()
+        return True
+
+    def reject(self) -> bool:
+        fcg.Control.closeDialog()
+        return True
 
 
 class CreateBaseplateTaskPanel:

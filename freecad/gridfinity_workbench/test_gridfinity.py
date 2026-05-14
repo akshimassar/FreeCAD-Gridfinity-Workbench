@@ -19,6 +19,7 @@ SIMPLE_COMMANDS = [
     "CreateEcoBin",
     "CreatePartsBin",
     "CreateBaseplate",
+    "CreateDrawerBaseplate",
     "CreateMagnetBaseplate",
     "CreateScrewTogetherBaseplate",
 ]

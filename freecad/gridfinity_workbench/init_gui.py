@@ -57,6 +57,7 @@ class GridfinityWorkbench(Workbench):
                 ("CreateEcoBin", commands.CreateEcoBin()),
                 ("CreatePartsBin", commands.CreatePartsBin()),
                 ("CreateBaseplate", commands.CreateBaseplate()),
+                ("CreateDrawerBaseplate", commands.CreateDrawerBaseplate()),
                 ("CreateSupportBaseplate", commands.CreateSupportBaseplate()),
                 ("CreateMagnetBaseplate", commands.CreateMagnetBaseplate()),
                 ("CreateScrewTogetherBaseplate", commands.CreateScrewTogetherBaseplate()),

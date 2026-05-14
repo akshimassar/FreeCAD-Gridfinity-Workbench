@@ -617,6 +617,14 @@ def build_simple_baseplate(
     options: BaseplateBuildOptions,
 ) -> Part.Shape:
     params = params_from_obj(obj)
+    return build_simple_baseplate_from_params(params, layout, options)
+
+
+def build_simple_baseplate_from_params(
+    params: BaseplateParams,
+    layout: GridfinityLayout,
+    options: BaseplateBuildOptions,
+) -> Part.Shape:
     total_start = time.perf_counter()
 
     t0 = time.perf_counter()

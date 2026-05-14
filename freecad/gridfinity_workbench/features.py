@@ -3,6 +3,7 @@
 # ruff: noqa: D101, D102, D107
 
 from abc import abstractmethod
+from dataclasses import replace
 
 import FreeCAD as fc  # noqa: N813
 import Part
@@ -12,6 +13,8 @@ from . import baseplate_builder
 from . import clip_profiles
 from . import check_version, const, grid_initial_layout, label_shelf, utils
 from . import feature_construction as feat
+from .baseplate_params import BaseplateParams, params_from_obj
+from .drawer_split import plan_axis_simulated_pieces
 from .custom_shape_features import (
     clean_up_layout,
     custom_shape_solid,
@@ -368,6 +371,186 @@ class Baseplate(FoundationGridfinity):
             ),
         )
         return baseplate_builder.build_simple_baseplate(obj, layout, options)
+
+
+class DrawerBaseplate(FoundationGridfinity):
+    def __init__(self, obj: fc.DocumentObject) -> None:
+        super().__init__(obj)
+
+        grid_initial_layout.rectangle_layout_properties(obj, baseplate_default=True)
+        baseplate_feat.solid_shape_properties(obj)
+        baseplate_feat.base_values_properties(obj)
+
+        obj.addProperty(
+            "App::PropertyLength",
+            "DrawerWidth",
+            "Drawer",
+            "Drawer inner width in mm",
+        ).DrawerWidth = 600 * unitmm
+        obj.addProperty(
+            "App::PropertyLength",
+            "DrawerDepth",
+            "Drawer",
+            "Drawer inner depth in mm",
+        ).DrawerDepth = 600 * unitmm
+
+        obj.addProperty(
+            "App::PropertyEnumeration",
+            "WidthFillerAlignment",
+            "Drawer",
+            "Left/Right/Both filler alignment on width axis",
+        )
+        obj.WidthFillerAlignment = ["Left", "Right", "Both"]
+        obj.WidthFillerAlignment = "Right"
+
+        obj.addProperty(
+            "App::PropertyEnumeration",
+            "DepthFillerAlignment",
+            "Drawer",
+            "Bottom/Top/Both filler alignment on depth axis",
+        )
+        obj.DepthFillerAlignment = ["Bottom", "Top", "Both"]
+        obj.DepthFillerAlignment = "Top"
+
+        obj.addProperty(
+            "App::PropertyLength",
+            "PrinterBedWidth",
+            "Drawer",
+            "Printer bed width used for split planning",
+        ).PrinterBedWidth = 256 * unitmm
+        obj.addProperty(
+            "App::PropertyLength",
+            "PrinterBedDepth",
+            "Drawer",
+            "Printer bed depth used for split planning",
+        ).PrinterBedDepth = 240 * unitmm
+
+        obj.addProperty(
+            "App::PropertyStringList",
+            "PieceNames",
+            "ReferenceParameters",
+            "Deterministic names for generated drawer baseplate pieces",
+        ).PieceNames = []
+
+    def _axis_split(
+        self,
+        *,
+        length_mm: float,
+        bed_mm: float,
+        grid_mm: float,
+        alignment: str,
+        low_name: str,
+        high_name: str,
+    ) -> tuple[list[list[str]], float, float]:
+        if bed_mm < grid_mm:
+            raise ValueError(f"{low_name}/{high_name} axis bed too small for one full grid cell")
+
+        cell_count = int(length_mm // grid_mm)
+        remainder = max(length_mm - cell_count * grid_mm, 0.0)
+        low_fill = 0.0
+        high_fill = 0.0
+        if alignment == low_name:
+            low_fill = remainder
+        elif alignment == high_name:
+            high_fill = remainder
+        else:
+            low_fill = remainder / 2
+            high_fill = remainder - low_fill
+
+        chunks = plan_axis_simulated_pieces(
+            cell_count=cell_count,
+            bed_cells_capacity=int(bed_mm // grid_mm),
+            low_filler_slot=low_fill > 0,
+            high_filler_slot=high_fill > 0,
+            start_from_high=True,
+        )
+        return chunks, low_fill, high_fill
+
+    def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
+        params = params_from_obj(obj)
+        options = baseplate_builder.BaseplateBuildOptions(
+            include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
+            include_clip_cutouts=bool(getattr(obj, "ClipCutoutsEnabled", False)),
+            include_snap_springs=bool(getattr(obj, "ClickSpringsEnabled", False)),
+        )
+
+        grid_mm = float(params.fundamentals.x_grid_size)
+        x_chunks, x_low_fill, x_high_fill = self._axis_split(
+            length_mm=float(obj.DrawerWidth),
+            bed_mm=float(obj.PrinterBedWidth),
+            grid_mm=grid_mm,
+            alignment=str(obj.WidthFillerAlignment),
+            low_name="Left",
+            high_name="Right",
+        )
+        y_chunks, y_low_fill, y_high_fill = self._axis_split(
+            length_mm=float(obj.DrawerDepth),
+            bed_mm=float(obj.PrinterBedDepth),
+            grid_mm=grid_mm,
+            alignment=str(obj.DepthFillerAlignment),
+            low_name="Bottom",
+            high_name="Top",
+        )
+
+        k = len(x_chunks)
+        m = len(y_chunks)
+        piece_names: list[str] = []
+        pieces: list[Part.Shape] = []
+        bed_w = float(obj.PrinterBedWidth)
+        bed_d = float(obj.PrinterBedDepth)
+
+        for iy in range(m):
+            for ix in range(k):
+                piece_name = f"X{ix}_Y{iy}"
+                piece_names.append(piece_name)
+                x_chunk = x_chunks[ix]
+                y_chunk = y_chunks[iy]
+
+                x_units = x_chunk.count("C")
+                y_units = y_chunk.count("C")
+                if x_units < 1 or y_units < 1:
+                    continue
+
+                left_fill = x_low_fill if ix == 0 else 0.0
+                right_fill = x_high_fill if ix == k - 1 else 0.0
+                bottom_fill = y_low_fill if iy == m - 1 else 0.0
+                top_fill = y_high_fill if iy == 0 else 0.0
+
+                piece_params: BaseplateParams = replace(
+                    params,
+                    core=replace(params.core, x_grid_count=x_units, y_grid_count=y_units),
+                    fillers=replace(
+                        params.fillers,
+                        left_enabled=left_fill > 0,
+                        left_width=left_fill * unitmm,
+                        right_enabled=right_fill > 0,
+                        right_width=right_fill * unitmm,
+                        bottom_enabled=bottom_fill > 0,
+                        bottom_width=bottom_fill * unitmm,
+                        top_enabled=top_fill > 0,
+                        top_width=top_fill * unitmm,
+                    ),
+                )
+
+                layout = [[True for _ in range(y_units)] for _ in range(x_units)]
+                shape = baseplate_builder.build_simple_baseplate_from_params(
+                    piece_params, layout, options
+                )
+
+                bbox = shape.BoundBox
+                shape_center_x = (bbox.XMin + bbox.XMax) / 2
+                shape_center_y = (bbox.YMin + bbox.YMax) / 2
+                tile_center_x = (ix + 0.5) * bed_w
+                tile_center_y = (m - iy - 0.5) * bed_d
+                shape.translate(
+                    fc.Vector(tile_center_x - shape_center_x, tile_center_y - shape_center_y, 0),
+                )
+                pieces.append(shape)
+
+        obj.PieceNames = piece_names
+        if not pieces:
+            raise ValueError("No drawer baseplate pieces generated")
+        return Part.makeCompound(pieces)
 
 
 class SupportBaseplate(FoundationGridfinity):
