@@ -26,6 +26,7 @@ class GridfinityLayoutGeometry:
     """Layout occupancy plus variable grid-line coordinates."""
 
     layout: GridfinityLayout
+    tiny: GridfinityLayout
     x_lines: list[float]
     y_lines: list[float]
 

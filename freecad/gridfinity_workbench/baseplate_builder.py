@@ -71,13 +71,13 @@ def baseplate_cell_top_crop(shape: Part.Shape, params: BaseplateParams) -> Part.
     apex = _base_apex_height(params)
     margin = 0.1 * fc.Units.Quantity("1 mm")
     crop_slab = Part.makeBox(
-        params.fundamentals.x_grid_size * 2,
-        params.fundamentals.y_grid_size * 2,
-        top_crop + 2 * margin,
+        params.fundamentals.x_grid_size + margin,
+        params.fundamentals.y_grid_size + margin,
+        top_crop + margin,
         fc.Vector(
-            -params.fundamentals.x_grid_size,
-            -params.fundamentals.y_grid_size,
-            apex - top_crop - margin,
+            -params.fundamentals.x_grid_size / 2,
+            -params.fundamentals.y_grid_size / 2,
+            apex - top_crop,
         ),
         fc.Vector(0, 0, 1),
     )
@@ -176,6 +176,7 @@ def _build_expanded_layout_with_fillers(
             layout=[[bool(layout[ix][iy]) for iy in range(ny)] for ix in range(nx)]
             if nx > 0
             else [],
+            tiny=[[False for _ in range(ny)] for _ in range(nx)] if nx > 0 else [],
             x_lines=_build_grid_lines([params.fundamentals.x_grid_size] * nx),
             y_lines=_build_grid_lines([params.fundamentals.y_grid_size] * ny),
         )
@@ -184,6 +185,7 @@ def _build_expanded_layout_with_fillers(
     y_sizes: list[fc.Units.Quantity] = [bottom_w] + [params.fundamentals.y_grid_size] * ny + [top_w]
 
     expanded: GridfinityLayout = [[False for _ in range(ny + 2)] for _ in range(nx + 2)]
+    tiny: GridfinityLayout = [[False for _ in range(ny + 2)] for _ in range(nx + 2)]
 
     for ix in range(nx):
         for iy in range(ny):
@@ -213,6 +215,7 @@ def _build_expanded_layout_with_fillers(
 
     return GridfinityLayoutGeometry(
         layout=expanded,
+        tiny=tiny,
         x_lines=[x - float(left_w) for x in _build_grid_lines(x_sizes)],
         y_lines=[y - float(bottom_w) for y in _build_grid_lines(y_sizes)],
     )
@@ -317,7 +320,7 @@ def _build_filler_ring_shape(
     bottom_on = params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
     top_on = params.fillers.top_enabled and float(params.fillers.top_width) > 0
 
-    cache: dict[tuple[float, float, bool, bool, bool, bool], Part.Shape] = {}
+    cache: dict[tuple[float, float, bool, bool, bool, bool], CoreCellBuildResult] = {}
     spring_slots = None
     if options.include_snap_springs and params.click_springs.enabled:
         spring_slots = feat.make_click_spring_shape_slots(
@@ -333,7 +336,7 @@ def _build_filler_ring_shape(
         rightmost: bool,
         bottommost: bool,
         topmost: bool,
-    ) -> Part.Shape:
+    ) -> CoreCellBuildResult:
         key = (
             round(width, 6),
             round(height, 6),
@@ -389,7 +392,7 @@ def _build_filler_ring_shape(
                 ),
             )
             cell = baseplate_cell_top_crop(cell, filler_params)
-            cache[key] = cell
+            cache[key] = CoreCellBuildResult(shape=cell, is_tiny=filler_result.is_tiny)
         return cache[key]
 
     def center(ix: int, iy: int) -> fc.Vector:
@@ -406,6 +409,7 @@ def _build_filler_ring_shape(
             "height": geometry.y_lines[2] - geometry.y_lines[1],
             "flags": (True, False, False, False),
             "vectors": [center(0, iy) for iy in range(1, ny + 1)],
+            "indices": [(0, iy) for iy in range(1, ny + 1)],
         },
         {
             "enabled": right_on,
@@ -413,6 +417,7 @@ def _build_filler_ring_shape(
             "height": geometry.y_lines[2] - geometry.y_lines[1],
             "flags": (False, True, False, False),
             "vectors": [center(nx + 1, iy) for iy in range(1, ny + 1)],
+            "indices": [(nx + 1, iy) for iy in range(1, ny + 1)],
         },
         {
             "enabled": bottom_on,
@@ -420,6 +425,7 @@ def _build_filler_ring_shape(
             "height": geometry.y_lines[1] - geometry.y_lines[0],
             "flags": (False, False, True, False),
             "vectors": [center(ix, 0) for ix in range(1, nx + 1)],
+            "indices": [(ix, 0) for ix in range(1, nx + 1)],
         },
         {
             "enabled": top_on,
@@ -427,6 +433,7 @@ def _build_filler_ring_shape(
             "height": geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
             "flags": (False, False, False, True),
             "vectors": [center(ix, ny + 1) for ix in range(1, nx + 1)],
+            "indices": [(ix, ny + 1) for ix in range(1, nx + 1)],
         },
     ]
 
@@ -434,7 +441,7 @@ def _build_filler_ring_shape(
         if not spec["enabled"]:
             continue
         leftmost, rightmost, bottommost, topmost = spec["flags"]
-        side_proto = proto(
+        side_result = proto(
             spec["width"],
             spec["height"],
             leftmost=leftmost,
@@ -442,7 +449,9 @@ def _build_filler_ring_shape(
             bottommost=bottommost,
             topmost=topmost,
         )
-        pieces.append(utils.copy_and_translate(side_proto, spec["vectors"]))
+        pieces.append(utils.copy_and_translate(side_result.shape, spec["vectors"]))
+        for ix, iy in spec["indices"]:
+            geometry.tiny[ix][iy] = side_result.is_tiny
 
     corner_specs = [
         {
@@ -483,16 +492,18 @@ def _build_filler_ring_shape(
         if not spec["enabled"]:
             continue
         leftmost, rightmost, bottommost, topmost = spec["flags"]
-        corner = proto(
+        corner_result = proto(
             spec["width"],
             spec["height"],
             leftmost=leftmost,
             rightmost=rightmost,
             bottommost=bottommost,
             topmost=topmost,
-        ).copy()
+        )
+        corner = corner_result.shape.copy()
         corner.translate(center(spec["ix"], spec["iy"]))
         pieces.append(corner)
+        geometry.tiny[spec["ix"]][spec["iy"]] = corner_result.is_tiny
 
     if not pieces:
         raise ValueError("No filler pieces generated")
@@ -621,6 +632,7 @@ def make_post_replication_cutter(
             params.fundamentals,
             params.junction_screws,
             geometry.layout,
+            geometry.tiny,
             top_z,
             geometry=geometry,
         )
@@ -632,6 +644,7 @@ def make_post_replication_cutter(
             params.fundamentals,
             params.clip_cutouts,
             geometry.layout,
+            geometry.tiny,
             geometry=geometry,
         )
         if clip_cutouts is not None:
@@ -735,6 +748,14 @@ def build_simple_baseplate_from_params(
     t3 = time.perf_counter()
 
     shape, geometry = add_filler_strips(shape, params, layout, options)
+    x_offset = 1 if len(geometry.layout) == nx + 2 else 0
+    y_offset = 1 if len(geometry.layout[0]) == ny + 2 else 0
+    for ix in range(nx):
+        for iy in range(ny):
+            gx = ix + x_offset
+            gy = iy + y_offset
+            if geometry.layout[gx][gy]:
+                geometry.tiny[gx][gy] = core_result.is_tiny
     t3a = time.perf_counter()
 
     shape = _apply_layout_corner_roundover(

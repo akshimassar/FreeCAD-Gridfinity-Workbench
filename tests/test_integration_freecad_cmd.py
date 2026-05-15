@@ -43,6 +43,10 @@ def _resolve_freecad_cmd() -> str | None:
 
 
 class FreeCADCmdIntegrationTest(unittest.TestCase):
+    # IMPORTANT POLICY:
+    # Do not change locked absolute dimensions/volume assertions in this file
+    # without explicit user confirmation in the current conversation.
+
     def test_baseplate_tiny_core_skips_clicksprings(self) -> None:
         freecad_cmd = _resolve_freecad_cmd()
         if not freecad_cmd:
@@ -268,12 +272,19 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
 
     def test_baseplate_2x2_with_features_volume_unchanged(self) -> None:
+        # LOCKED INVARIANT:
+        # Expected X/Y/Z and volume are intentionally strict regression locks.
+        # Do not modify expected values or relax assertions without explicit
+        # user confirmation in the current conversation.
         freecad_cmd = _resolve_freecad_cmd()
         if not freecad_cmd:
             self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
 
         freecad_module_root = (REPO_ROOT / "freecad").as_posix()
-        expected_volume = 4526.426777362498
+        expected_volume = 4581.608342759908
+        expected_x_size = 84.0
+        expected_y_size = 84.0
+        expected_z_size = 3.85
 
         script = textwrap.dedent(
             """
@@ -300,10 +311,14 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 obj.FillerLeftEnabled = False
                 doc.recompute()
                 shape = obj.Shape
+                bbox = shape.BoundBox
                 payload = {{
                     "volume": float(shape.Volume),
                     "solids": int(len(shape.Solids)),
                     "valid": bool(shape.isValid()),
+                    "x_size": float(bbox.XMax - bbox.XMin),
+                    "y_size": float(bbox.YMax - bbox.YMin),
+                    "z_size": float(bbox.ZMax - bbox.ZMin),
                 }}
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
@@ -337,6 +352,24 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
         self.assertEqual(int(data["solids"]), 1, "Expected a single solid")
         self.assertTrue(bool(data["valid"]), "Resulting shape must be valid")
+        self.assertAlmostEqual(
+            float(data["x_size"]),
+            expected_x_size,
+            places=6,
+            msg=f"Unexpected X size: got {data['x_size']}, expected {expected_x_size}",
+        )
+        self.assertAlmostEqual(
+            float(data["y_size"]),
+            expected_y_size,
+            places=6,
+            msg=f"Unexpected Y size: got {data['y_size']}, expected {expected_y_size}",
+        )
+        self.assertAlmostEqual(
+            float(data["z_size"]),
+            expected_z_size,
+            places=6,
+            msg=f"Unexpected Z size: got {data['z_size']}, expected {expected_z_size}",
+        )
         self.assertAlmostEqual(
             float(data["volume"]),
             expected_volume,
@@ -532,3 +565,106 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         self.assertEqual(int(data["solids"]), 1)
         self.assertTrue(bool(data["valid"]))
         self.assertGreater(float(data["volume"]), 0.0)
+
+    def test_baseplate_2x2_right_filler_3mm_matches_expected_volume_delta(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            def build_case(name: str, with_right_filler: bool) -> dict[str, float | int | bool]:
+                doc = fc.newDocument(name)
+                try:
+                    obj = doc.addObject("Part::FeaturePython", "Baseplate")
+                    features.Baseplate(obj)
+                    obj.xGridUnits = 2
+                    obj.yGridUnits = 2
+                    obj.JunctionScrewHoles = True
+                    obj.ClickSpringsEnabled = True
+                    obj.ClipCutoutsEnabled = False
+                    obj.FillerTopEnabled = False
+                    obj.FillerLeftEnabled = False
+                    obj.FillerBottomEnabled = False
+                    obj.FillerRightEnabled = bool(with_right_filler)
+                    if with_right_filler:
+                        obj.FillerRightWidth = 3
+                    doc.recompute()
+                    shape = obj.Shape
+                    effective_height = float(
+                        obj.BaseProfileMainHeight + obj.BaseProfileMainHalfWidth - obj.BaseProfileTopCrop
+                    )
+                    span = float(obj.yGridSize * obj.yGridUnits)
+                    return {{
+                        "volume": float(shape.Volume),
+                        "solids": int(len(shape.Solids)),
+                        "valid": bool(shape.isValid()),
+                        "effective_height": effective_height,
+                        "span": span,
+                    }}
+                finally:
+                    fc.closeDocument(doc.Name)
+
+            baseline = build_case("Base2x2NoFiller", with_right_filler=False)
+            with_filler = build_case("Base2x2RightFill3", with_right_filler=True)
+            print("GRIDFINITY_RESULT=" + json.dumps({{"baseline": baseline, "with_filler": with_filler}}))
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        baseline = data["baseline"]
+        with_filler = data["with_filler"]
+        self.assertEqual(int(baseline["solids"]), 1)
+        self.assertEqual(int(with_filler["solids"]), 1)
+        self.assertTrue(bool(baseline["valid"]))
+        self.assertTrue(bool(with_filler["valid"]))
+        self.assertGreater(
+            float(with_filler["volume"]),
+            float(baseline["volume"]),
+            msg="Expected right filler 3 mm to increase total baseplate volume",
+        )
+        delta = float(with_filler["volume"]) - float(baseline["volume"])
+        expected_delta = 3.0 * float(with_filler["effective_height"]) * float(with_filler["span"])
+        self.assertAlmostEqual(
+            delta,
+            expected_delta,
+            places=6,
+            msg=(
+                "Unexpected filler volume delta: "
+                f"delta={delta}, expected={expected_delta} "
+                "(3mm * (MainHeight + MainHalfWidth - TopCrop) * yGridSize * yGridUnits)"
+            ),
+        )

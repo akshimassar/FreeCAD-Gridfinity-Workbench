@@ -491,8 +491,9 @@ def make_clip_cutouts_from_params(
     fundamentals: FundamentalsParams,
     clip_cutouts: ClipCutoutParams,
     layout: GridfinityLayout,
+    tiny: GridfinityLayout,
     *,
-    geometry: GridfinityLayoutGeometry | None = None,
+    geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
     unitmm = fc.Units.Quantity("1 mm")
 
@@ -503,7 +504,7 @@ def make_clip_cutouts_from_params(
             f"2*BaseProfileMainHalfWidth ({max_clip_length})"
         )
 
-    use_layout = geometry.layout if geometry is not None else layout
+    use_layout = layout
     nx = len(use_layout)
     ny = len(use_layout[0])
     clip_wire = clip_profiles.build_clip_cutout_profile_wire(
@@ -546,8 +547,17 @@ def make_clip_cutouts_from_params(
             if not (horizontal or vertical):
                 continue
 
-            x = ix * fundamentals.x_grid_size if geometry is None else geometry.x_lines[ix]
-            y = iy * fundamentals.y_grid_size if geometry is None else geometry.y_lines[iy]
+            if sw and tiny[ix - 1][iy - 1]:
+                continue
+            if se and tiny[ix][iy - 1]:
+                continue
+            if nw and tiny[ix - 1][iy]:
+                continue
+            if ne and tiny[ix][iy]:
+                continue
+
+            x = geometry.x_lines[ix]
+            y = geometry.y_lines[iy]
             if horizontal:
                 cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
             else:
@@ -628,11 +638,12 @@ def make_junction_screw_holes_from_params(
     fundamentals: FundamentalsParams,
     junction_screws: JunctionScrewParams,
     layout: GridfinityLayout,
+    tiny: GridfinityLayout,
     top_z: fc.Units.Quantity,
     *,
-    geometry: GridfinityLayoutGeometry | None = None,
+    geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
-    use_layout = geometry.layout if geometry is not None else layout
+    use_layout = layout
     nx = len(use_layout)
     ny = len(use_layout[0])
 
@@ -649,8 +660,11 @@ def make_junction_screw_holes_from_params(
             ):
                 continue
 
-            x = ix * fundamentals.x_grid_size if geometry is None else geometry.x_lines[ix]
-            y = iy * fundamentals.y_grid_size if geometry is None else geometry.y_lines[iy]
+            if tiny[ix - 1][iy - 1] or tiny[ix][iy - 1] or tiny[ix - 1][iy] or tiny[ix][iy]:
+                continue
+
+            x = geometry.x_lines[ix]
+            y = geometry.y_lines[iy]
 
             through = Part.makeCylinder(
                 junction_screws.screw_diameter / 2,
