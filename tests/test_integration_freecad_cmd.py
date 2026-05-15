@@ -177,3 +177,80 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             bbox_tol,
             "YMax drift indicates misplaced springs",
         )
+
+    def test_baseplate_2x2_with_features_volume_unchanged(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+        expected_volume = 4526.426777362498
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            doc = fc.newDocument("BaseWithFeatures")
+            try:
+                obj = doc.addObject("Part::FeaturePython", "Baseplate")
+                features.Baseplate(obj)
+                obj.xGridUnits = 2
+                obj.yGridUnits = 2
+                obj.JunctionScrewHoles = True
+                obj.ClipCutoutsEnabled = True
+                obj.ClickSpringsEnabled = True
+                obj.FillerTopEnabled = False
+                obj.FillerRightEnabled = False
+                obj.FillerBottomEnabled = False
+                obj.FillerLeftEnabled = False
+                doc.recompute()
+                shape = obj.Shape
+                payload = {{
+                    "volume": float(shape.Volume),
+                    "solids": int(len(shape.Solids)),
+                    "valid": bool(shape.isValid()),
+                }}
+                print("GRIDFINITY_RESULT=" + json.dumps(payload))
+            finally:
+                fc.closeDocument(doc.Name)
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        self.assertEqual(int(data["solids"]), 1, "Expected a single solid")
+        self.assertTrue(bool(data["valid"]), "Resulting shape must be valid")
+        self.assertAlmostEqual(
+            float(data["volume"]),
+            expected_volume,
+            places=6,
+            msg=f"Unexpected volume drift: got {data['volume']}, expected {expected_volume}",
+        )
