@@ -12,7 +12,6 @@ from . import clip_profiles
 from . import const, utils
 from . import magnet_hole as magnet_hole_module
 from .baseplate_params import (
-    BaseplateCoreParams,
     ClipCutoutParams,
     FundamentalsParams,
     JunctionScrewParams,
@@ -627,9 +626,9 @@ def make_junction_screw_holes(
 
 def make_junction_screw_holes_from_params(
     fundamentals: FundamentalsParams,
-    core: BaseplateCoreParams,
     junction_screws: JunctionScrewParams,
     layout: GridfinityLayout,
+    top_z: fc.Units.Quantity,
     *,
     geometry: GridfinityLayoutGeometry | None = None,
 ) -> Part.Shape | None:
@@ -637,13 +636,7 @@ def make_junction_screw_holes_from_params(
     nx = len(use_layout)
     ny = len(use_layout[0])
 
-    total_height = (
-        fundamentals.base_profile_main_height
-        + fundamentals.base_profile_main_half_width
-        - core.base_profile_top_crop
-    )
-    through_depth = total_height + 0.1 * fc.Units.Quantity("1 mm")
-    top_z = total_height
+    through_depth = top_z + 0.1 * fc.Units.Quantity("1 mm")
 
     cutters = []
     for ix in range(1, nx):

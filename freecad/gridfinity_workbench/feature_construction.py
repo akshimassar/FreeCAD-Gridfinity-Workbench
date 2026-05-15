@@ -1155,20 +1155,10 @@ def make_complex_bin_base_single_from_params(
     core: BaseplateCoreParams,
 ) -> Part.Shape:
     """Create one-cell complex shaped bin base centered at origin from baseplate params."""
-    if core.base_profile_top_crop >= fundamentals.base_profile_main_half_width:
-        raise ValueError(
-            f"BaseProfileTopCrop ({core.base_profile_top_crop}) must be smaller than "
-            f"BaseProfileMainHalfWidth ({fundamentals.base_profile_main_half_width})"
-        )
-
     lower_enabled = bool(core.base_profile_lower_chamfer_enabled)
     lower_size = core.base_profile_lower_chamfer_size if lower_enabled else 0 * unitmm
     upper_size = fundamentals.base_profile_main_half_width
-    total_height = (
-        fundamentals.base_profile_main_height
-        + fundamentals.base_profile_main_half_width
-        - core.base_profile_top_crop
-    )
+    total_height = fundamentals.base_profile_main_height + fundamentals.base_profile_main_half_width
     bin_vertical_radius = fundamentals.bin_outer_radius - fundamentals.base_profile_main_half_width
 
     x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
@@ -1213,25 +1203,16 @@ def make_complex_bin_base_single_from_params(
     else:
         assembly = vertical_section.fuse(top_chamfer)
 
-    top_crop = core.base_profile_top_crop
-    crop_slab = Part.makeBox(
-        fundamentals.x_grid_size * 2,
-        fundamentals.y_grid_size * 2,
-        top_crop + total_height,
-        fc.Vector(-fundamentals.x_grid_size, -fundamentals.y_grid_size, 0),
-        fc.Vector(0, 0, 1),
-    )
-    return assembly.cut(crop_slab)
+    return assembly
 
 
 def add_click_spring_notches_to_base_cutout_single(
     fundamentals: FundamentalsParams,
-    core: BaseplateCoreParams,
     click_springs: ClickSpringParams,
     cutout: Part.Shape,
 ) -> Part.Shape:
     """Add one-cell click spring notch solids to a base cutout shape."""
-    slots = make_click_spring_shape_slots(fundamentals, core, click_springs)
+    slots = make_click_spring_shape_slots(fundamentals, click_springs)
     mask = SpringSlotMask.all_true()
     notches = slots.fused_negative(mask)
     if notches is None:
@@ -1396,14 +1377,9 @@ def _make_click_spring_right_single(
 
 def _make_click_notch_right_single(
     fundamentals: FundamentalsParams,
-    core: BaseplateCoreParams,
     click_springs: ClickSpringParams,
 ) -> Part.Shape:
-    total_height = (
-        fundamentals.base_profile_main_height
-        + fundamentals.base_profile_main_half_width
-        - core.base_profile_top_crop
-    )
+    total_height = fundamentals.base_profile_main_height + fundamentals.base_profile_main_half_width
     x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
     x0 = x_vert_width / 2
     click_width_x = 2 * click_springs.click_thickness
@@ -1420,14 +1396,13 @@ def _make_click_notch_right_single(
 
 def make_click_spring_shape_slots(
     fundamentals: FundamentalsParams,
-    core: BaseplateCoreParams,
     click_springs: ClickSpringParams,
 ) -> SpringShapeSlots:
     """Build full vertical/horizontal 2x2 spring slot shape libraries."""
     _validate_click_spring_geometry(fundamentals, click_springs)
 
     v_pos_seed = _make_click_spring_right_single(fundamentals, click_springs)
-    v_neg_seed = _make_click_notch_right_single(fundamentals, core, click_springs)
+    v_neg_seed = _make_click_notch_right_single(fundamentals, click_springs)
 
     def mirror_x(shape: Part.Shape) -> Part.Shape:
         return shape.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
@@ -1491,7 +1466,6 @@ def apply_click_spring_slots_to_cell(
 
     positive = slots.fused_positive(mask)
     if positive is not None:
-        positive = trim_click_springs_to_top_crop(fundamentals, core, click_springs, positive)
         shape = shape.fuse(positive)
     return shape
 
@@ -1556,53 +1530,12 @@ def make_click_springs_two_sides_single(
     click_springs: ClickSpringParams,
 ) -> Part.Shape:
     """Create click springs on all four sides for one cell centered at origin."""
-    slots = make_click_spring_shape_slots(
-        fundamentals,
-        BaseplateCoreParams(
-            x_grid_count=1,
-            y_grid_count=1,
-            base_profile_lower_chamfer_enabled=False,
-            base_profile_lower_chamfer_size=0 * unitmm,
-            base_profile_top_crop=0 * unitmm,
-            clearance=0 * unitmm,
-        ),
-        click_springs,
-    )
+    slots = make_click_spring_shape_slots(fundamentals, click_springs)
     # core is not used for positive shape creation; pass zero core placeholder.
     springs = slots.fused_positive(SpringSlotMask.all_true())
     if springs is None:
         raise ValueError("No springs generated")
     return springs
-
-
-def trim_click_springs_to_top_crop(
-    fundamentals: FundamentalsParams,
-    core: BaseplateCoreParams,
-    click_springs: ClickSpringParams,
-    springs: Part.Shape,
-) -> Part.Shape:
-    """Trim click springs above the base-profile top-crop cap height."""
-    z_limit = (
-        fundamentals.base_profile_main_height
-        + fundamentals.base_profile_main_half_width
-        - core.base_profile_top_crop
-    )
-    z2 = fundamentals.base_profile_main_height + click_springs.click_thickness
-    if z2 <= z_limit:
-        return springs
-
-    bbox = springs.BoundBox
-    margin = 1 * unitmm
-    clip_z = z_limit.Value
-    clip_height = max((bbox.ZMax - clip_z) + margin.Value, margin.Value)
-    clip_box = Part.makeBox(
-        (bbox.XMax - bbox.XMin) + 2 * margin.Value,
-        (bbox.YMax - bbox.YMin) + 2 * margin.Value,
-        clip_height,
-        fc.Vector(bbox.XMin - margin.Value, bbox.YMin - margin.Value, clip_z),
-        fc.Vector(0, 0, 1),
-    )
-    return springs.cut(clip_box).removeSplitter()
 
 
 def blank_bin_recessed_top_properties(obj: fc.DocumentObject) -> None:

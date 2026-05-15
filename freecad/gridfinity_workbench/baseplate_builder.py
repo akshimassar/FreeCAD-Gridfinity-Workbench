@@ -46,6 +46,38 @@ def _create_rectangle_wire(x_width: float, y_width: float, z: float = 0) -> Part
     return Part.Wire(Part.makePolygon(points))
 
 
+def _base_apex_height(params: BaseplateParams) -> fc.Units.Quantity:
+    return (
+        params.fundamentals.base_profile_main_height
+        + params.fundamentals.base_profile_main_half_width
+    )
+
+
+def baseplate_cell_top_crop(shape: Part.Shape, params: BaseplateParams) -> Part.Shape:
+    top_crop = params.core.base_profile_top_crop
+    half_width = params.fundamentals.base_profile_main_half_width
+    if top_crop >= half_width:
+        raise ValueError(
+            f"BaseProfileTopCrop ({top_crop}) must be smaller than "
+            f"BaseProfileMainHalfWidth ({half_width})"
+        )
+
+    apex = _base_apex_height(params)
+    margin = 0.1 * fc.Units.Quantity("1 mm")
+    crop_slab = Part.makeBox(
+        params.fundamentals.x_grid_size * 2,
+        params.fundamentals.y_grid_size * 2,
+        top_crop + 2 * margin,
+        fc.Vector(
+            -params.fundamentals.x_grid_size,
+            -params.fundamentals.y_grid_size,
+            apex - top_crop - margin,
+        ),
+        fc.Vector(0, 0, 1),
+    )
+    return shape.cut(crop_slab)
+
+
 def build_single_cell_baseplate_core(
     params: BaseplateParams,
     options: BaseplateBuildOptions,
@@ -54,14 +86,11 @@ def build_single_cell_baseplate_core(
         params.fundamentals.x_grid_size,
         params.fundamentals.y_grid_size,
     )
-    total_height = (
-        params.fundamentals.base_profile_main_height
-        + params.fundamentals.base_profile_main_half_width
-        - params.core.base_profile_top_crop
-    )
+    total_height = _base_apex_height(params)
     face = Part.Face(baseplate_outside_shape)
     solid_shape = face.extrude(fc.Vector(0, 0, total_height))
     cutout = feat.make_complex_bin_base_single_from_params(params.fundamentals, params.core)
+
     cutout.translate(fc.Vector(0, 0, total_height))
     return solid_shape.cut(cutout)
 
@@ -210,6 +239,7 @@ def _build_filler_cell_shape(
     cell = build_single_cell_baseplate_core(filler_params, options)
     if include_springs:
         cell = apply_snap_springs(cell, filler_params, options)
+    cell = baseplate_cell_top_crop(cell, filler_params)
     return cell
 
 
@@ -290,7 +320,6 @@ def _build_filler_ring_shape(
     if options.include_snap_springs and params.click_springs.enabled:
         spring_slots = feat.make_click_spring_shape_slots(
             params.fundamentals,
-            params.core,
             params.click_springs,
         )
 
@@ -559,15 +588,16 @@ def make_post_replication_cutter(
     params: BaseplateParams,
     geometry: GridfinityLayoutGeometry,
     options: BaseplateBuildOptions,
+    top_z: fc.Units.Quantity,
 ) -> Part.Shape | None:
     cutters: list[Part.Shape] = []
 
     if options.include_junction_screws:
         junction_holes = baseplate_feat.make_junction_screw_holes_from_params(
             params.fundamentals,
-            params.core,
             params.junction_screws,
             geometry.layout,
+            top_z,
             geometry=geometry,
         )
         if junction_holes is not None:
@@ -609,7 +639,6 @@ def apply_snap_springs(
         return shape
     spring_slots = feat.make_click_spring_shape_slots(
         params.fundamentals,
-        params.core,
         params.click_springs,
     )
     return feat.apply_click_spring_slots_to_cell(
@@ -659,6 +688,7 @@ def build_simple_baseplate_from_params(
         shape, geometry = add_filler_strips(empty_shape, params, layout, options)
         if shape.isNull():
             raise ValueError("No core cells and no fillers to build")
+        shape = baseplate_cell_top_crop(shape, params)
         shape = _apply_layout_corner_roundover(
             shape,
             params,
@@ -672,6 +702,7 @@ def build_simple_baseplate_from_params(
     t1 = time.perf_counter()
 
     shape = apply_snap_springs(shape, params, options)
+    shape = baseplate_cell_top_crop(shape, params)
     t2 = time.perf_counter()
 
     shape = replicate_layout(shape, params, layout)
@@ -690,7 +721,12 @@ def build_simple_baseplate_from_params(
     t3b = time.perf_counter()
 
     t4 = time.perf_counter()
-    post_cutter = make_post_replication_cutter(params, geometry, options)
+    top_z = (
+        max(v.Z for v in shape.Vertexes) * fc.Units.Quantity("1 mm")
+        if shape.Vertexes
+        else 0 * fc.Units.Quantity("1 mm")
+    )
+    post_cutter = make_post_replication_cutter(params, geometry, options, top_z)
     t5 = time.perf_counter()
     if post_cutter is not None:
         shape = shape.cut(post_cutter)
