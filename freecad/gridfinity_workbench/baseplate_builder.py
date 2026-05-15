@@ -274,9 +274,11 @@ def _filler_spring_mask(
         mask = mask.with_vertical_disabled(side_mask)
         mask = mask.with_horizontal_disabled(side_mask)
 
-    if target_cell_width < float(params.fundamentals.x_grid_size) / 2:
+    if (
+        target_cell_width < float(params.fundamentals.x_grid_size) / 2
+        or target_cell_height < float(params.fundamentals.y_grid_size) / 2
+    ):
         mask = mask.with_all_horizontal_disabled()
-    if target_cell_height < float(params.fundamentals.y_grid_size) / 2:
         mask = mask.with_all_vertical_disabled()
 
     return mask

@@ -1392,14 +1392,15 @@ def _make_click_notch_right_single(
     total_height = fundamentals.base_profile_main_height + fundamentals.base_profile_main_half_width
     x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
     x0 = x_vert_width / 2
-    click_width_x = 2 * click_springs.click_thickness
+    x_min = x0 - click_springs.click_offset
+    click_width_x = click_springs.click_offset + click_springs.click_thickness
     click_length = click_springs.click_length
     click_center_y = fundamentals.y_grid_size / 4
     return Part.makeBox(
         click_width_x,
         click_length,
         total_height,
-        fc.Vector(x0 - click_width_x / 2, click_center_y - click_length / 2, 0),
+        fc.Vector(x_min, click_center_y - click_length / 2, 0),
         fc.Vector(0, 0, 1),
     )
 
