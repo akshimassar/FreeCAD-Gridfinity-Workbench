@@ -1,14 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <g fill="none" stroke="#1f2937" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="32" cy="32" r="9"/>
-    <path d="M32 8v7"/>
-    <path d="M32 49v7"/>
-    <path d="M8 32h7"/>
-    <path d="M49 32h7"/>
-    <path d="M15 15l5 5"/>
-    <path d="M44 44l5 5"/>
-    <path d="M49 15l-5 5"/>
-    <path d="M20 44l-5 5"/>
-    <circle cx="32" cy="32" r="22"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <g fill="none" stroke="#202124" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 11h8l1.6 9.1a20 20 0 0 1 5.9 2.4l7.6-5.1 5.7 5.7-5.1 7.6a20 20 0 0 1 2.4 5.9L67 38v8l-9.1 1.6a20 20 0 0 1-2.4 5.9l5.1 7.6-5.7 5.7-7.6-5.1a20 20 0 0 1-5.9 2.4L40 73h-8l-1.6-9.1a20 20 0 0 1-5.9-2.4l-7.6 5.1-5.7-5.7 5.1-7.6a20 20 0 0 1-2.4-5.9L5 46v-8l9.1-1.6a20 20 0 0 1 2.4-5.9l-5.1-7.6 5.7-5.7 7.6 5.1a20 20 0 0 1 5.9-2.4Z" transform="translate(-4 -10) scale(1.1111)"/>
+    <circle cx="32" cy="32" r="10.5"/>
   </g>
 </svg>

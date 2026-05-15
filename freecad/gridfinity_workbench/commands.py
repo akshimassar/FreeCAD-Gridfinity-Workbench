@@ -442,7 +442,7 @@ class CreateDrawerBaseplate(BaseCommand):
     def __init__(self) -> None:
         super().__init__(
             name="DrawerBaseplate",
-            pixmap=ICONDIR / "Baseplate.svg",
+            pixmap=ICONDIR / "drawer_baseplate.svg",
             menu_text="Gridfinity Drawer Baseplate",
             tooltip="Plan a split baseplate for a drawer size.",
         )
@@ -1102,7 +1102,7 @@ class CreateSupportBaseplate(CreateCommand):
         super().__init__(
             name="SupportBaseplate",
             gridfinity_function=features.SupportBaseplate,
-            pixmap=ICONDIR / "Baseplate.svg",
+            pixmap=ICONDIR / "support_baseplate.svg",
         )
 
 
@@ -1129,7 +1129,7 @@ class CreateConnectingClip(CreateCommand):
         super().__init__(
             name="ConnectingClip",
             gridfinity_function=features.ConnectingClip,
-            pixmap=ICONDIR / "template_resource.svg",
+            pixmap=ICONDIR / "connecting_clip.svg",
         )
 
 
