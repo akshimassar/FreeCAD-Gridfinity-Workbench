@@ -566,6 +566,97 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         self.assertTrue(bool(data["valid"]))
         self.assertGreater(float(data["volume"]), 0.0)
 
+    def test_baseplate_click_thickness_equal_half_width_rejected(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            doc = fc.newDocument("ClickThicknessRejected")
+            try:
+                obj = doc.addObject("Part::FeaturePython", "Baseplate")
+                features.Baseplate(obj)
+                obj.ClickSpringsEnabled = True
+                obj.ClickThickness = obj.BaseProfileMainHalfWidth
+                doc.recompute()
+            finally:
+                fc.closeDocument(doc.Name)
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("Invalid click spring geometry: ClickThickness", proc.stderr)
+
+    def test_baseplate_click_length_limit_rejected(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            doc = fc.newDocument("ClickLengthRejected")
+            try:
+                obj = doc.addObject("Part::FeaturePython", "Baseplate")
+                features.Baseplate(obj)
+                obj.ClickSpringsEnabled = True
+                # Exceeds default max half-length (8.65mm) because 18/2 = 9mm.
+                obj.ClickLength = 18
+                doc.recompute()
+            finally:
+                fc.closeDocument(doc.Name)
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("Invalid click spring geometry: ClickLength/2", proc.stderr)
+
     def test_baseplate_2x2_right_filler_3mm_matches_expected_volume_delta(self) -> None:
         freecad_cmd = _resolve_freecad_cmd()
         if not freecad_cmd:
