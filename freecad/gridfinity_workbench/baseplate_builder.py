@@ -232,9 +232,7 @@ def _build_filler_cell_shape(
     target_cell_width: float,
     target_cell_height: float,
     options: BaseplateBuildOptions,
-    *,
-    include_springs: bool,
-) -> Part.Shape:
+) -> CoreCellBuildResult:
     unitmm = fc.Units.Quantity("1 mm")
     filler_params = replace(
         params,
@@ -244,12 +242,7 @@ def _build_filler_cell_shape(
             y_grid_size=target_cell_height * unitmm,
         ),
     )
-    core_result = build_single_cell_baseplate_core(filler_params, options)
-    cell = core_result.shape
-    if include_springs:
-        cell = apply_snap_springs(cell, filler_params, options)
-    cell = baseplate_cell_top_crop(cell, filler_params)
-    return cell
+    return build_single_cell_baseplate_core(filler_params, options)
 
 
 def _filler_spring_mask(
@@ -350,14 +343,14 @@ def _build_filler_ring_shape(
             topmost,
         )
         if key not in cache:
-            cell = _build_filler_cell_shape(
+            filler_result = _build_filler_cell_shape(
                 params,
                 width,
                 height,
                 options,
-                include_springs=False,
             )
-            if spring_slots is not None:
+            cell = filler_result.shape
+            if spring_slots is not None and not filler_result.is_tiny:
                 align_shift = _filler_alignment_shift(
                     params,
                     leftmost=leftmost,
@@ -386,6 +379,16 @@ def _build_filler_ring_shape(
                     mask,
                 )
                 cell.translate(fc.Vector(-align_shift.x, -align_shift.y, 0))
+            unitmm = fc.Units.Quantity("1 mm")
+            filler_params = replace(
+                params,
+                fundamentals=replace(
+                    params.fundamentals,
+                    x_grid_size=width * unitmm,
+                    y_grid_size=height * unitmm,
+                ),
+            )
+            cell = baseplate_cell_top_crop(cell, filler_params)
             cache[key] = cell
         return cache[key]
 

@@ -1155,17 +1155,6 @@ def make_complex_bin_base_single_from_params(
     core: BaseplateCoreParams,
 ) -> Part.Shape:
     """Create one-cell complex shaped bin base centered at origin from baseplate params."""
-    if fundamentals.x_grid_size <= fundamentals.bin_outer_radius:
-        raise ValueError(
-            f"xGridSize ({fundamentals.x_grid_size}) must be greater than "
-            f"BinOuterRadius ({fundamentals.bin_outer_radius})"
-        )
-    if fundamentals.y_grid_size <= fundamentals.bin_outer_radius:
-        raise ValueError(
-            f"yGridSize ({fundamentals.y_grid_size}) must be greater than "
-            f"BinOuterRadius ({fundamentals.bin_outer_radius})"
-        )
-
     lower_enabled = bool(core.base_profile_lower_chamfer_enabled)
     lower_size = core.base_profile_lower_chamfer_size if lower_enabled else 0 * unitmm
     upper_size = fundamentals.base_profile_main_half_width

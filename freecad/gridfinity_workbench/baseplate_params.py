@@ -291,11 +291,6 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
 
     if params.fillers.left_enabled:
         left_w = float(params.fillers.left_width)
-        if not left_w > radius:
-            add_error(
-                "filler_left_width",
-                f"FillerLeftWidth must be greater than BinOuterRadius ({_fmt_mm(radius)})",
-            )
         if x_units == 0 and not left_w > two_radius:
             add_error(
                 "filler_left_width",
@@ -304,11 +299,6 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
 
     if params.fillers.right_enabled:
         right_w = float(params.fillers.right_width)
-        if not right_w > radius:
-            add_error(
-                "filler_right_width",
-                f"FillerRightWidth must be greater than BinOuterRadius ({_fmt_mm(radius)})",
-            )
         if x_units == 0 and not right_w > two_radius:
             add_error(
                 "filler_right_width",
@@ -317,11 +307,6 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
 
     if params.fillers.top_enabled:
         top_w = float(params.fillers.top_width)
-        if not top_w > radius:
-            add_error(
-                "filler_top_width",
-                f"FillerTopWidth must be greater than BinOuterRadius ({_fmt_mm(radius)})",
-            )
         if y_units == 0 and not top_w > two_radius:
             add_error(
                 "filler_top_width",
@@ -330,11 +315,6 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
 
     if params.fillers.bottom_enabled:
         bottom_w = float(params.fillers.bottom_width)
-        if not bottom_w > radius:
-            add_error(
-                "filler_bottom_width",
-                f"FillerBottomWidth must be greater than BinOuterRadius ({_fmt_mm(radius)})",
-            )
         if y_units == 0 and not bottom_w > two_radius:
             add_error(
                 "filler_bottom_width",
