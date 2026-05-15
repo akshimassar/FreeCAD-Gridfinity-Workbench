@@ -43,6 +43,95 @@ def _resolve_freecad_cmd() -> str | None:
 
 
 class FreeCADCmdIntegrationTest(unittest.TestCase):
+    def test_baseplate_tiny_core_skips_clicksprings(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            def build_case(name: str, click_springs: bool) -> dict[str, float | int | bool]:
+                doc = fc.newDocument(name)
+                try:
+                    obj = doc.addObject("Part::FeaturePython", "Baseplate")
+                    features.Baseplate(obj)
+                    obj.xGridUnits = 1
+                    obj.yGridUnits = 1
+                    obj.xGridSize = 3.5
+                    obj.yGridSize = 3.5
+                    obj.BinOuterRadius = 3
+                    obj.ClickSpringsEnabled = click_springs
+                    obj.JunctionScrewHoles = False
+                    obj.ClipCutoutsEnabled = False
+                    obj.FillerTopEnabled = False
+                    obj.FillerRightEnabled = False
+                    obj.FillerBottomEnabled = False
+                    obj.FillerLeftEnabled = False
+                    doc.recompute()
+                    shape = obj.Shape
+                    return {{
+                        "volume": float(shape.Volume),
+                        "solids": int(len(shape.Solids)),
+                        "valid": bool(shape.isValid()),
+                    }}
+                finally:
+                    fc.closeDocument(doc.Name)
+
+            baseline = build_case("TinyNoSprings", click_springs=False)
+            with_springs = build_case("TinyWithSprings", click_springs=True)
+
+            payload = {{"baseline": baseline, "with_springs": with_springs}}
+            print("GRIDFINITY_RESULT=" + json.dumps(payload))
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        baseline = data["baseline"]
+        with_springs = data["with_springs"]
+        self.assertEqual(int(baseline["solids"]), 1)
+        self.assertEqual(int(with_springs["solids"]), 1)
+        self.assertTrue(bool(baseline["valid"]))
+        self.assertTrue(bool(with_springs["valid"]))
+        self.assertAlmostEqual(
+            float(with_springs["volume"]),
+            float(baseline["volume"]),
+            places=6,
+            msg="Tiny core should ignore click springs and keep identical volume",
+        )
+
     def test_baseplate_clicksprings_volume_stability(self) -> None:
         freecad_cmd = _resolve_freecad_cmd()
         if not freecad_cmd:

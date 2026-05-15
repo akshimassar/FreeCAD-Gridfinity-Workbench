@@ -33,6 +33,12 @@ class BaseplateBuildOptions:
     include_snap_springs: bool = True
 
 
+@dataclass
+class CoreCellBuildResult:
+    shape: Part.Shape
+    is_tiny: bool
+
+
 def _create_rectangle_wire(x_width: float, y_width: float, z: float = 0) -> Part.Wire:
     x_half = x_width / 2
     y_half = y_width / 2
@@ -81,7 +87,7 @@ def baseplate_cell_top_crop(shape: Part.Shape, params: BaseplateParams) -> Part.
 def build_single_cell_baseplate_core(
     params: BaseplateParams,
     options: BaseplateBuildOptions,
-) -> Part.Shape:
+) -> CoreCellBuildResult:
     baseplate_outside_shape = _create_rectangle_wire(
         params.fundamentals.x_grid_size,
         params.fundamentals.y_grid_size,
@@ -89,11 +95,12 @@ def build_single_cell_baseplate_core(
     total_height = _base_apex_height(params)
     face = Part.Face(baseplate_outside_shape)
     solid_shape = face.extrude(fc.Vector(0, 0, total_height))
-    cutout = feat.make_complex_bin_base_single_from_params(params.fundamentals, params.core)
-    if cutout.isNull():
-        return solid_shape
-    cutout.translate(fc.Vector(0, 0, total_height))
-    return solid_shape.cut(cutout)
+    bin_base_shape = feat.make_complex_bin_base_single_from_params(params.fundamentals, params.core)
+    tiny_cell = bin_base_shape.isNull()
+    if tiny_cell:
+        return CoreCellBuildResult(shape=solid_shape, is_tiny=True)
+    bin_base_shape.translate(fc.Vector(0, 0, total_height))
+    return CoreCellBuildResult(shape=solid_shape.cut(bin_base_shape), is_tiny=False)
 
 
 def replicate_layout(
@@ -237,7 +244,8 @@ def _build_filler_cell_shape(
             y_grid_size=target_cell_height * unitmm,
         ),
     )
-    cell = build_single_cell_baseplate_core(filler_params, options)
+    core_result = build_single_cell_baseplate_core(filler_params, options)
+    cell = core_result.shape
     if include_springs:
         cell = apply_snap_springs(cell, filler_params, options)
     cell = baseplate_cell_top_crop(cell, filler_params)
@@ -711,10 +719,12 @@ def build_simple_baseplate_from_params(
         )
         return shape
 
-    shape = build_single_cell_baseplate_core(params, options)
+    core_result = build_single_cell_baseplate_core(params, options)
+    shape = core_result.shape
     t1 = time.perf_counter()
 
-    shape = apply_snap_springs(shape, params, options)
+    if not core_result.is_tiny:
+        shape = apply_snap_springs(shape, params, options)
     shape = baseplate_cell_top_crop(shape, params)
     t2 = time.perf_counter()
 
