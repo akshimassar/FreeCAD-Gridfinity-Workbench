@@ -155,14 +155,26 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
         errors[key] = min(errors[key], message)
 
     half_width = float(params.fundamentals.base_profile_main_half_width)
+    outer_radius = float(params.fundamentals.bin_outer_radius)
     top_crop = float(params.core.base_profile_top_crop)
     if not top_crop < half_width:
-        add_error("top_crop", f"Must be less than {_fmt_mm(half_width)}")
+        add_error(
+            "top_crop",
+            f"BaseProfileTopCrop must be less than BaseProfileMainHalfWidth ({_fmt_mm(half_width)})",
+        )
+    if not outer_radius > half_width:
+        add_error(
+            "bin_outer_radius",
+            f"BinOuterRadius must be greater than BaseProfileMainHalfWidth ({_fmt_mm(half_width)})",
+        )
 
     if params.click_springs.enabled:
         click_thickness = float(params.click_springs.click_thickness)
         if not click_thickness < half_width:
-            add_error("click_thickness", f"Must be less than {_fmt_mm(half_width)}")
+            add_error(
+                "click_thickness",
+                f"ClickThickness must be less than BaseProfileMainHalfWidth ({_fmt_mm(half_width)})",
+            )
 
         bin_vertical_radius = float(params.fundamentals.bin_outer_radius) - half_width
         x_limit = float(params.fundamentals.x_grid_size) / 4 - bin_vertical_radius
@@ -172,8 +184,8 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
         if not half_len < max_half:
             add_error(
                 "click_length",
-                "Must satisfy ClickLength/2 < cell_size/4 - main_round_radius "
-                f"(max half-length {_fmt_mm(max_half)})",
+                "ClickLength/2 must be less than min(xGridSize, yGridSize)/4 - "
+                f"(BinOuterRadius - BaseProfileMainHalfWidth) (max half-length {_fmt_mm(max_half)})",
             )
 
     if params.junction_screws.enabled:
@@ -181,24 +193,36 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
         counterbore_d = float(params.junction_screws.counterbore_diameter)
         counterbore_depth = float(params.junction_screws.counterbore_depth)
         if not screw_d > 0:
-            add_error("junction_screw_diameter", f"Must be > {_fmt_mm(0)}")
+            add_error(
+                "junction_screw_diameter",
+                f"JunctionScrewDiameter must be greater than {_fmt_mm(0)}",
+            )
         if not counterbore_d > 0:
-            add_error("junction_counterbore_diameter", f"Must be > {_fmt_mm(0)}")
+            add_error(
+                "junction_counterbore_diameter",
+                f"JunctionCounterboreDiameter must be greater than {_fmt_mm(0)}",
+            )
         if not counterbore_depth > 0:
-            add_error("junction_counterbore_depth", f"Must be > {_fmt_mm(0)}")
+            add_error(
+                "junction_counterbore_depth",
+                f"JunctionCounterboreDepth must be greater than {_fmt_mm(0)}",
+            )
         if not counterbore_d > screw_d:
             add_error(
                 "junction_counterbore_diameter",
-                f"Must be greater than screw diameter ({_fmt_mm(screw_d)})",
+                f"JunctionCounterboreDiameter must be greater than JunctionScrewDiameter ({_fmt_mm(screw_d)})",
             )
 
     if params.clip_cutouts.enabled:
         clip_length = float(params.clip_cutouts.clip_length)
         max_clip = 2 * float(params.fundamentals.base_profile_main_half_width)
         if not clip_length > 0:
-            add_error("clip_length", f"Must be > {_fmt_mm(0)}")
+            add_error("clip_length", f"ClipLength must be greater than {_fmt_mm(0)}")
         if not clip_length < max_clip:
-            add_error("clip_length", f"Must be < {_fmt_mm(max_clip)}")
+            add_error(
+                "clip_length",
+                f"ClipLength must be less than 2*BaseProfileMainHalfWidth ({_fmt_mm(max_clip)})",
+            )
 
     x_grid_size = float(params.fundamentals.x_grid_size)
     y_grid_size = float(params.fundamentals.y_grid_size)
@@ -248,7 +272,74 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
         if not enabled:
             continue
         if not (0 < width < max_grid):
-            add_error(key, f"Must be > {_fmt_mm(0)} and < {_fmt_mm(max_grid)}")
+            axis_name = (
+                "xGridSize" if key in {"filler_left_width", "filler_right_width"} else "yGridSize"
+            )
+            field_name = {
+                "filler_left_width": "FillerLeftWidth",
+                "filler_right_width": "FillerRightWidth",
+                "filler_top_width": "FillerTopWidth",
+                "filler_bottom_width": "FillerBottomWidth",
+            }[key]
+            add_error(
+                key,
+                f"{field_name} must be > {_fmt_mm(0)} and < {axis_name} ({_fmt_mm(max_grid)})",
+            )
+
+    radius = float(params.fundamentals.bin_outer_radius)
+    two_radius = 2 * radius
+
+    if params.fillers.left_enabled:
+        left_w = float(params.fillers.left_width)
+        if not left_w > radius:
+            add_error(
+                "filler_left_width",
+                f"FillerLeftWidth must be greater than BinOuterRadius ({_fmt_mm(radius)})",
+            )
+        if x_units == 0 and not left_w > two_radius:
+            add_error(
+                "filler_left_width",
+                f"With xGridUnits=0, FillerLeftWidth must be greater than 2*BinOuterRadius ({_fmt_mm(two_radius)})",
+            )
+
+    if params.fillers.right_enabled:
+        right_w = float(params.fillers.right_width)
+        if not right_w > radius:
+            add_error(
+                "filler_right_width",
+                f"FillerRightWidth must be greater than BinOuterRadius ({_fmt_mm(radius)})",
+            )
+        if x_units == 0 and not right_w > two_radius:
+            add_error(
+                "filler_right_width",
+                f"With xGridUnits=0, FillerRightWidth must be greater than 2*BinOuterRadius ({_fmt_mm(two_radius)})",
+            )
+
+    if params.fillers.top_enabled:
+        top_w = float(params.fillers.top_width)
+        if not top_w > radius:
+            add_error(
+                "filler_top_width",
+                f"FillerTopWidth must be greater than BinOuterRadius ({_fmt_mm(radius)})",
+            )
+        if y_units == 0 and not top_w > two_radius:
+            add_error(
+                "filler_top_width",
+                f"With yGridUnits=0, FillerTopWidth must be greater than 2*BinOuterRadius ({_fmt_mm(two_radius)})",
+            )
+
+    if params.fillers.bottom_enabled:
+        bottom_w = float(params.fillers.bottom_width)
+        if not bottom_w > radius:
+            add_error(
+                "filler_bottom_width",
+                f"FillerBottomWidth must be greater than BinOuterRadius ({_fmt_mm(radius)})",
+            )
+        if y_units == 0 and not bottom_w > two_radius:
+            add_error(
+                "filler_bottom_width",
+                f"With yGridUnits=0, FillerBottomWidth must be greater than 2*BinOuterRadius ({_fmt_mm(two_radius)})",
+            )
 
     if errors:
         return DialogValidationResult(params=None, errors=errors)

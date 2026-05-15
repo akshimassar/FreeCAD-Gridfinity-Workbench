@@ -254,3 +254,120 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             places=6,
             msg=f"Unexpected volume drift: got {data['volume']}, expected {expected_volume}",
         )
+
+    def test_baseplate_x0_y2_right_filler_3mm_rejected(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            doc = fc.newDocument("BaseX0Y2")
+            try:
+                obj = doc.addObject("Part::FeaturePython", "Baseplate")
+                features.Baseplate(obj)
+                obj.xGridUnits = 0
+                obj.yGridUnits = 2
+                obj.FillerRightEnabled = True
+                obj.FillerRightWidth = 3
+                obj.FillerLeftEnabled = False
+                obj.FillerTopEnabled = False
+                obj.FillerBottomEnabled = False
+                obj.ClickSpringsEnabled = False
+                obj.JunctionScrewHoles = False
+                obj.ClipCutoutsEnabled = False
+                doc.recompute()
+                shape = obj.Shape
+                bbox = shape.BoundBox
+                payload = {{
+                    "solids": int(len(shape.Solids)),
+                    "valid": bool(shape.isValid()),
+                    "x_size": float(bbox.XMax - bbox.XMin),
+                    "y_size": float(bbox.YMax - bbox.YMin),
+                }}
+                print("GRIDFINITY_RESULT=" + json.dumps(payload))
+            finally:
+                fc.closeDocument(doc.Name)
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("must be greater than BinOuterRadius", proc.stderr)
+
+    def test_baseplate_x2_y2_radius2_right_filler_5_1_rejected(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            doc = fc.newDocument("BaseX2Y2Radius2")
+            try:
+                obj = doc.addObject("Part::FeaturePython", "Baseplate")
+                features.Baseplate(obj)
+                obj.xGridUnits = 2
+                obj.yGridUnits = 2
+                obj.BinOuterRadius = 2
+                obj.FillerRightEnabled = True
+                obj.FillerRightWidth = 5.1
+                obj.FillerLeftEnabled = False
+                obj.FillerTopEnabled = False
+                obj.FillerBottomEnabled = False
+                obj.ClickSpringsEnabled = False
+                obj.JunctionScrewHoles = False
+                obj.ClipCutoutsEnabled = False
+                doc.recompute()
+            finally:
+                fc.closeDocument(doc.Name)
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("must be greater than BaseProfileMainHalfWidth", proc.stderr)

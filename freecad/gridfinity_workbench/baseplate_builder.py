@@ -90,7 +90,8 @@ def build_single_cell_baseplate_core(
     face = Part.Face(baseplate_outside_shape)
     solid_shape = face.extrude(fc.Vector(0, 0, total_height))
     cutout = feat.make_complex_bin_base_single_from_params(params.fundamentals, params.core)
-
+    if cutout.isNull():
+        return solid_shape
     cutout.translate(fc.Vector(0, 0, total_height))
     return solid_shape.cut(cutout)
 
@@ -554,10 +555,22 @@ def _apply_layout_corner_roundover(
 
     rounded = shape
     if edges_pop1:
-        rounded = rounded.makeFillet(params.fundamentals.bin_outer_radius, edges_pop1)
+        try:
+            rounded = rounded.makeFillet(params.fundamentals.bin_outer_radius, edges_pop1)
+        except Part.OCCError:
+            fc.Console.PrintError(
+                "[Gridfinity] Baseplate corners roundover failed. Returning shape before roundover.\n"
+            )
+            return shape
     t3 = time.perf_counter()
     if edges_pop3:
-        rounded = rounded.makeFillet(params.fundamentals.bin_outer_radius / 4, edges_pop3)
+        try:
+            rounded = rounded.makeFillet(params.fundamentals.bin_outer_radius / 4, edges_pop3)
+        except Part.OCCError:
+            fc.Console.PrintError(
+                "[Gridfinity] Baseplate corners roundover failed. Returning shape before roundover.\n"
+            )
+            return shape
     t4 = time.perf_counter()
     fc.Console.PrintMessage(
         "[Gridfinity Timing] roundover "

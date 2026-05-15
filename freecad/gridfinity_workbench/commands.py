@@ -949,6 +949,7 @@ class CreateBaseplateTaskPanel:
         field_keys = [
             "x_grid_units",
             "y_grid_units",
+            "bin_outer_radius",
             "top_crop",
             "click_thickness",
             "click_length",

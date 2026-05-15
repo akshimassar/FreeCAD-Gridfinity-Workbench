@@ -1155,11 +1155,27 @@ def make_complex_bin_base_single_from_params(
     core: BaseplateCoreParams,
 ) -> Part.Shape:
     """Create one-cell complex shaped bin base centered at origin from baseplate params."""
+    if fundamentals.x_grid_size <= fundamentals.bin_outer_radius:
+        raise ValueError(
+            f"xGridSize ({fundamentals.x_grid_size}) must be greater than "
+            f"BinOuterRadius ({fundamentals.bin_outer_radius})"
+        )
+    if fundamentals.y_grid_size <= fundamentals.bin_outer_radius:
+        raise ValueError(
+            f"yGridSize ({fundamentals.y_grid_size}) must be greater than "
+            f"BinOuterRadius ({fundamentals.bin_outer_radius})"
+        )
+
     lower_enabled = bool(core.base_profile_lower_chamfer_enabled)
     lower_size = core.base_profile_lower_chamfer_size if lower_enabled else 0 * unitmm
     upper_size = fundamentals.base_profile_main_half_width
     total_height = fundamentals.base_profile_main_height + fundamentals.base_profile_main_half_width
     bin_vertical_radius = fundamentals.bin_outer_radius - fundamentals.base_profile_main_half_width
+    if bin_vertical_radius <= 0:
+        raise ValueError(
+            f"BinOuterRadius ({fundamentals.bin_outer_radius}) must be greater than "
+            f"BaseProfileMainHalfWidth ({fundamentals.base_profile_main_half_width})"
+        )
 
     x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
     y_vert_width = fundamentals.y_grid_size - 2 * fundamentals.base_profile_main_half_width
@@ -1167,6 +1183,11 @@ def make_complex_bin_base_single_from_params(
     x_bt_cmf_width = x_vert_width - 2 * lower_size
     y_bt_cmf_width = y_vert_width - 2 * lower_size
     vertical_section_height = fundamentals.base_profile_main_height - lower_size
+
+    if x_vert_width <= 0 or y_vert_width <= 0:
+        return Part.Shape()
+    if lower_enabled and (x_bt_cmf_width <= 0 or y_bt_cmf_width <= 0):
+        return Part.Shape()
 
     vertical_section = utils.rounded_rectangle_extrude(
         x_vert_width,
