@@ -271,6 +271,83 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             "YMax drift indicates misplaced springs",
         )
 
+    def test_drawer_baseplate_preview_build_reports_time(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+            import time
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            doc = fc.newDocument("DrawerPreview")
+            try:
+                obj = doc.addObject("Part::FeaturePython", "DrawerBaseplate")
+                features.DrawerBaseplate(obj)
+
+                obj.DrawerWidth = 600
+                obj.DrawerDepth = 500
+                obj.PrinterBedWidth = 256
+                obj.PrinterBedDepth = 240
+                obj.WidthFillerAlignment = "Right"
+                obj.DepthFillerAlignment = "Top"
+                obj.PreviewBuildMode = True
+
+                start = time.perf_counter()
+                doc.recompute()
+                elapsed = time.perf_counter() - start
+
+                shape = obj.Shape
+                payload = {{
+                    "elapsed_seconds": float(elapsed),
+                    "valid": bool(shape.isValid()),
+                    "piece_count": int(len(getattr(obj, "PieceNames", []))),
+                    "solids": int(len(shape.Solids)),
+                }}
+                print("GRIDFINITY_RESULT=" + json.dumps(payload))
+            finally:
+                fc.closeDocument(doc.Name)
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        self.assertGreaterEqual(float(data["elapsed_seconds"]), 0.0)
+        self.assertTrue(bool(data["valid"]))
+        self.assertGreater(int(data["piece_count"]), 0)
+        self.assertGreater(int(data["solids"]), 0)
+
     def test_baseplate_2x2_with_features_volume_unchanged(self) -> None:
         # LOCKED INVARIANT:
         # Expected X/Y/Z and volume are intentionally strict regression locks.

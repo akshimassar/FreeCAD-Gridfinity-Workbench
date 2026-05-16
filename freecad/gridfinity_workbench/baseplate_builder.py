@@ -353,7 +353,6 @@ def _build_filler_ring_shape(
     bottom_on = params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
     top_on = params.fillers.top_enabled and float(params.fillers.top_width) > 0
 
-    cache: dict[tuple[float, float, bool, bool, bool, bool], CoreCellBuildResult] = {}
     spring_slots = None
     if not preview and options.include_snap_springs and params.click_springs.enabled:
         spring_slots = feat.make_click_spring_shape_slots(
@@ -370,64 +369,54 @@ def _build_filler_ring_shape(
         bottommost: bool,
         topmost: bool,
     ) -> CoreCellBuildResult:
-        key = (
-            round(width, 6),
-            round(height, 6),
-            leftmost,
-            rightmost,
-            bottommost,
-            topmost,
+        filler_result = _build_filler_cell_shape(
+            params,
+            width,
+            height,
+            options,
+            preview=preview,
         )
-        if key not in cache:
-            filler_result = _build_filler_cell_shape(
+        cell = filler_result.shape
+        if spring_slots is not None and not filler_result.is_tiny:
+            align_shift = _filler_alignment_shift(
                 params,
-                width,
-                height,
-                options,
-                preview=preview,
+                leftmost=leftmost,
+                rightmost=rightmost,
+                bottommost=bottommost,
+                topmost=topmost,
+                target_cell_width=width,
+                target_cell_height=height,
             )
-            cell = filler_result.shape
-            if spring_slots is not None and not filler_result.is_tiny:
-                align_shift = _filler_alignment_shift(
-                    params,
-                    leftmost=leftmost,
-                    rightmost=rightmost,
-                    bottommost=bottommost,
-                    topmost=topmost,
-                    target_cell_width=width,
-                    target_cell_height=height,
-                )
-                cell.translate(align_shift)
-                mask = _filler_spring_mask(
-                    params,
-                    leftmost=leftmost,
-                    rightmost=rightmost,
-                    bottommost=bottommost,
-                    topmost=topmost,
-                    target_cell_width=width,
-                    target_cell_height=height,
-                )
-                cell = feat.apply_click_spring_slots_to_cell(
-                    cell,
-                    params.fundamentals,
-                    params.core,
-                    params.click_springs,
-                    spring_slots,
-                    mask,
-                )
-                cell.translate(fc.Vector(-align_shift.x, -align_shift.y, 0))
-            unitmm = fc.Units.Quantity("1 mm")
-            filler_params = replace(
+            cell.translate(align_shift)
+            mask = _filler_spring_mask(
                 params,
-                fundamentals=replace(
-                    params.fundamentals,
-                    x_grid_size=width * unitmm,
-                    y_grid_size=height * unitmm,
-                ),
+                leftmost=leftmost,
+                rightmost=rightmost,
+                bottommost=bottommost,
+                topmost=topmost,
+                target_cell_width=width,
+                target_cell_height=height,
             )
-            cell = baseplate_cell_top_crop(cell, filler_params)
-            cache[key] = CoreCellBuildResult(shape=cell, is_tiny=filler_result.is_tiny)
-        return cache[key]
+            cell = feat.apply_click_spring_slots_to_cell(
+                cell,
+                params.fundamentals,
+                params.core,
+                params.click_springs,
+                spring_slots,
+                mask,
+            )
+            cell.translate(fc.Vector(-align_shift.x, -align_shift.y, 0))
+        unitmm = fc.Units.Quantity("1 mm")
+        filler_params = replace(
+            params,
+            fundamentals=replace(
+                params.fundamentals,
+                x_grid_size=width * unitmm,
+                y_grid_size=height * unitmm,
+            ),
+        )
+        cell = baseplate_cell_top_crop(cell, filler_params)
+        return CoreCellBuildResult(shape=cell, is_tiny=filler_result.is_tiny)
 
     def center(ix: int, iy: int) -> fc.Vector:
         x = geometry.x_lines[ix] + (geometry.x_lines[ix + 1] - geometry.x_lines[ix]) / 2
