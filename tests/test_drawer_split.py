@@ -1,6 +1,6 @@
 import unittest
 
-from freecad.gridfinity_workbench.drawer_split import plan_axis_split
+from freecad.gridfinity_workbench.drawer_split import split_axis_into_printable_chunks
 
 
 class DrawerSplitTest(unittest.TestCase):
@@ -34,7 +34,12 @@ class DrawerSplitTest(unittest.TestCase):
         self.assertAlmostEqual(pieces[-1].high_fill_mm, high_fill_mm)
 
     def test_478_256_high(self) -> None:
-        pieces = plan_axis_split(length_mm=478.0, grid_mm=42.0, bed_mm=256.0, alignment="high")
+        pieces = split_axis_into_printable_chunks(
+            length_mm=478.0,
+            grid_mm=42.0,
+            bed_mm=256.0,
+            alignment="high",
+        )
         self._assert_invariants(
             pieces=pieces,
             length_mm=478.0,
@@ -47,7 +52,12 @@ class DrawerSplitTest(unittest.TestCase):
         self.assertEqual(widths, [252.0, 226.0])
 
     def test_600_240_high(self) -> None:
-        pieces = plan_axis_split(length_mm=600.0, grid_mm=42.0, bed_mm=240.0, alignment="high")
+        pieces = split_axis_into_printable_chunks(
+            length_mm=600.0,
+            grid_mm=42.0,
+            bed_mm=240.0,
+            alignment="high",
+        )
         self._assert_invariants(
             pieces=pieces,
             length_mm=600.0,

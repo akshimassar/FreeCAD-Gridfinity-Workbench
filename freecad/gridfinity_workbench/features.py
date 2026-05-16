@@ -19,7 +19,7 @@ from . import clip_profiles
 from . import check_version, const, grid_initial_layout, label_shelf, utils
 from . import feature_construction as feat
 from .baseplate_params import BaseplateParams, params_from_obj
-from .drawer_split import plan_axis_split
+from .drawer_split import split_axis_into_printable_chunks
 from .custom_shape_features import (
     clean_up_layout,
     custom_shape_solid,
@@ -437,41 +437,6 @@ class DrawerBaseplate(FoundationGridfinity):
             "Deterministic names for generated drawer baseplate pieces",
         ).PieceNames = []
 
-    def _axis_split(
-        self,
-        *,
-        length_mm: float,
-        bed_mm: float,
-        grid_mm: float,
-        alignment: str,
-        low_name: str,
-        high_name: str,
-    ) -> tuple[list, float, float]:
-        if bed_mm < grid_mm:
-            raise ValueError(f"{low_name}/{high_name} axis bed too small for one full grid cell")
-
-        cell_count = int(length_mm // grid_mm)
-        remainder = max(length_mm - cell_count * grid_mm, 0.0)
-        low_fill = 0.0
-        high_fill = 0.0
-        if alignment == low_name:
-            low_fill = remainder
-        elif alignment == high_name:
-            high_fill = remainder
-        else:
-            low_fill = remainder / 2
-            high_fill = remainder - low_fill
-
-        chunks = plan_axis_split(
-            length_mm=length_mm,
-            grid_mm=grid_mm,
-            bed_mm=bed_mm,
-            alignment="low"
-            if alignment == low_name
-            else ("high" if alignment == high_name else "both"),
-        )
-        return chunks, low_fill, high_fill
-
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         params = params_from_obj(obj)
         options = baseplate_builder.BaseplateBuildOptions(
@@ -481,25 +446,31 @@ class DrawerBaseplate(FoundationGridfinity):
         )
 
         grid_mm = float(params.fundamentals.x_grid_size)
-        x_chunks, _x_low_fill, _x_high_fill = self._axis_split(
+        x_axis_chunks = split_axis_into_printable_chunks(
             length_mm=float(obj.DrawerWidth),
             bed_mm=float(obj.PrinterBedWidth),
             grid_mm=grid_mm,
-            alignment=str(obj.WidthFillerAlignment),
-            low_name="Left",
-            high_name="Right",
+            alignment=(
+                "low"
+                if str(obj.WidthFillerAlignment) == "Left"
+                else ("high" if str(obj.WidthFillerAlignment) == "Right" else "both")
+            ),
         )
-        y_chunks, _y_low_fill, _y_high_fill = self._axis_split(
+        y_axis_chunks = split_axis_into_printable_chunks(
             length_mm=float(obj.DrawerDepth),
             bed_mm=float(obj.PrinterBedDepth),
             grid_mm=grid_mm,
-            alignment=str(obj.DepthFillerAlignment),
-            low_name="Bottom",
-            high_name="Top",
+            alignment=(
+                "low"
+                if str(obj.DepthFillerAlignment) == "Bottom"
+                else ("high" if str(obj.DepthFillerAlignment) == "Top" else "both")
+            ),
         )
 
-        k = len(x_chunks)
-        m = len(y_chunks)
+        k = len(x_axis_chunks)
+        # Axis split output is low->high (bottom->top), while matrix rows are traversed top->down.
+        y_axis_chunks_for_rows = list(reversed(y_axis_chunks))
+        m = len(y_axis_chunks_for_rows)
         piece_names: list[str] = []
         pieces: list[Part.Shape] = []
         bed_w = float(obj.PrinterBedWidth)
@@ -519,21 +490,19 @@ class DrawerBaseplate(FoundationGridfinity):
             for ix in range(k):
                 piece_name = f"X{ix}_Y{iy}"
                 piece_names.append(piece_name)
-                x_chunk = x_chunks[ix]
-                # Matrix rows are traversed top->down, while axis split output is low->high.
-                # For Y axis this means bottom->top, so reverse mapping is required here.
-                y_chunk = y_chunks[m - 1 - iy]
+                x_axis_chunk = x_axis_chunks[ix]
+                y_axis_chunk = y_axis_chunks_for_rows[iy]
 
-                x_units = x_chunk.cells
-                y_units = y_chunk.cells
+                x_units = x_axis_chunk.cells
+                y_units = y_axis_chunk.cells
                 if x_units < 1 or y_units < 1:
                     continue
 
                 # Filler ownership comes from splitter output; do not recompute by row/column index.
-                left_fill = x_chunk.low_fill_mm
-                right_fill = x_chunk.high_fill_mm
-                bottom_fill = y_chunk.low_fill_mm
-                top_fill = y_chunk.high_fill_mm
+                left_fill = x_axis_chunk.low_fill_mm
+                right_fill = x_axis_chunk.high_fill_mm
+                bottom_fill = y_axis_chunk.low_fill_mm
+                top_fill = y_axis_chunk.high_fill_mm
 
                 piece_params: BaseplateParams = replace(
                     params,

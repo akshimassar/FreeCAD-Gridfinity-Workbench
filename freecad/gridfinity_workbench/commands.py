@@ -27,7 +27,7 @@ from PySide.QtWidgets import (
 )
 
 from . import custom_shape, features, utils
-from .drawer_split import plan_axis_split
+from .drawer_split import split_axis_into_printable_chunks
 from .baseplate_params import (
     BaseplateParams,
     apply_params_to_obj,
@@ -564,41 +564,6 @@ class CreateDrawerBaseplateTaskPanel:
     def getStandardButtons(self) -> int:  # noqa: N802
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 
-    def _axis_plan(
-        self,
-        *,
-        length_mm: float,
-        bed_mm: float,
-        grid_mm: float,
-        alignment: str,
-        low_label: str,
-        high_label: str,
-    ) -> tuple[list[Any], float, float]:
-        if bed_mm < grid_mm:
-            raise ValueError(f"{low_label}/{high_label} axis bed too small for one full grid cell")
-
-        cell_count = int(length_mm // grid_mm)
-        remainder = max(length_mm - cell_count * grid_mm, 0.0)
-        low_filler_mm = 0.0
-        high_filler_mm = 0.0
-        if alignment == low_label:
-            low_filler_mm = remainder
-        elif alignment == high_label:
-            high_filler_mm = remainder
-        else:
-            low_filler_mm = remainder / 2
-            high_filler_mm = remainder - low_filler_mm
-
-        chunks = plan_axis_split(
-            length_mm=length_mm,
-            grid_mm=grid_mm,
-            bed_mm=bed_mm,
-            alignment="low"
-            if alignment == low_label
-            else ("high" if alignment == high_label else "both"),
-        )
-        return chunks, low_filler_mm, high_filler_mm
-
     def _validation_payload(self) -> dict[str, Any]:
         return {
             "x_grid_units": 1,
@@ -652,8 +617,6 @@ class CreateDrawerBaseplateTaskPanel:
         *,
         chunks: list[Any],
         grid_mm: float,
-        low_filler_mm: float,
-        high_filler_mm: float,
     ) -> str:
         widths: list[float] = [
             chunk.cells * grid_mm + chunk.low_fill_mm + chunk.high_fill_mm for chunk in chunks
@@ -673,32 +636,32 @@ class CreateDrawerBaseplateTaskPanel:
                 raise ValueError("Drawer dimensions must be > 0")
             if float(self.bed_width.value()) <= 0 or float(self.bed_depth.value()) <= 0:
                 raise ValueError("Bed dimensions must be > 0")
-            x_chunks, x_low, x_high = self._axis_plan(
+            x_chunks = split_axis_into_printable_chunks(
                 length_mm=float(self.drawer_width.value()),
                 bed_mm=float(self.bed_width.value()),
                 grid_mm=grid_mm,
-                alignment=self.width_alignment.currentText(),
-                low_label="Left",
-                high_label="Right",
+                alignment=(
+                    "low"
+                    if self.width_alignment.currentText() == "Left"
+                    else ("high" if self.width_alignment.currentText() == "Right" else "both")
+                ),
             )
-            y_chunks, y_low, y_high = self._axis_plan(
+            y_chunks = split_axis_into_printable_chunks(
                 length_mm=float(self.drawer_depth.value()),
                 bed_mm=float(self.bed_depth.value()),
                 grid_mm=grid_mm,
-                alignment=self.depth_alignment.currentText(),
-                low_label="Bottom",
-                high_label="Top",
+                alignment=(
+                    "low"
+                    if self.depth_alignment.currentText() == "Bottom"
+                    else ("high" if self.depth_alignment.currentText() == "Top" else "both")
+                ),
             )
         except ValueError as exc:
             self.summary.setText(f"Error: {exc}")
             return
 
-        x_desc = self._format_axis(
-            chunks=x_chunks, grid_mm=grid_mm, low_filler_mm=x_low, high_filler_mm=x_high
-        )
-        y_desc = self._format_axis(
-            chunks=y_chunks, grid_mm=grid_mm, low_filler_mm=y_low, high_filler_mm=y_high
-        )
+        x_desc = self._format_axis(chunks=x_chunks, grid_mm=grid_mm)
+        y_desc = self._format_axis(chunks=y_chunks, grid_mm=grid_mm)
         pieces = len(x_chunks) * len(y_chunks)
         self.summary.setText(
             f"X chunks: {len(x_chunks)} [{x_desc}]\n"

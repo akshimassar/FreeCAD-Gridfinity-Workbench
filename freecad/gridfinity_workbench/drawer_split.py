@@ -6,13 +6,13 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class AxisPiece:
+class PrintableAxisChunk:
     cells: int
     low_fill_mm: float
     high_fill_mm: float
 
 
-def _arrange_piece_sizes(total: int, pieces: int) -> list[int]:
+def _build_balanced_chunk_cell_counts(total: int, pieces: int) -> list[int]:
     if pieces < 1:
         raise ValueError("pieces must be >= 1")
     q, r = divmod(total, pieces)
@@ -29,13 +29,13 @@ def _arrange_piece_sizes(total: int, pieces: int) -> list[int]:
     return low + high
 
 
-def plan_axis_split(
+def split_axis_into_printable_chunks(
     *,
     length_mm: float,
     grid_mm: float,
     bed_mm: float,
     alignment: str,
-) -> list[AxisPiece]:
+) -> list[PrintableAxisChunk]:
     if grid_mm <= 0 or bed_mm <= 0 or length_mm <= 0:
         raise ValueError("length, grid and bed must be > 0")
     if bed_mm < grid_mm:
@@ -64,7 +64,7 @@ def plan_axis_split(
         return []
 
     pieces_n = (sim_total + cap_cells - 1) // cap_cells
-    sizes = sorted(_arrange_piece_sizes(sim_total, pieces_n))
+    sizes = sorted(_build_balanced_chunk_cell_counts(sim_total, pieces_n))
 
     tokens = ["C"] * cell_count
     if low_slot:
@@ -111,14 +111,19 @@ def plan_axis_split(
     if chunks and high_fill > 0 and all("F" not in c for c in chunks):
         chunks[-1].append("F")
 
-    pieces: list[AxisPiece] = []
+    pieces: list[PrintableAxisChunk] = []
     for i, chunk in enumerate(chunks):
         p_low = low_fill if i == 0 else 0.0
         p_high = high_fill if i == len(chunks) - 1 else 0.0
-        piece = AxisPiece(cells=chunk.count("C"), low_fill_mm=p_low, high_fill_mm=p_high)
+        piece = PrintableAxisChunk(cells=chunk.count("C"), low_fill_mm=p_low, high_fill_mm=p_high)
         width = piece.cells * grid_mm + piece.low_fill_mm + piece.high_fill_mm
         if width > bed_mm + 1e-9:
             raise ValueError("Generated piece exceeds bed size")
         pieces.append(piece)
 
     return pieces
+
+
+# Backward compatibility aliases.
+AxisPiece = PrintableAxisChunk
+plan_axis_split = split_axis_into_printable_chunks
