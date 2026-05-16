@@ -58,6 +58,23 @@ def new_object(name: str) -> fc.DocumentObject:
     return obj
 
 
+def make_centered_box(
+    x_size: float,
+    y_size: float,
+    z_size: float,
+    *,
+    z_min: float = 0.0,
+) -> Part.Shape:
+    """Create a box centered on XY, with configurable bottom Z."""
+    return Part.makeBox(
+        x_size,
+        y_size,
+        z_size,
+        fc.Vector(-0.5 * x_size, -0.5 * y_size, z_min),
+        fc.Vector(0, 0, 1),
+    )
+
+
 def copy_and_translate(shape: Part.Shape, vec_list: list[fc.Vector]) -> Part.Shape:
     """Copy a shape and translates.
 

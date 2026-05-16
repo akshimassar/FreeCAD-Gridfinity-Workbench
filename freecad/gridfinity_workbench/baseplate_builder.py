@@ -53,6 +53,16 @@ def _create_rectangle_wire(x_width: float, y_width: float, z: float = 0) -> Part
     return Part.Wire(Part.makePolygon(points))
 
 
+def _make_centered_box(
+    x_size: float,
+    y_size: float,
+    z_size: float,
+    *,
+    z_min: float = 0.0,
+) -> Part.Shape:
+    return utils.make_centered_box(x_size, y_size, z_size, z_min=z_min)
+
+
 def _base_apex_height(params: BaseplateParams) -> fc.Units.Quantity:
     return (
         params.fundamentals.base_profile_main_height
@@ -71,16 +81,11 @@ def baseplate_cell_top_crop(shape: Part.Shape, params: BaseplateParams) -> Part.
 
     apex = _base_apex_height(params)
     margin = 0.1 * fc.Units.Quantity("1 mm")
-    crop_slab = Part.makeBox(
+    crop_slab = _make_centered_box(
         params.fundamentals.x_grid_size + margin,
         params.fundamentals.y_grid_size + margin,
         top_crop + margin,
-        fc.Vector(
-            -params.fundamentals.x_grid_size / 2,
-            -params.fundamentals.y_grid_size / 2,
-            apex - top_crop,
-        ),
-        fc.Vector(0, 0, 1),
+        z_min=float(apex - top_crop),
     )
     return shape.cut(crop_slab)
 
@@ -113,23 +118,12 @@ def build_preview_single_cell_baseplate_core(
     main_height = float(params.fundamentals.base_profile_main_height)
     main_half_width = float(params.fundamentals.base_profile_main_half_width)
 
-    outer = Part.makeBox(
-        x_grid_size,
-        y_grid_size,
-        main_height,
-        fc.Vector(-0.5 * x_grid_size, -0.5 * y_grid_size, 0),
-        fc.Vector(0, 0, 1),
-    )
-    inner = Part.makeBox(
+    outer = _make_centered_box(x_grid_size, y_grid_size, main_height)
+    inner = _make_centered_box(
         x_grid_size - main_half_width,
         y_grid_size - main_half_width,
         main_height + (2 * margin),
-        fc.Vector(
-            -0.5 * (x_grid_size - main_half_width),
-            -0.5 * (y_grid_size - main_half_width),
-            -margin,
-        ),
-        fc.Vector(0, 0, 1),
+        z_min=-margin,
     )
     return CoreCellBuildResult(shape=outer.cut(inner), is_tiny=False)
 

@@ -1138,12 +1138,10 @@ def make_complex_bin_base_single(
 
     if for_cutout:
         top_crop = obj.BaseProfileTopCrop
-        crop_slab = Part.makeBox(
+        crop_slab = utils.make_centered_box(
             obj.xGridSize * 2,
             obj.yGridSize * 2,
             top_crop + obj.TotalHeight,
-            fc.Vector(-obj.xGridSize, -obj.yGridSize, 0),
-            fc.Vector(0, 0, 1),
         )
         assembly = assembly.cut(crop_slab)
 
@@ -1619,12 +1617,10 @@ def _make_holes_interface(obj: fc.DocumentObject) -> Part.Shape:
     sqbr1_depth = obj.MagnetHoleDepth + obj.SequentialBridgingLayerHeight
     sqbr2_depth = obj.MagnetHoleDepth + obj.SequentialBridgingLayerHeight * 2
 
-    b1 = Part.makeBox(
+    b1 = utils.make_centered_box(
         obj.ScrewHoleDiameter,
         obj.ScrewHoleDiameter,
         sqbr2_depth,
-        fc.Vector(-obj.ScrewHoleDiameter / 2, -obj.ScrewHoleDiameter / 2),
-        fc.Vector(0, 0, 1),
     )
     arc_pt_off_x = (
         math.sqrt(
