@@ -816,23 +816,9 @@ class CreateDrawerBaseplateTaskPanel:
             except Exception:
                 status_bar = None
 
-        hidden = False
-        if fc.GuiUp and hasattr(self._target_obj, "ViewObject"):
-            try:
-                self._target_obj.ViewObject.Visibility = False
-                hidden = True
-            except Exception:
-                hidden = False
-
         start = time.perf_counter()
         fc.ActiveDocument.recompute()
         elapsed = time.perf_counter() - start
-
-        if hidden:
-            try:
-                self._target_obj.ViewObject.Visibility = True
-            except Exception:
-                pass
 
         if status_bar is not None:
             status_bar.showMessage(f"Preview recomputed in {elapsed:.2f} seconds", 2500)
@@ -1150,23 +1136,9 @@ class CreateBaseplateTaskPanel:
             except Exception:
                 status_bar = None
 
-        hidden = False
-        if fc.GuiUp and hasattr(self._target_obj, "ViewObject"):
-            try:
-                self._target_obj.ViewObject.Visibility = False
-                hidden = True
-            except Exception:
-                hidden = False
-
         start = time.perf_counter()
         fc.ActiveDocument.recompute()
         elapsed = time.perf_counter() - start
-
-        if hidden:
-            try:
-                self._target_obj.ViewObject.Visibility = True
-            except Exception:
-                pass
 
         if status_bar is not None:
             status_bar.showMessage(f"Preview recomputed in {elapsed:.2f} seconds", 2500)
@@ -1202,7 +1174,8 @@ class CreateBaseplateTaskPanel:
         if self._target_obj is not None:
             if self._created_preview_obj:
                 fc.ActiveDocument.removeObject(self._target_obj.Name)
-            self._restore_preview_visuals()
+            else:
+                self._restore_preview_visuals()
         fcg.Control.closeDialog()
         return True
 

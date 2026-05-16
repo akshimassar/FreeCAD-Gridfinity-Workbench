@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, replace
 
 import FreeCAD as fc  # noqa: N813
@@ -552,7 +551,6 @@ def _apply_layout_corner_roundover(
     x_lines: list[float],
     y_lines: list[float],
 ) -> Part.Shape:
-    t0 = time.perf_counter()
     nx = len(layout)
     ny = len(layout[0])
     tol = 1e-6
@@ -575,8 +573,6 @@ def _apply_layout_corner_roundover(
             x = x_lines[ix]
             y = y_lines[iy]
             corner_points[(x, y)] = populated
-    t1 = time.perf_counter()
-
     if not corner_points:
         return shape
 
@@ -596,8 +592,6 @@ def _apply_layout_corner_roundover(
         key = key_for(v0.X, v0.Y)
         if key in target_keys:
             vertical_edges_by_key.setdefault(key, []).append(edge)
-    t2 = time.perf_counter()
-
     edges_pop1: list[Part.Edge] = []
     edges_pop3: list[Part.Edge] = []
     for key, populated in target_keys.items():
@@ -619,7 +613,6 @@ def _apply_layout_corner_roundover(
                 "[Gridfinity] Baseplate corners roundover failed. Returning shape before roundover.\n"
             )
             return shape
-    t3 = time.perf_counter()
     if edges_pop3:
         try:
             rounded = rounded.makeFillet(params.fundamentals.bin_outer_radius / 4, edges_pop3)
@@ -628,17 +621,6 @@ def _apply_layout_corner_roundover(
                 "[Gridfinity] Baseplate corners roundover failed. Returning shape before roundover.\n"
             )
             return shape
-    t4 = time.perf_counter()
-    fc.Console.PrintMessage(
-        "[Gridfinity Timing] roundover "
-        f"corner_scan={t1 - t0:.3f}s "
-        f"edge_match={t2 - t1:.3f}s "
-        f"fillet_pop1={t3 - t2:.3f}s "
-        f"fillet_pop3={t4 - t3:.3f}s "
-        f"corners={len(corner_points)} "
-        f"edges_pop1={len(edges_pop1)} "
-        f"edges_pop3={len(edges_pop3)}\n"
-    )
     return rounded
 
 
@@ -741,9 +723,6 @@ def build_simple_baseplate_from_params(
     *,
     preview: bool = False,
 ) -> Part.Shape:
-    total_start = time.perf_counter()
-
-    t0 = time.perf_counter()
     nx = max(0, int(params.core.x_grid_count))
     ny = max(0, int(params.core.y_grid_count))
 
@@ -781,16 +760,12 @@ def build_simple_baseplate_from_params(
         else build_single_cell_baseplate_core(params, options)
     )
     shape = core_result.shape
-    t1 = time.perf_counter()
-
     if not preview and not core_result.is_tiny:
         shape = apply_snap_springs(shape, params, options)
     if not preview:
         shape = baseplate_cell_top_crop(shape, params)
-    t2 = time.perf_counter()
 
     shape = replicate_layout(shape, params, layout)
-    t3 = time.perf_counter()
 
     shape, geometry = add_filler_strips(shape, params, layout, options, preview=preview)
     x_offset = 1 if len(geometry.layout) == nx + 2 else 0
@@ -801,7 +776,6 @@ def build_simple_baseplate_from_params(
             gy = iy + y_offset
             if geometry.layout[gx][gy]:
                 geometry.tiny[gx][gy] = core_result.is_tiny
-    t3a = time.perf_counter()
 
     if not preview:
         shape = _apply_layout_corner_roundover(
@@ -811,12 +785,8 @@ def build_simple_baseplate_from_params(
             geometry.x_lines,
             geometry.y_lines,
         )
-    t3b = time.perf_counter()
-
-    t4 = time.perf_counter()
     if preview:
-        t5 = t4
-        t6 = t4
+        return shape
     else:
         top_z = (
             max(v.Z for v in shape.Vertexes) * fc.Units.Quantity("1 mm")
@@ -824,20 +794,7 @@ def build_simple_baseplate_from_params(
             else 0 * fc.Units.Quantity("1 mm")
         )
         post_cutter = make_post_replication_cutter(params, geometry, options, top_z)
-        t5 = time.perf_counter()
         if post_cutter is not None:
             shape = shape.cut(post_cutter)
-        t6 = time.perf_counter()
 
-    fc.Console.PrintMessage(
-        "[Gridfinity Timing] baseplate "
-        f"core={t1 - t0:.3f}s "
-        f"springs={t2 - t1:.3f}s "
-        f"replicate={t3 - t2:.3f}s "
-        f"filler={t3a - t3:.3f}s "
-        f"roundover={t3b - t3a:.3f}s "
-        f"build_cutter={t5 - t4:.3f}s "
-        f"post_cut={t6 - t5:.3f}s "
-        f"total={t6 - total_start:.3f}s\n"
-    )
     return shape
