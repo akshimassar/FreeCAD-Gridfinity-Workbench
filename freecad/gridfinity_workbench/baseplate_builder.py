@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import os
 import time
+import json
+from collections import OrderedDict
 from dataclasses import dataclass, replace
+from dataclasses import fields as dataclass_fields
+from dataclasses import is_dataclass
 
 import FreeCAD as fc  # noqa: N813
 import Part
@@ -22,6 +26,48 @@ def _timing_enabled() -> bool:
 
 def _timing_print(label: str, seconds: float) -> None:
     fc.Console.PrintMessage(f"[Gridfinity Timing] {label}: {seconds:.4f}s\n")
+
+
+_BASEPLATE_SHAPE_CACHE_MAX = 32
+_BASEPLATE_SHAPE_CACHE: OrderedDict[str, Part.Shape] = OrderedDict()
+
+
+def _cache_normalize(value: object) -> object:
+    if is_dataclass(value):
+        return {
+            field.name: _cache_normalize(getattr(value, field.name))
+            for field in dataclass_fields(value)
+        }
+    if isinstance(value, dict):
+        return {str(k): _cache_normalize(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_cache_normalize(v) for v in value]
+    if isinstance(value, (bool, int, str)) or value is None:
+        return value
+    if isinstance(value, float):
+        return round(value, 2)
+    if hasattr(value, "Value"):
+        try:
+            return round(float(value), 2)
+        except Exception:
+            return str(value)
+    return str(value)
+
+
+def _baseplate_cache_key(
+    params: BaseplateParams,
+    layout: GridfinityLayout,
+    options: BaseplateBuildOptions,
+    *,
+    preview: bool,
+) -> str:
+    payload = {
+        "params": _cache_normalize(params),
+        "layout": _cache_normalize(layout),
+        "options": _cache_normalize(options),
+        "preview": bool(preview),
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
 
 def _layout_dims(layout: GridfinityLayout, params: BaseplateParams) -> tuple[int, int]:
@@ -744,7 +790,27 @@ def build_simple_baseplate(
     preview: bool = False,
 ) -> Part.Shape:
     params = params_from_obj(obj)
-    return build_simple_baseplate_from_params(params, layout, options, preview=preview)
+    return build_simple_baseplate_from_params_cached(params, layout, options, preview=preview)
+
+
+def build_simple_baseplate_from_params_cached(
+    params: BaseplateParams,
+    layout: GridfinityLayout,
+    options: BaseplateBuildOptions,
+    *,
+    preview: bool = False,
+) -> Part.Shape:
+    key = _baseplate_cache_key(params, layout, options, preview=preview)
+    cached_shape = _BASEPLATE_SHAPE_CACHE.get(key)
+    if cached_shape is not None:
+        _BASEPLATE_SHAPE_CACHE.move_to_end(key)
+        return cached_shape.copy()
+    shape = build_simple_baseplate_from_params(params, layout, options, preview=preview)
+    _BASEPLATE_SHAPE_CACHE[key] = shape
+    _BASEPLATE_SHAPE_CACHE.move_to_end(key)
+    while len(_BASEPLATE_SHAPE_CACHE) > _BASEPLATE_SHAPE_CACHE_MAX:
+        _BASEPLATE_SHAPE_CACHE.popitem(last=False)
+    return shape.copy()
 
 
 def build_simple_baseplate_from_params(

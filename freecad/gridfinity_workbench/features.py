@@ -530,7 +530,7 @@ class DrawerBaseplate(FoundationGridfinity):
                 )
 
                 layout = [[True for _ in range(y_units)] for _ in range(x_units)]
-                shape = baseplate_builder.build_simple_baseplate_from_params(
+                shape = baseplate_builder.build_simple_baseplate_from_params_cached(
                     piece_params,
                     layout,
                     options,
