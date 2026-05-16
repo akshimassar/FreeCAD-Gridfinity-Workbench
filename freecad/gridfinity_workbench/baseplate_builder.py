@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import time
 from dataclasses import dataclass, replace
 
 import FreeCAD as fc  # noqa: N813
@@ -12,6 +14,14 @@ from . import feature_construction as feat
 from . import utils
 from .baseplate_params import BaseplateParams, params_from_obj
 from .utils import GridfinityLayout, GridfinityLayoutGeometry
+
+
+def _timing_enabled() -> bool:
+    return os.environ.get("GRIDFINITY_DEBUG_TIMING", "").lower() in {"1", "true", "yes", "on"}
+
+
+def _timing_print(label: str, seconds: float) -> None:
+    fc.Console.PrintMessage(f"[Gridfinity Timing] {label}: {seconds:.4f}s\n")
 
 
 def _layout_dims(layout: GridfinityLayout, params: BaseplateParams) -> tuple[int, int]:
@@ -164,7 +174,7 @@ def add_filler_strips(
     filler_shape = _build_filler_ring_shape(params, expanded, options, preview=preview)
     if shape.isNull():
         return filler_shape, expanded
-    combined = shape.fuse(filler_shape).removeSplitter()
+    combined = shape.fuse(filler_shape)
     return combined, expanded
 
 
@@ -343,6 +353,9 @@ def _build_filler_ring_shape(
     *,
     preview: bool = False,
 ) -> Part.Shape:
+    timing_on = _timing_enabled()
+    t_total = time.perf_counter() if timing_on else 0.0
+
     nx_exp = len(geometry.layout)
     ny_exp = len(geometry.layout[0])
     nx = nx_exp - 2
@@ -424,6 +437,10 @@ def _build_filler_ring_shape(
         return fc.Vector(x, y, 0)
 
     pieces: list[Part.Shape] = []
+    t_sides = 0.0
+    t_corners = 0.0
+    t_proto = 0.0
+    t_translate = 0.0
 
     side_specs = [
         {
@@ -463,7 +480,9 @@ def _build_filler_ring_shape(
     for spec in side_specs:
         if not spec["enabled"]:
             continue
+        t_side = time.perf_counter() if timing_on else 0.0
         leftmost, rightmost, bottommost, topmost = spec["flags"]
+        t0 = time.perf_counter() if timing_on else 0.0
         side_result = proto(
             spec["width"],
             spec["height"],
@@ -472,7 +491,13 @@ def _build_filler_ring_shape(
             bottommost=bottommost,
             topmost=topmost,
         )
+        if timing_on:
+            t_proto += time.perf_counter() - t0
+            t1 = time.perf_counter()
         pieces.append(utils.copy_and_translate(side_result.shape, spec["vectors"]))
+        if timing_on:
+            t_translate += time.perf_counter() - t1
+            t_sides += time.perf_counter() - t_side
         for ix, iy in spec["indices"]:
             geometry.tiny[ix][iy] = side_result.is_tiny
 
@@ -514,7 +539,9 @@ def _build_filler_ring_shape(
     for spec in corner_specs:
         if not spec["enabled"]:
             continue
+        t_corner = time.perf_counter() if timing_on else 0.0
         leftmost, rightmost, bottommost, topmost = spec["flags"]
+        t0 = time.perf_counter() if timing_on else 0.0
         corner_result = proto(
             spec["width"],
             spec["height"],
@@ -523,14 +550,29 @@ def _build_filler_ring_shape(
             bottommost=bottommost,
             topmost=topmost,
         )
+        if timing_on:
+            t_proto += time.perf_counter() - t0
         corner = corner_result.shape.copy()
+        t1 = time.perf_counter() if timing_on else 0.0
         corner.translate(center(spec["ix"], spec["iy"]))
+        if timing_on:
+            t_translate += time.perf_counter() - t1
+            t_corners += time.perf_counter() - t_corner
         pieces.append(corner)
         geometry.tiny[spec["ix"]][spec["iy"]] = corner_result.is_tiny
 
     if not pieces:
         raise ValueError("No filler pieces generated")
-    return utils.multi_fuse(pieces)
+    t_fuse = time.perf_counter() if timing_on else 0.0
+    out = utils.multi_fuse(pieces)
+    if timing_on:
+        _timing_print("filler_strips.proto_total", t_proto)
+        _timing_print("filler_strips.translate_total", t_translate)
+        _timing_print("filler_strips.sides_total", t_sides)
+        _timing_print("filler_strips.corners_total", t_corners)
+        _timing_print("filler_strips.fuse_total", time.perf_counter() - t_fuse)
+        _timing_print("filler_strips.total", time.perf_counter() - t_total)
+    return out
 
 
 def _apply_layout_corner_roundover(
@@ -712,6 +754,8 @@ def build_simple_baseplate_from_params(
     *,
     preview: bool = False,
 ) -> Part.Shape:
+    timing_on = _timing_enabled()
+    t_total = time.perf_counter() if timing_on else 0.0
     nx = max(0, int(params.core.x_grid_count))
     ny = max(0, int(params.core.y_grid_count))
 
@@ -729,11 +773,20 @@ def build_simple_baseplate_from_params(
 
     if nx == 0 or ny == 0:
         empty_shape = Part.Shape()
+        t_fill_only = time.perf_counter() if timing_on else 0.0
         shape, geometry = add_filler_strips(empty_shape, params, layout, options, preview=preview)
+        if timing_on:
+            _timing_print(
+                "baseplate.filler_only.add_filler_strips", time.perf_counter() - t_fill_only
+            )
         if shape.isNull():
             raise ValueError("No core cells and no fillers to build")
         if not preview:
+            t_crop = time.perf_counter() if timing_on else 0.0
             shape = baseplate_cell_top_crop(shape, params)
+            if timing_on:
+                _timing_print("baseplate.filler_only.top_crop", time.perf_counter() - t_crop)
+            t_round = time.perf_counter() if timing_on else 0.0
             shape = _apply_layout_corner_roundover(
                 shape,
                 params,
@@ -741,22 +794,41 @@ def build_simple_baseplate_from_params(
                 geometry.x_lines,
                 geometry.y_lines,
             )
+            if timing_on:
+                _timing_print("baseplate.filler_only.roundover", time.perf_counter() - t_round)
+        if timing_on:
+            _timing_print("baseplate.total", time.perf_counter() - t_total)
         return shape
 
+    t_core = time.perf_counter() if timing_on else 0.0
     core_result = (
         build_preview_single_cell_baseplate_core(params)
         if preview
         else build_single_cell_baseplate_core(params, options)
     )
+    if timing_on:
+        _timing_print("baseplate.core_build", time.perf_counter() - t_core)
     shape = core_result.shape
     if not preview and not core_result.is_tiny:
+        t_springs = time.perf_counter() if timing_on else 0.0
         shape = apply_snap_springs(shape, params, options)
+        if timing_on:
+            _timing_print("baseplate.snap_springs", time.perf_counter() - t_springs)
     if not preview:
+        t_crop = time.perf_counter() if timing_on else 0.0
         shape = baseplate_cell_top_crop(shape, params)
+        if timing_on:
+            _timing_print("baseplate.top_crop", time.perf_counter() - t_crop)
 
+    t_repl = time.perf_counter() if timing_on else 0.0
     shape = replicate_layout(shape, params, layout)
+    if timing_on:
+        _timing_print("baseplate.replicate_layout", time.perf_counter() - t_repl)
 
+    t_fill = time.perf_counter() if timing_on else 0.0
     shape, geometry = add_filler_strips(shape, params, layout, options, preview=preview)
+    if timing_on:
+        _timing_print("baseplate.add_filler_strips", time.perf_counter() - t_fill)
     x_offset = 1 if len(geometry.layout) == nx + 2 else 0
     y_offset = 1 if len(geometry.layout[0]) == ny + 2 else 0
     for ix in range(nx):
@@ -767,6 +839,7 @@ def build_simple_baseplate_from_params(
                 geometry.tiny[gx][gy] = core_result.is_tiny
 
     if not preview:
+        t_round = time.perf_counter() if timing_on else 0.0
         shape = _apply_layout_corner_roundover(
             shape,
             params,
@@ -774,9 +847,14 @@ def build_simple_baseplate_from_params(
             geometry.x_lines,
             geometry.y_lines,
         )
+        if timing_on:
+            _timing_print("baseplate.roundover", time.perf_counter() - t_round)
     if preview:
+        if timing_on:
+            _timing_print("baseplate.total", time.perf_counter() - t_total)
         return shape
     else:
+        t_post = time.perf_counter() if timing_on else 0.0
         top_z = (
             max(v.Z for v in shape.Vertexes) * fc.Units.Quantity("1 mm")
             if shape.Vertexes
@@ -785,5 +863,8 @@ def build_simple_baseplate_from_params(
         post_cutter = make_post_replication_cutter(params, geometry, options, top_z)
         if post_cutter is not None:
             shape = shape.cut(post_cutter)
+        if timing_on:
+            _timing_print("baseplate.post_cutter", time.perf_counter() - t_post)
+            _timing_print("baseplate.total", time.perf_counter() - t_total)
 
     return shape
