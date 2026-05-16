@@ -421,13 +421,13 @@ class DrawerBaseplate(FoundationGridfinity):
             "App::PropertyLength",
             "PrinterBedWidth",
             "Drawer",
-            "Printer bed width used for split planning",
+            "Printer bed width used for drawer fitting",
         ).PrinterBedWidth = 256 * unitmm
         obj.addProperty(
             "App::PropertyLength",
             "PrinterBedDepth",
             "Drawer",
-            "Printer bed depth used for split planning",
+            "Printer bed depth used for drawer fitting",
         ).PrinterBedDepth = 240 * unitmm
 
         obj.addProperty(
@@ -438,6 +438,9 @@ class DrawerBaseplate(FoundationGridfinity):
         ).PieceNames = []
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
+        return self.fit_drawer_with_printable_baseplates(obj)
+
+    def fit_drawer_with_printable_baseplates(self, obj: fc.DocumentObject) -> Part.Shape:
         params = params_from_obj(obj)
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
@@ -488,7 +491,7 @@ class DrawerBaseplate(FoundationGridfinity):
 
         for iy in range(m):
             for ix in range(k):
-                piece_name = f"X{ix}_Y{iy}"
+                piece_name = f"Drawer Baseplates {ix} x {iy}"
                 piece_names.append(piece_name)
                 x_axis_chunk = x_axis_chunks[ix]
                 y_axis_chunk = y_axis_chunks_for_rows[iy]

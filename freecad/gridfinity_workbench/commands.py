@@ -443,8 +443,8 @@ class CreateDrawerBaseplate(BaseCommand):
         super().__init__(
             name="DrawerBaseplate",
             pixmap=ICONDIR / "drawer_baseplate.svg",
-            menu_text="Gridfinity Drawer Baseplate",
-            tooltip="Plan a split baseplate for a drawer size.",
+            menu_text="Fit drawer with printable baseplates",
+            tooltip="Fit drawer with printable baseplates",
         )
 
     def Activated(self) -> None:
@@ -459,7 +459,9 @@ class CreateDrawerBaseplateTaskPanel:
         self._target_obj = target_obj
         self.form = QWidget()
         self.form.setWindowTitle(
-            "Edit Drawer Baseplate" if target_obj is not None else "Create Drawer Baseplate"
+            "Edit Drawer Fit Baseplates"
+            if target_obj is not None
+            else "Create Drawer Fit Baseplates"
         )
 
         layout = QVBoxLayout(self.form)
@@ -502,7 +504,7 @@ class CreateDrawerBaseplateTaskPanel:
 
         self.summary = QLabel("")
         self.summary.setWordWrap(True)
-        layout.addWidget(_section_label("Split plan"))
+        layout.addWidget(_section_label("Drawer fit plan"))
         layout.addWidget(self.summary)
 
         self._connect_signals()
@@ -616,12 +618,16 @@ class CreateDrawerBaseplateTaskPanel:
         self,
         *,
         chunks: list[Any],
-        grid_mm: float,
     ) -> str:
-        widths: list[float] = [
-            chunk.cells * grid_mm + chunk.low_fill_mm + chunk.high_fill_mm for chunk in chunks
-        ]
-        return ", ".join(f"{w:.2f}mm" for w in widths)
+        encoded_chunks: list[str] = []
+        for chunk in chunks:
+            encoded = f"{chunk.cells}G"
+            if chunk.low_fill_mm > 0:
+                encoded = f"F+{encoded}"
+            if chunk.high_fill_mm > 0:
+                encoded = f"{encoded}+F"
+            encoded_chunks.append(encoded)
+        return ", ".join(encoded_chunks)
 
     def _refresh_summary(self) -> None:
         result = params_from_dialog(self._validation_payload(), preview_mode=False)
@@ -660,12 +666,12 @@ class CreateDrawerBaseplateTaskPanel:
             self.summary.setText(f"Error: {exc}")
             return
 
-        x_desc = self._format_axis(chunks=x_chunks, grid_mm=grid_mm)
-        y_desc = self._format_axis(chunks=y_chunks, grid_mm=grid_mm)
+        x_desc = self._format_axis(chunks=x_chunks)
+        y_desc = self._format_axis(chunks=y_chunks)
         pieces = len(x_chunks) * len(y_chunks)
         self.summary.setText(
-            f"X chunks: {len(x_chunks)} [{x_desc}]\n"
-            f"Y chunks: {len(y_chunks)} [{y_desc}]\n"
+            f"X printable chunks: {len(x_chunks)} [{x_desc}]\n"
+            f"Y printable chunks: {len(y_chunks)} [{y_desc}]\n"
             f"Total printable pieces: {pieces}"
         )
 
@@ -1028,8 +1034,16 @@ class CreateBaseplateTaskPanel:
         applied = self._apply_dialog_values(self._target_obj, preview_mode=True)
         if not applied:
             return
+        self._target_obj.Label = self._format_simple_baseplate_label(
+            int(self.x_grid_units.value()),
+            int(self.y_grid_units.value()),
+        )
         fc.ActiveDocument.recompute()
         self._preview_applied = True
+
+    @staticmethod
+    def _format_simple_baseplate_label(x_cells: int, y_cells: int) -> str:
+        return f"Baseplate {x_cells} x {y_cells}"
 
     def accept(self) -> bool:
         if self._target_obj is None:
@@ -1038,6 +1052,10 @@ class CreateBaseplateTaskPanel:
         if params is None:
             return False
         apply_params_to_obj(self._target_obj, params)
+        self._target_obj.Label = self._format_simple_baseplate_label(
+            int(params.core.x_grid_count),
+            int(params.core.y_grid_count),
+        )
         if hasattr(self._target_obj, "PreviewBuildMode"):
             self._target_obj.PreviewBuildMode = False
         fc.ActiveDocument.recompute()
