@@ -1233,6 +1233,16 @@ class GridfinitySettingsTaskPanel:
         for key, widget in controls.items():
             setattr(self, key, widget)
 
+        layout.addWidget(_section_label("Performance"))
+        perf_form = QFormLayout()
+        perf_form.setContentsMargins(20, 0, 0, 0)
+        self.baseplate_cache_size = QSpinBox()
+        self.baseplate_cache_size.setRange(0, 4096)
+        self.baseplate_cache_size.setValue(int(defaults.baseplate_cache_size))
+        self.baseplate_cache_size.setSuffix(" entries")
+        perf_form.addRow("Baseplate cache size", self.baseplate_cache_size)
+        layout.addLayout(perf_form)
+
         self._wire_default_warning_colors()
 
     def getStandardButtons(self) -> int:  # noqa: N802
@@ -1263,14 +1273,16 @@ class GridfinitySettingsTaskPanel:
             (self.junction_counterbore_depth, factory_defaults.junction_counterbore_depth),
             (self.clip_length, factory_defaults.clip_length),
             (self.clearance, factory_defaults.clearance),
+            (self.baseplate_cache_size, factory_defaults.baseplate_cache_size),
         ]
 
         for control, default_value in numeric_controls:
 
-            def updater(
-                _value: float, c: QDoubleSpinBox = control, d: float = default_value
-            ) -> None:
-                self._set_warn_style(c, abs(c.value() - d) > 1e-9)
+            def updater(_value: float, c: QWidget = control, d: float = default_value) -> None:
+                if isinstance(c, QSpinBox):
+                    self._set_warn_style(c, int(c.value()) != int(d))
+                    return
+                self._set_warn_style(c, abs(float(c.value()) - float(d)) > 1e-9)
 
             control.valueChanged.connect(updater)
             updater(control.value())
@@ -1313,6 +1325,7 @@ class GridfinitySettingsTaskPanel:
         defaults.junction_counterbore_depth = self.junction_counterbore_depth.value()
         defaults.clip_cutouts_enabled = self.clip_cutouts_enabled.isChecked()
         defaults.clip_length = self.clip_length.value()
+        defaults.baseplate_cache_size = int(self.baseplate_cache_size.value())
         defaults.save()
         fcg.Control.closeDialog()
         return True

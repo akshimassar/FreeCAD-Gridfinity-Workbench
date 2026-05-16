@@ -32,6 +32,16 @@ _BASEPLATE_SHAPE_CACHE_MAX = 32
 _BASEPLATE_SHAPE_CACHE: OrderedDict[str, Part.Shape] = OrderedDict()
 
 
+def set_baseplate_shape_cache_max_entries(max_entries: int) -> None:
+    global _BASEPLATE_SHAPE_CACHE_MAX
+    _BASEPLATE_SHAPE_CACHE_MAX = max(0, int(max_entries))
+    if _BASEPLATE_SHAPE_CACHE_MAX == 0:
+        _BASEPLATE_SHAPE_CACHE.clear()
+        return
+    while len(_BASEPLATE_SHAPE_CACHE) > _BASEPLATE_SHAPE_CACHE_MAX:
+        _BASEPLATE_SHAPE_CACHE.popitem(last=False)
+
+
 def _cache_normalize(value: object) -> object:
     if is_dataclass(value):
         return {
@@ -800,6 +810,9 @@ def build_simple_baseplate_from_params_cached(
     *,
     preview: bool = False,
 ) -> Part.Shape:
+    if _BASEPLATE_SHAPE_CACHE_MAX <= 0:
+        return build_simple_baseplate_from_params(params, layout, options, preview=preview)
+
     key = _baseplate_cache_key(params, layout, options, preview=preview)
     cached_shape = _BASEPLATE_SHAPE_CACHE.get(key)
     if cached_shape is not None:

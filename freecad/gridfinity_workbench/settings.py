@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 import FreeCAD as fc  # noqa: N813
 
+from . import baseplate_builder
+
 
 @dataclass
 class Defaults:
@@ -32,6 +34,7 @@ class Defaults:
 
     clip_cutouts_enabled: bool = True
     clip_length: float = 3.0
+    baseplate_cache_size: int = 32
 
     def load(self) -> None:
         prefs = fc.ParamGet(self.prefs_path)
@@ -80,6 +83,8 @@ class Defaults:
 
         self.clip_cutouts_enabled = prefs.GetBool("ClipCutoutsEnabled", self.clip_cutouts_enabled)
         self.clip_length = prefs.GetFloat("ClipLength", self.clip_length)
+        self.baseplate_cache_size = prefs.GetInt("BaseplateCacheSize", self.baseplate_cache_size)
+        baseplate_builder.set_baseplate_shape_cache_max_entries(self.baseplate_cache_size)
 
     def save(self) -> None:
         prefs = fc.ParamGet(self.prefs_path)
@@ -105,6 +110,8 @@ class Defaults:
 
         prefs.SetBool("ClipCutoutsEnabled", self.clip_cutouts_enabled)
         prefs.SetFloat("ClipLength", self.clip_length)
+        prefs.SetInt("BaseplateCacheSize", int(self.baseplate_cache_size))
+        baseplate_builder.set_baseplate_shape_cache_max_entries(self.baseplate_cache_size)
 
 
 factory_defaults = Defaults()
