@@ -44,6 +44,9 @@ ICONDIR = Path(__file__).parent / "icons"
 
 PASCAL_CASE_REGEX = re.compile(r"(?<!^)(?=[A-Z])")
 
+PREVIEW_SHAPE_COLOR = (100.0 / 255.0, 1.0, 1.0)  # 0x64FFFF
+PREVIEW_TRANSPARENCY = 40
+
 
 class ViewProviderGridfinity:
     """Gridfinity workbench viewprovider."""
@@ -461,6 +464,7 @@ class CreateDrawerBaseplateTaskPanel:
         self._target_obj: fc.DocumentObject | None = None
         self._created_preview_obj = False
         self._preview_applied = False
+        self._original_view: dict[str, Any] | None = None
         self.form = QWidget()
         self.form.setWindowTitle(
             "Edit Drawer Fit Baseplates"
@@ -516,6 +520,11 @@ class CreateDrawerBaseplateTaskPanel:
         if fc.GuiUp:
             view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
             ViewProviderGridfinity(view_object, str(self._pixmap))
+            if hasattr(view_object, "ShowInTree"):
+                try:
+                    view_object.ShowInTree = False
+                except Exception:
+                    pass
         features.DrawerBaseplate(self._target_obj)
         if self._edit_obj is not None:
             self._restore_object_values(
@@ -531,12 +540,45 @@ class CreateDrawerBaseplateTaskPanel:
         if self._target_obj is not None:
             self._load_from_object(self._target_obj)
 
+        self._capture_and_set_preview_visuals()
+
         self._refresh_summary()
         self._update_preview()
+
+    def _preview_style(self) -> tuple[tuple[float, float, float], int]:
+        return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
+
+    def _capture_and_set_preview_visuals(self) -> None:
+        if not fc.GuiUp or self._target_obj is None:
+            return
+        view = self._target_obj.ViewObject
+        self._original_view = {
+            "ShapeColor": tuple(view.ShapeColor),
+            "Transparency": int(view.Transparency),
+            "LineColor": tuple(view.LineColor) if hasattr(view, "LineColor") else None,
+        }
+        color, transparency = self._preview_style()
+        view.ShapeColor = color
+        if hasattr(view, "LineColor"):
+            view.LineColor = color
+        view.Transparency = transparency
+
+    def _restore_preview_visuals(self) -> None:
+        if not fc.GuiUp or self._target_obj is None or self._original_view is None:
+            return
+        view = self._target_obj.ViewObject
+        view.ShapeColor = self._original_view["ShapeColor"]
+        if hasattr(view, "LineColor") and self._original_view.get("LineColor") is not None:
+            view.LineColor = self._original_view["LineColor"]
+        view.Transparency = self._original_view["Transparency"]
 
     @staticmethod
     def _format_drawer_baseplates_label(drawer_width_mm: float, drawer_depth_mm: float) -> str:
         return f"Drawer Baseplates {int(round(drawer_width_mm))} x {int(round(drawer_depth_mm))} mm"
+
+    @staticmethod
+    def _format_preview_label(base_label: str) -> str:
+        return f"[Preview] {base_label}"
 
     def _capture_object_values(self, obj: fc.DocumentObject) -> dict[str, Any]:
         return {
@@ -801,10 +843,11 @@ class CreateDrawerBaseplateTaskPanel:
         ) * fc.Units.Quantity("1 mm")
         obj.ClipCutoutsEnabled = self.clip_cutouts_enabled.isChecked()
         obj.ClipLength = float(self.clip_length.value()) * fc.Units.Quantity("1 mm")
-        obj.Label = self._format_drawer_baseplates_label(
+        base_label = self._format_drawer_baseplates_label(
             float(self.drawer_width.value()),
             float(self.drawer_depth.value()),
         )
+        obj.Label = self._format_preview_label(base_label) if preview_mode else base_label
         if hasattr(obj, "PreviewBuildMode"):
             obj.PreviewBuildMode = preview_mode
 
@@ -841,6 +884,8 @@ class CreateDrawerBaseplateTaskPanel:
             return False
         if self._edit_obj is not None and self._created_preview_obj:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
+        elif output_obj is self._target_obj:
+            self._restore_preview_visuals()
 
         fc.ActiveDocument.recompute()
         fcg.SendMsgToActiveView("ViewFit")
@@ -851,6 +896,8 @@ class CreateDrawerBaseplateTaskPanel:
         if self._target_obj is not None:
             if self._created_preview_obj:
                 fc.ActiveDocument.removeObject(self._target_obj.Name)
+            else:
+                self._restore_preview_visuals()
         fcg.Control.closeDialog()
         return True
 
@@ -887,6 +934,11 @@ class CreateBaseplateTaskPanel:
         if fc.GuiUp:
             view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
             ViewProviderGridfinity(view_object, str(self._pixmap))
+            if hasattr(view_object, "ShowInTree"):
+                try:
+                    view_object.ShowInTree = False
+                except Exception:
+                    pass
         features.Baseplate(self._target_obj)
         if self._edit_obj is not None:
             apply_params_to_obj(self._target_obj, params_from_obj(self._edit_obj))
@@ -1062,14 +1114,8 @@ class CreateBaseplateTaskPanel:
                 label.setText("")
                 label.hide()
 
-    def _preview_color(self) -> tuple[float, float, float]:
-        """Return FreeCAD standard-ish preview color from preferences, fallback orange."""
-        prefs = fc.ParamGet("User parameter:BaseApp/Preferences/View")
-        color_uint = prefs.GetUnsigned("DefaultShapeColor", 0xCC9966)
-        r = ((color_uint >> 24) & 0xFF) / 255.0
-        g = ((color_uint >> 16) & 0xFF) / 255.0
-        b = ((color_uint >> 8) & 0xFF) / 255.0
-        return (r, g, b)
+    def _preview_style(self) -> tuple[tuple[float, float, float], int]:
+        return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
 
     def _capture_and_set_preview_visuals(self) -> None:
         if not fc.GuiUp or self._target_obj is None:
@@ -1078,15 +1124,21 @@ class CreateBaseplateTaskPanel:
         self._original_view = {
             "ShapeColor": tuple(view.ShapeColor),
             "Transparency": int(view.Transparency),
+            "LineColor": tuple(view.LineColor) if hasattr(view, "LineColor") else None,
         }
-        view.ShapeColor = self._preview_color()
-        view.Transparency = 70
+        color, transparency = self._preview_style()
+        view.ShapeColor = color
+        if hasattr(view, "LineColor"):
+            view.LineColor = color
+        view.Transparency = transparency
 
     def _restore_preview_visuals(self) -> None:
         if not fc.GuiUp or self._target_obj is None or self._original_view is None:
             return
         view = self._target_obj.ViewObject
         view.ShapeColor = self._original_view["ShapeColor"]
+        if hasattr(view, "LineColor") and self._original_view.get("LineColor") is not None:
+            view.LineColor = self._original_view["LineColor"]
         view.Transparency = self._original_view["Transparency"]
 
     def _connect_preview_signals(self) -> None:
@@ -1132,10 +1184,11 @@ class CreateBaseplateTaskPanel:
         applied = self._apply_dialog_values(self._target_obj, preview_mode=True)
         if not applied:
             return
-        self._target_obj.Label = self._format_simple_baseplate_label(
+        base_label = self._format_simple_baseplate_label(
             int(self.x_grid_units.value()),
             int(self.y_grid_units.value()),
         )
+        self._target_obj.Label = self._format_preview_label(base_label)
         status_bar = None
         if fc.GuiUp and fcg is not None:
             try:
@@ -1155,6 +1208,10 @@ class CreateBaseplateTaskPanel:
     @staticmethod
     def _format_simple_baseplate_label(x_cells: int, y_cells: int) -> str:
         return f"Baseplate {x_cells} x {y_cells}"
+
+    @staticmethod
+    def _format_preview_label(base_label: str) -> str:
+        return f"[Preview] {base_label}"
 
     def accept(self) -> bool:
         if self._target_obj is None:
