@@ -476,18 +476,18 @@ class DrawerBaseplate(FoundationGridfinity):
             ),
         )
 
-        k = len(x_axis_chunks)
+        x_chunk_count = len(x_axis_chunks)
         # Axis split output is low->high (bottom->top), while matrix rows are traversed top->down.
         y_axis_chunks_for_rows = list(reversed(y_axis_chunks))
-        m = len(y_axis_chunks_for_rows)
-        piece_names: list[str] = []
-        pieces: list[Part.Shape] = []
+        y_chunk_count = len(y_axis_chunks_for_rows)
+        baseplate_names: list[str] = []
+        baseplate_shapes: list[Part.Shape] = []
         bed_w = float(obj.PrinterBedWidth)
         bed_d = float(obj.PrinterBedDepth)
         plate_gap_x = 42.0
         plate_gap_y = 42.0
-        total_pieces = k * m
-        built_pieces = 0
+        total_baseplates = x_chunk_count * y_chunk_count
+        built_baseplates = 0
         status_bar = None
         if fc.GuiUp and fcg is not None:
             try:
@@ -495,12 +495,10 @@ class DrawerBaseplate(FoundationGridfinity):
             except Exception:
                 status_bar = None
 
-        for iy in range(m):
-            for ix in range(k):
-                piece_name = f"Drawer Baseplates {ix} x {iy}"
-                piece_names.append(piece_name)
-                x_axis_chunk = x_axis_chunks[ix]
-                y_axis_chunk = y_axis_chunks_for_rows[iy]
+        for row_index in range(y_chunk_count):
+            for column_index in range(x_chunk_count):
+                x_axis_chunk = x_axis_chunks[column_index]
+                y_axis_chunk = y_axis_chunks_for_rows[row_index]
 
                 x_units = x_axis_chunk.cells
                 y_units = y_axis_chunk.cells
@@ -512,6 +510,13 @@ class DrawerBaseplate(FoundationGridfinity):
                 right_fill = x_axis_chunk.high_fill_mm
                 bottom_fill = y_axis_chunk.low_fill_mm
                 top_fill = y_axis_chunk.high_fill_mm
+
+                width_mm = x_units * grid_mm + left_fill + right_fill
+                depth_mm = y_units * grid_mm + bottom_fill + top_fill
+                baseplate_name = (
+                    f"Drawer Baseplates {int(round(width_mm))} x {int(round(depth_mm))} mm"
+                )
+                baseplate_names.append(baseplate_name)
 
                 piece_params: BaseplateParams = replace(
                     params,
@@ -540,17 +545,17 @@ class DrawerBaseplate(FoundationGridfinity):
                 bbox = shape.BoundBox
                 shape_center_x = (bbox.XMin + bbox.XMax) / 2
                 shape_center_y = (bbox.YMin + bbox.YMax) / 2
-                tile_center_x = (ix * (bed_w + plate_gap_x)) + (0.5 * bed_w)
-                tile_center_y = ((m - 1 - iy) * (bed_d + plate_gap_y)) + (0.5 * bed_d)
+                tile_center_x = (column_index * (bed_w + plate_gap_x)) + (0.5 * bed_w)
+                tile_center_y = ((y_chunk_count - 1 - row_index) * (bed_d + plate_gap_y)) + (
+                    0.5 * bed_d
+                )
                 shape.translate(
                     fc.Vector(tile_center_x - shape_center_x, tile_center_y - shape_center_y, 0),
                 )
-                pieces.append(shape)
+                baseplate_shapes.append(shape)
 
-                built_pieces += 1
-                progress_msg = (
-                    f"Drawer baseplate: built {built_pieces}/{total_pieces} ({piece_name})"
-                )
+                built_baseplates += 1
+                progress_msg = f"Drawer baseplates: built {built_baseplates}/{total_baseplates} ({baseplate_name})"
                 fc.Console.PrintMessage(f"[Gridfinity] {progress_msg}\n")
                 if status_bar is not None:
                     status_bar.showMessage(progress_msg)
@@ -560,13 +565,13 @@ class DrawerBaseplate(FoundationGridfinity):
                     except Exception:
                         pass
 
-        obj.PieceNames = piece_names
+        obj.PieceNames = baseplate_names
         if status_bar is not None:
             # Use timeout so normal FreeCAD status updates (selection/hover/etc.) resume.
-            status_bar.showMessage("Drawer baseplate build complete", 2500)
-        if not pieces:
+            status_bar.showMessage("Drawer baseplates build complete", 2500)
+        if not baseplate_shapes:
             raise ValueError("No drawer baseplate pieces generated")
-        return Part.makeCompound(pieces)
+        return Part.makeCompound(baseplate_shapes)
 
 
 class SupportBaseplate(FoundationGridfinity):

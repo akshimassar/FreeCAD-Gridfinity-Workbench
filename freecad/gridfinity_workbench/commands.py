@@ -511,7 +511,7 @@ class CreateDrawerBaseplateTaskPanel:
         layout.addWidget(_section_label("Drawer fit plan"))
         layout.addWidget(self.summary)
 
-        self._target_obj = utils.new_object("DrawerBaseplate")
+        self._target_obj = utils.new_object("DrawerBaseplates")
         self._created_preview_obj = True
         if fc.GuiUp:
             view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
@@ -533,6 +533,10 @@ class CreateDrawerBaseplateTaskPanel:
 
         self._refresh_summary()
         self._update_preview()
+
+    @staticmethod
+    def _format_drawer_baseplates_label(drawer_width_mm: float, drawer_depth_mm: float) -> str:
+        return f"Drawer Baseplates {int(round(drawer_width_mm))} x {int(round(drawer_depth_mm))} mm"
 
     def _capture_object_values(self, obj: fc.DocumentObject) -> dict[str, Any]:
         return {
@@ -797,6 +801,10 @@ class CreateDrawerBaseplateTaskPanel:
         ) * fc.Units.Quantity("1 mm")
         obj.ClipCutoutsEnabled = self.clip_cutouts_enabled.isChecked()
         obj.ClipLength = float(self.clip_length.value()) * fc.Units.Quantity("1 mm")
+        obj.Label = self._format_drawer_baseplates_label(
+            float(self.drawer_width.value()),
+            float(self.drawer_depth.value()),
+        )
         if hasattr(obj, "PreviewBuildMode"):
             obj.PreviewBuildMode = preview_mode
 
