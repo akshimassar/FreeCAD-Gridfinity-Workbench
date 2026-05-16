@@ -31,7 +31,6 @@ class BaseplateBuildOptions:
     include_junction_screws: bool = True
     include_clip_cutouts: bool = True
     include_snap_springs: bool = True
-    use_preview_core: bool = False
 
 
 @dataclass
@@ -154,6 +153,8 @@ def add_filler_strips(
     params: BaseplateParams,
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
+    *,
+    preview: bool = False,
 ) -> tuple[Part.Shape, GridfinityLayoutGeometry]:
     expanded = _build_expanded_layout_with_fillers(params, layout)
     nx, ny = _layout_dims(layout, params)
@@ -161,7 +162,7 @@ def add_filler_strips(
     if not has_fillers:
         return shape, expanded
 
-    filler_shape = _build_filler_ring_shape(params, expanded, options)
+    filler_shape = _build_filler_ring_shape(params, expanded, options, preview=preview)
     if shape.isNull():
         return filler_shape, expanded
     combined = shape.fuse(filler_shape).removeSplitter()
@@ -260,6 +261,8 @@ def _build_filler_cell_shape(
     target_cell_width: float,
     target_cell_height: float,
     options: BaseplateBuildOptions,
+    *,
+    preview: bool = False,
 ) -> CoreCellBuildResult:
     unitmm = fc.Units.Quantity("1 mm")
     filler_params = replace(
@@ -270,7 +273,7 @@ def _build_filler_cell_shape(
             y_grid_size=target_cell_height * unitmm,
         ),
     )
-    if options.use_preview_core:
+    if preview:
         return build_preview_single_cell_baseplate_core(filler_params)
     return build_single_cell_baseplate_core(filler_params, options)
 
@@ -338,6 +341,8 @@ def _build_filler_ring_shape(
     params: BaseplateParams,
     geometry: GridfinityLayoutGeometry,
     options: BaseplateBuildOptions,
+    *,
+    preview: bool = False,
 ) -> Part.Shape:
     nx_exp = len(geometry.layout)
     ny_exp = len(geometry.layout[0])
@@ -351,7 +356,7 @@ def _build_filler_ring_shape(
 
     cache: dict[tuple[float, float, bool, bool, bool, bool], CoreCellBuildResult] = {}
     spring_slots = None
-    if options.include_snap_springs and params.click_springs.enabled:
+    if not preview and options.include_snap_springs and params.click_springs.enabled:
         spring_slots = feat.make_click_spring_shape_slots(
             params.fundamentals,
             params.click_springs,
@@ -380,6 +385,7 @@ def _build_filler_ring_shape(
                 width,
                 height,
                 options,
+                preview=preview,
             )
             cell = filler_result.shape
             if spring_slots is not None and not filler_result.is_tiny:
@@ -721,15 +727,19 @@ def build_simple_baseplate(
     obj: fc.DocumentObject,
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
+    *,
+    preview: bool = False,
 ) -> Part.Shape:
     params = params_from_obj(obj)
-    return build_simple_baseplate_from_params(params, layout, options)
+    return build_simple_baseplate_from_params(params, layout, options, preview=preview)
 
 
 def build_simple_baseplate_from_params(
     params: BaseplateParams,
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
+    *,
+    preview: bool = False,
 ) -> Part.Shape:
     total_start = time.perf_counter()
 
@@ -751,10 +761,10 @@ def build_simple_baseplate_from_params(
 
     if nx == 0 or ny == 0:
         empty_shape = Part.Shape()
-        shape, geometry = add_filler_strips(empty_shape, params, layout, options)
+        shape, geometry = add_filler_strips(empty_shape, params, layout, options, preview=preview)
         if shape.isNull():
             raise ValueError("No core cells and no fillers to build")
-        if not options.use_preview_core:
+        if not preview:
             shape = baseplate_cell_top_crop(shape, params)
             shape = _apply_layout_corner_roundover(
                 shape,
@@ -767,22 +777,22 @@ def build_simple_baseplate_from_params(
 
     core_result = (
         build_preview_single_cell_baseplate_core(params)
-        if options.use_preview_core
+        if preview
         else build_single_cell_baseplate_core(params, options)
     )
     shape = core_result.shape
     t1 = time.perf_counter()
 
-    if not options.use_preview_core and not core_result.is_tiny:
+    if not preview and not core_result.is_tiny:
         shape = apply_snap_springs(shape, params, options)
-    if not options.use_preview_core:
+    if not preview:
         shape = baseplate_cell_top_crop(shape, params)
     t2 = time.perf_counter()
 
     shape = replicate_layout(shape, params, layout)
     t3 = time.perf_counter()
 
-    shape, geometry = add_filler_strips(shape, params, layout, options)
+    shape, geometry = add_filler_strips(shape, params, layout, options, preview=preview)
     x_offset = 1 if len(geometry.layout) == nx + 2 else 0
     y_offset = 1 if len(geometry.layout[0]) == ny + 2 else 0
     for ix in range(nx):
@@ -793,7 +803,7 @@ def build_simple_baseplate_from_params(
                 geometry.tiny[gx][gy] = core_result.is_tiny
     t3a = time.perf_counter()
 
-    if not options.use_preview_core:
+    if not preview:
         shape = _apply_layout_corner_roundover(
             shape,
             params,
@@ -804,7 +814,7 @@ def build_simple_baseplate_from_params(
     t3b = time.perf_counter()
 
     t4 = time.perf_counter()
-    if options.use_preview_core:
+    if preview:
         t5 = t4
         t6 = t4
     else:

@@ -6,6 +6,7 @@ Contains command objects representing what should happen on a button press.
 # ruff: noqa: D101, D102, D107, N802
 
 import re
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -456,7 +457,10 @@ class CreateDrawerBaseplateTaskPanel:
 
     def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
         self._pixmap = pixmap
-        self._target_obj = target_obj
+        self._edit_obj = target_obj
+        self._target_obj: fc.DocumentObject | None = None
+        self._created_preview_obj = False
+        self._preview_applied = False
         self.form = QWidget()
         self.form.setWindowTitle(
             "Edit Drawer Fit Baseplates"
@@ -507,10 +511,63 @@ class CreateDrawerBaseplateTaskPanel:
         layout.addWidget(_section_label("Drawer fit plan"))
         layout.addWidget(self.summary)
 
+        self._target_obj = utils.new_object("DrawerBaseplate")
+        self._created_preview_obj = True
+        if fc.GuiUp:
+            view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
+            ViewProviderGridfinity(view_object, str(self._pixmap))
+        features.DrawerBaseplate(self._target_obj)
+        if self._edit_obj is not None:
+            self._restore_object_values(
+                self._target_obj, self._capture_object_values(self._edit_obj)
+            )
+
+        self._preview_timer = QTimer(self.form)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(500)
+        self._preview_timer.timeout.connect(self._update_preview)
+
         self._connect_signals()
         if self._target_obj is not None:
             self._load_from_object(self._target_obj)
+
         self._refresh_summary()
+        self._update_preview()
+
+    def _capture_object_values(self, obj: fc.DocumentObject) -> dict[str, Any]:
+        return {
+            "DrawerWidth": obj.DrawerWidth,
+            "DrawerDepth": obj.DrawerDepth,
+            "WidthFillerAlignment": str(obj.WidthFillerAlignment),
+            "DepthFillerAlignment": str(obj.DepthFillerAlignment),
+            "PrinterBedWidth": obj.PrinterBedWidth,
+            "PrinterBedDepth": obj.PrinterBedDepth,
+            "xGridSize": obj.xGridSize,
+            "yGridSize": obj.yGridSize,
+            "BaseProfileMainHalfWidth": obj.BaseProfileMainHalfWidth,
+            "BaseProfileMainHeight": obj.BaseProfileMainHeight,
+            "BinOuterRadius": obj.BinOuterRadius,
+            "BaseProfileLowerChamferEnabled": bool(obj.BaseProfileLowerChamferEnabled),
+            "BaseProfileLowerChamferSize": obj.BaseProfileLowerChamferSize,
+            "BaseProfileTopCrop": obj.BaseProfileTopCrop,
+            "Clearance": obj.Clearance,
+            "ClickSpringsEnabled": bool(obj.ClickSpringsEnabled),
+            "ClickThickness": obj.ClickThickness,
+            "ClickLength": obj.ClickLength,
+            "ClickOffset": obj.ClickOffset,
+            "JunctionScrewHoles": bool(obj.JunctionScrewHoles),
+            "JunctionScrewDiameter": obj.JunctionScrewDiameter,
+            "JunctionCounterboreDiameter": obj.JunctionCounterboreDiameter,
+            "JunctionCounterboreDepth": obj.JunctionCounterboreDepth,
+            "ClipCutoutsEnabled": bool(obj.ClipCutoutsEnabled),
+            "ClipLength": obj.ClipLength,
+            "PreviewBuildMode": bool(getattr(obj, "PreviewBuildMode", False)),
+        }
+
+    def _restore_object_values(self, obj: fc.DocumentObject, values: dict[str, Any]) -> None:
+        for key, value in values.items():
+            if hasattr(obj, key):
+                setattr(obj, key, value)
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         if hasattr(obj, "DrawerWidth"):
@@ -687,24 +744,20 @@ class CreateDrawerBaseplateTaskPanel:
         ]
         for control in controls:
             if isinstance(control, QDoubleSpinBox):
-                control.valueChanged.connect(lambda *_: self._refresh_summary())
+                control.valueChanged.connect(lambda *_: self._on_control_changed())
             elif isinstance(control, QComboBox):
-                control.currentIndexChanged.connect(lambda *_: self._refresh_summary())
+                control.currentIndexChanged.connect(lambda *_: self._on_control_changed())
 
-    def accept(self) -> bool:
+    def _on_control_changed(self) -> None:
+        self._refresh_summary()
+        self._preview_timer.start()
+
+    def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
         self._refresh_summary()
         if self.summary.text().startswith("Error:") or self.summary.text().startswith(
             "Validation errors:"
         ):
             return False
-
-        obj = self._target_obj
-        if obj is None:
-            obj = utils.new_object("DrawerBaseplate")
-            if fc.GuiUp:
-                view_object: fcg.ViewProviderDocumentObject = obj.ViewObject
-                ViewProviderGridfinity(view_object, str(self._pixmap))
-            features.DrawerBaseplate(obj)
 
         obj.DrawerWidth = float(self.drawer_width.value()) * fc.Units.Quantity("1 mm")
         obj.DrawerDepth = float(self.drawer_depth.value()) * fc.Units.Quantity("1 mm")
@@ -744,6 +797,56 @@ class CreateDrawerBaseplateTaskPanel:
         ) * fc.Units.Quantity("1 mm")
         obj.ClipCutoutsEnabled = self.clip_cutouts_enabled.isChecked()
         obj.ClipLength = float(self.clip_length.value()) * fc.Units.Quantity("1 mm")
+        if hasattr(obj, "PreviewBuildMode"):
+            obj.PreviewBuildMode = preview_mode
+
+        return True
+
+    def _update_preview(self) -> None:
+        if self._target_obj is None:
+            return
+        applied = self._apply_dialog_values(self._target_obj, preview_mode=True)
+        if not applied:
+            return
+        status_bar = None
+        if fc.GuiUp and fcg is not None:
+            try:
+                status_bar = fcg.getMainWindow().statusBar()
+                status_bar.showMessage("Recomputing preview...")
+            except Exception:
+                status_bar = None
+
+        hidden = False
+        if fc.GuiUp and hasattr(self._target_obj, "ViewObject"):
+            try:
+                self._target_obj.ViewObject.Visibility = False
+                hidden = True
+            except Exception:
+                hidden = False
+
+        start = time.perf_counter()
+        fc.ActiveDocument.recompute()
+        elapsed = time.perf_counter() - start
+
+        if hidden:
+            try:
+                self._target_obj.ViewObject.Visibility = True
+            except Exception:
+                pass
+
+        if status_bar is not None:
+            status_bar.showMessage(f"Preview recomputed in {elapsed:.2f} seconds", 2500)
+        self._preview_applied = True
+
+    def accept(self) -> bool:
+        if self._target_obj is None:
+            return False
+        output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
+        applied = self._apply_dialog_values(output_obj, preview_mode=False)
+        if not applied:
+            return False
+        if self._edit_obj is not None and self._created_preview_obj:
+            fc.ActiveDocument.removeObject(self._target_obj.Name)
 
         fc.ActiveDocument.recompute()
         fcg.SendMsgToActiveView("ViewFit")
@@ -751,6 +854,9 @@ class CreateDrawerBaseplateTaskPanel:
         return True
 
     def reject(self) -> bool:
+        if self._target_obj is not None:
+            if self._created_preview_obj:
+                fc.ActiveDocument.removeObject(self._target_obj.Name)
         fcg.Control.closeDialog()
         return True
 
@@ -760,9 +866,9 @@ class CreateBaseplateTaskPanel:
 
     def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
         self._pixmap = pixmap
-        self._target_obj = target_obj
+        self._edit_obj = target_obj
+        self._target_obj: fc.DocumentObject | None = None
         self._created_preview_obj = False
-        self._original_values: BaseplateParams | None = None
         self._original_view: dict[str, Any] | None = None
         self._preview_applied = False
         self._last_valid_params: BaseplateParams | None = None
@@ -782,15 +888,14 @@ class CreateBaseplateTaskPanel:
 
         self._install_inline_error_rows()
 
-        if self._target_obj is None:
-            self._target_obj = utils.new_object("Baseplate")
-            self._created_preview_obj = True
-            if fc.GuiUp:
-                view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
-                ViewProviderGridfinity(view_object, str(self._pixmap))
-            features.Baseplate(self._target_obj)
-        else:
-            self._original_values = params_from_obj(self._target_obj)
+        self._target_obj = utils.new_object("Baseplate")
+        self._created_preview_obj = True
+        if fc.GuiUp:
+            view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
+            ViewProviderGridfinity(view_object, str(self._pixmap))
+        features.Baseplate(self._target_obj)
+        if self._edit_obj is not None:
+            apply_params_to_obj(self._target_obj, params_from_obj(self._edit_obj))
 
         self._capture_and_set_preview_visuals()
 
@@ -802,8 +907,7 @@ class CreateBaseplateTaskPanel:
         self._preview_timer.setInterval(500)
         self._preview_timer.timeout.connect(self._update_preview)
         self._connect_preview_signals()
-        if self._created_preview_obj:
-            self._update_preview()
+        self._update_preview()
 
     def getStandardButtons(self) -> int:  # noqa: N802
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1038,7 +1142,34 @@ class CreateBaseplateTaskPanel:
             int(self.x_grid_units.value()),
             int(self.y_grid_units.value()),
         )
+        status_bar = None
+        if fc.GuiUp and fcg is not None:
+            try:
+                status_bar = fcg.getMainWindow().statusBar()
+                status_bar.showMessage("Recomputing preview...")
+            except Exception:
+                status_bar = None
+
+        hidden = False
+        if fc.GuiUp and hasattr(self._target_obj, "ViewObject"):
+            try:
+                self._target_obj.ViewObject.Visibility = False
+                hidden = True
+            except Exception:
+                hidden = False
+
+        start = time.perf_counter()
         fc.ActiveDocument.recompute()
+        elapsed = time.perf_counter() - start
+
+        if hidden:
+            try:
+                self._target_obj.ViewObject.Visibility = True
+            except Exception:
+                pass
+
+        if status_bar is not None:
+            status_bar.showMessage(f"Preview recomputed in {elapsed:.2f} seconds", 2500)
         self._preview_applied = True
 
     @staticmethod
@@ -1051,13 +1182,16 @@ class CreateBaseplateTaskPanel:
         params = self._validate_controls(preview_mode=False)
         if params is None:
             return False
-        apply_params_to_obj(self._target_obj, params)
-        self._target_obj.Label = self._format_simple_baseplate_label(
+        output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
+        apply_params_to_obj(output_obj, params)
+        output_obj.Label = self._format_simple_baseplate_label(
             int(params.core.x_grid_count),
             int(params.core.y_grid_count),
         )
-        if hasattr(self._target_obj, "PreviewBuildMode"):
-            self._target_obj.PreviewBuildMode = False
+        if hasattr(output_obj, "PreviewBuildMode"):
+            output_obj.PreviewBuildMode = False
+        if self._edit_obj is not None and self._created_preview_obj:
+            fc.ActiveDocument.removeObject(self._target_obj.Name)
         fc.ActiveDocument.recompute()
         self._restore_preview_visuals()
         fcg.SendMsgToActiveView("ViewFit")
@@ -1068,11 +1202,6 @@ class CreateBaseplateTaskPanel:
         if self._target_obj is not None:
             if self._created_preview_obj:
                 fc.ActiveDocument.removeObject(self._target_obj.Name)
-            elif self._original_values is not None and self._preview_applied:
-                apply_params_to_obj(self._target_obj, self._original_values)
-                if hasattr(self._target_obj, "PreviewBuildMode"):
-                    self._target_obj.PreviewBuildMode = False
-                fc.ActiveDocument.recompute()
             self._restore_preview_visuals()
         fcg.Control.closeDialog()
         return True

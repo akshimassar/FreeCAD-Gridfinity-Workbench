@@ -365,18 +365,16 @@ class Baseplate(FoundationGridfinity):
         layout = grid_initial_layout.make_rectangle_layout(obj)
         preview_mode = bool(getattr(obj, "PreviewBuildMode", False))
         options = baseplate_builder.BaseplateBuildOptions(
-            include_junction_screws=(
-                False if preview_mode else bool(getattr(obj, "JunctionScrewHoles", False))
-            ),
-            include_clip_cutouts=(
-                False if preview_mode else bool(getattr(obj, "ClipCutoutsEnabled", False))
-            ),
-            include_snap_springs=(
-                False if preview_mode else bool(getattr(obj, "ClickSpringsEnabled", False))
-            ),
-            use_preview_core=preview_mode,
+            include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
+            include_clip_cutouts=bool(getattr(obj, "ClipCutoutsEnabled", False)),
+            include_snap_springs=bool(getattr(obj, "ClickSpringsEnabled", False)),
         )
-        return baseplate_builder.build_simple_baseplate(obj, layout, options)
+        return baseplate_builder.build_simple_baseplate(
+            obj,
+            layout,
+            options,
+            preview=preview_mode,
+        )
 
 
 class DrawerBaseplate(FoundationGridfinity):
@@ -437,12 +435,19 @@ class DrawerBaseplate(FoundationGridfinity):
             "ReferenceParameters",
             "Deterministic names for generated drawer baseplate pieces",
         ).PieceNames = []
+        obj.addProperty(
+            "App::PropertyBool",
+            "PreviewBuildMode",
+            "ShouldBeHidden",
+            "Internal flag for simplified interactive preview build",
+        ).PreviewBuildMode = False
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         return self.fit_drawer_with_printable_baseplates(obj)
 
     def fit_drawer_with_printable_baseplates(self, obj: fc.DocumentObject) -> Part.Shape:
         params = params_from_obj(obj)
+        preview_mode = bool(getattr(obj, "PreviewBuildMode", False))
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
             include_clip_cutouts=bool(getattr(obj, "ClipCutoutsEnabled", False)),
@@ -526,7 +531,10 @@ class DrawerBaseplate(FoundationGridfinity):
 
                 layout = [[True for _ in range(y_units)] for _ in range(x_units)]
                 shape = baseplate_builder.build_simple_baseplate_from_params(
-                    piece_params, layout, options
+                    piece_params,
+                    layout,
+                    options,
+                    preview=preview_mode,
                 )
 
                 bbox = shape.BoundBox
