@@ -374,6 +374,7 @@ class Baseplate(FoundationGridfinity):
             include_snap_springs=(
                 False if preview_mode else bool(getattr(obj, "ClickSpringsEnabled", False))
             ),
+            use_preview_core=preview_mode,
         )
         return baseplate_builder.build_simple_baseplate(obj, layout, options)
 

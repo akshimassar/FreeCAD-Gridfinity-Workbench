@@ -31,6 +31,7 @@ class BaseplateBuildOptions:
     include_junction_screws: bool = True
     include_clip_cutouts: bool = True
     include_snap_springs: bool = True
+    use_preview_core: bool = False
 
 
 @dataclass
@@ -101,6 +102,36 @@ def build_single_cell_baseplate_core(
         return CoreCellBuildResult(shape=solid_shape, is_tiny=True)
     bin_base_shape.translate(fc.Vector(0, 0, total_height))
     return CoreCellBuildResult(shape=solid_shape.cut(bin_base_shape), is_tiny=False)
+
+
+def build_preview_single_cell_baseplate_core(
+    params: BaseplateParams,
+) -> CoreCellBuildResult:
+    margin = 0.1
+    x_grid_size = float(params.fundamentals.x_grid_size)
+    y_grid_size = float(params.fundamentals.y_grid_size)
+    main_height = float(params.fundamentals.base_profile_main_height)
+    main_half_width = float(params.fundamentals.base_profile_main_half_width)
+
+    outer = Part.makeBox(
+        x_grid_size,
+        y_grid_size,
+        main_height,
+        fc.Vector(-0.5 * x_grid_size, -0.5 * y_grid_size, 0),
+        fc.Vector(0, 0, 1),
+    )
+    inner = Part.makeBox(
+        x_grid_size - main_half_width,
+        y_grid_size - main_half_width,
+        main_height + (2 * margin),
+        fc.Vector(
+            -0.5 * (x_grid_size - main_half_width),
+            -0.5 * (y_grid_size - main_half_width),
+            -margin,
+        ),
+        fc.Vector(0, 0, 1),
+    )
+    return CoreCellBuildResult(shape=outer.cut(inner), is_tiny=False)
 
 
 def replicate_layout(
@@ -245,6 +276,8 @@ def _build_filler_cell_shape(
             y_grid_size=target_cell_height * unitmm,
         ),
     )
+    if options.use_preview_core:
+        return build_preview_single_cell_baseplate_core(filler_params)
     return build_single_cell_baseplate_core(filler_params, options)
 
 
@@ -727,23 +760,29 @@ def build_simple_baseplate_from_params(
         shape, geometry = add_filler_strips(empty_shape, params, layout, options)
         if shape.isNull():
             raise ValueError("No core cells and no fillers to build")
-        shape = baseplate_cell_top_crop(shape, params)
-        shape = _apply_layout_corner_roundover(
-            shape,
-            params,
-            geometry.layout,
-            geometry.x_lines,
-            geometry.y_lines,
-        )
+        if not options.use_preview_core:
+            shape = baseplate_cell_top_crop(shape, params)
+            shape = _apply_layout_corner_roundover(
+                shape,
+                params,
+                geometry.layout,
+                geometry.x_lines,
+                geometry.y_lines,
+            )
         return shape
 
-    core_result = build_single_cell_baseplate_core(params, options)
+    core_result = (
+        build_preview_single_cell_baseplate_core(params)
+        if options.use_preview_core
+        else build_single_cell_baseplate_core(params, options)
+    )
     shape = core_result.shape
     t1 = time.perf_counter()
 
-    if not core_result.is_tiny:
+    if not options.use_preview_core and not core_result.is_tiny:
         shape = apply_snap_springs(shape, params, options)
-    shape = baseplate_cell_top_crop(shape, params)
+    if not options.use_preview_core:
+        shape = baseplate_cell_top_crop(shape, params)
     t2 = time.perf_counter()
 
     shape = replicate_layout(shape, params, layout)
@@ -760,26 +799,31 @@ def build_simple_baseplate_from_params(
                 geometry.tiny[gx][gy] = core_result.is_tiny
     t3a = time.perf_counter()
 
-    shape = _apply_layout_corner_roundover(
-        shape,
-        params,
-        geometry.layout,
-        geometry.x_lines,
-        geometry.y_lines,
-    )
+    if not options.use_preview_core:
+        shape = _apply_layout_corner_roundover(
+            shape,
+            params,
+            geometry.layout,
+            geometry.x_lines,
+            geometry.y_lines,
+        )
     t3b = time.perf_counter()
 
     t4 = time.perf_counter()
-    top_z = (
-        max(v.Z for v in shape.Vertexes) * fc.Units.Quantity("1 mm")
-        if shape.Vertexes
-        else 0 * fc.Units.Quantity("1 mm")
-    )
-    post_cutter = make_post_replication_cutter(params, geometry, options, top_z)
-    t5 = time.perf_counter()
-    if post_cutter is not None:
-        shape = shape.cut(post_cutter)
-    t6 = time.perf_counter()
+    if options.use_preview_core:
+        t5 = t4
+        t6 = t4
+    else:
+        top_z = (
+            max(v.Z for v in shape.Vertexes) * fc.Units.Quantity("1 mm")
+            if shape.Vertexes
+            else 0 * fc.Units.Quantity("1 mm")
+        )
+        post_cutter = make_post_replication_cutter(params, geometry, options, top_z)
+        t5 = time.perf_counter()
+        if post_cutter is not None:
+            shape = shape.cut(post_cutter)
+        t6 = time.perf_counter()
 
     fc.Console.PrintMessage(
         "[Gridfinity Timing] baseplate "
