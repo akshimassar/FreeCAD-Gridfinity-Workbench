@@ -53,17 +53,7 @@ class ViewProviderGridfinity:
 
     def __init__(self, obj: fcg.ViewProviderDocumentObject, icon_path: str) -> None:
         # Set this object to the proxy object of the actual view provider
-        if hasattr(obj, "Proxy"):
-            obj.Proxy = self
-        try:
-            linked = getattr(obj, "Object", None)
-            if linked is not None and hasattr(linked, "hasExtension"):
-                if linked.hasExtension("App::GroupExtension") and not obj.hasExtension(
-                    "Gui::ViewProviderGroupExtension"
-                ):
-                    obj.addExtension("Gui::ViewProviderGroupExtensionPython")
-        except Exception:
-            pass
+        obj.Proxy = self
         self._check_attr()
         self.icon_path = icon_path or str(ICONDIR / "gridfinity_workbench_icon.svg")
 
@@ -472,7 +462,6 @@ class CreateDrawerBaseplateTaskPanel:
         self._pixmap = pixmap
         self._edit_obj = target_obj
         self._target_obj: fc.DocumentObject | None = None
-        self._container_obj: fc.DocumentObject | None = None
         self._created_preview_obj = False
         self._preview_applied = False
         self._original_view: dict[str, Any] | None = None
@@ -530,21 +519,17 @@ class CreateDrawerBaseplateTaskPanel:
         layout.addWidget(_section_label("Drawer fit plan"))
         layout.addWidget(self.summary)
 
-        self._container_obj, self._target_obj = self._create_drawer_objects(preview=True)
+        self._target_obj = utils.new_object("DrawerBaseplates")
         self._created_preview_obj = True
         if fc.GuiUp:
-            target_view: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
-            ViewProviderGridfinity(target_view, str(self._pixmap))
-            if hasattr(target_view, "ShowInTree"):
+            view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
+            ViewProviderGridfinity(view_object, str(self._pixmap))
+            if hasattr(view_object, "ShowInTree"):
                 try:
-                    target_view.ShowInTree = False
+                    view_object.ShowInTree = False
                 except Exception:
                     pass
         features.DrawerBaseplate(self._target_obj)
-        if hasattr(self._container_obj, "addObject"):
-            self._container_obj.addObject(self._target_obj)
-        if hasattr(self._target_obj, "DrawerContainerName"):
-            self._target_obj.DrawerContainerName = self._container_obj.Name
         if self._edit_obj is not None:
             self._restore_object_values(
                 self._target_obj, self._capture_object_values(self._edit_obj)
@@ -563,37 +548,6 @@ class CreateDrawerBaseplateTaskPanel:
 
         self._refresh_summary()
         self._update_preview()
-
-    def _create_drawer_objects(
-        self,
-        *,
-        preview: bool,
-    ) -> tuple[fc.DocumentObject, fc.DocumentObject]:
-        container_name = "PreviewDrawerBaseplates" if preview else "DrawerBaseplates"
-        driver_name = "PreviewDrawerBaseplatesDriver" if preview else "DrawerBaseplatesDriver"
-        container_obj = fc.ActiveDocument.addObject("App::Part", container_name)
-        target_obj = fc.ActiveDocument.addObject("Part::FeaturePython", driver_name)
-        return container_obj, target_obj
-
-    def _remove_drawer_container_tree(self, container_obj: fc.DocumentObject | None) -> None:
-        if container_obj is None:
-            return
-        doc = fc.ActiveDocument
-        if doc is None:
-            return
-        try:
-            children = list(getattr(container_obj, "Group", []))
-        except Exception:
-            children = []
-        for child in children:
-            try:
-                doc.removeObject(child.Name)
-            except Exception:
-                pass
-        try:
-            doc.removeObject(container_obj.Name)
-        except Exception:
-            pass
 
     def _preview_style(self) -> tuple[tuple[float, float, float], int]:
         return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
@@ -909,12 +863,7 @@ class CreateDrawerBaseplateTaskPanel:
             float(self.drawer_width.value()),
             float(self.drawer_depth.value()),
         )
-        if preview_mode:
-            obj.Label = self._format_preview_label(base_label)
-        elif hasattr(obj, "DrawerContainerName") and str(getattr(obj, "DrawerContainerName", "")):
-            obj.Label = "DrawerBaseplatesDriver"
-        else:
-            obj.Label = base_label
+        obj.Label = self._format_preview_label(base_label) if preview_mode else base_label
         if hasattr(obj, "PreviewBuildMode"):
             obj.PreviewBuildMode = preview_mode
 
@@ -946,61 +895,13 @@ class CreateDrawerBaseplateTaskPanel:
         if self._target_obj is None:
             return False
         output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
-        final_container_obj = self._container_obj
-        if self._edit_obj is None:
-            self._remove_drawer_container_tree(self._container_obj)
-            final_container_obj, output_obj = self._create_drawer_objects(preview=False)
-            if fc.GuiUp:
-                target_view: fcg.ViewProviderDocumentObject = output_obj.ViewObject
-                ViewProviderGridfinity(target_view, str(self._pixmap))
-                if hasattr(target_view, "ShowInTree"):
-                    try:
-                        target_view.ShowInTree = False
-                    except Exception:
-                        pass
-            features.DrawerBaseplate(output_obj)
-            if hasattr(final_container_obj, "addObject"):
-                final_container_obj.addObject(output_obj)
-            if hasattr(output_obj, "DrawerContainerName"):
-                output_obj.DrawerContainerName = final_container_obj.Name
         applied = self._apply_dialog_values(output_obj, preview_mode=False)
         if not applied:
-            if self._edit_obj is None and final_container_obj is not None:
-                self._remove_drawer_container_tree(final_container_obj)
             return False
         if self._edit_obj is not None and self._created_preview_obj:
-            self._remove_drawer_container_tree(self._container_obj)
+            fc.ActiveDocument.removeObject(self._target_obj.Name)
         elif output_obj is self._target_obj:
             self._restore_preview_visuals()
-            if self._container_obj is not None:
-                self._container_obj.Label = output_obj.Label
-            if (
-                fc.GuiUp
-                and self._container_obj is not None
-                and hasattr(self._container_obj, "ViewObject")
-            ):
-                try:
-                    if hasattr(self._container_obj.ViewObject, "ShowInTree"):
-                        self._container_obj.ViewObject.ShowInTree = True
-                except Exception:
-                    pass
-        else:
-            pass
-
-        final_label = self._format_drawer_baseplates_label(
-            float(self.drawer_width.value()),
-            float(self.drawer_depth.value()),
-        )
-        container_name = str(getattr(output_obj, "DrawerContainerName", "") or "")
-        container_obj = (
-            fc.ActiveDocument.getObject(container_name)
-            if container_name and fc.ActiveDocument is not None
-            else None
-        )
-        if container_obj is not None:
-            container_obj.Label = final_label
-        elif final_container_obj is not None:
-            final_container_obj.Label = final_label
 
         fc.ActiveDocument.recompute()
         fcg.SendMsgToActiveView("ViewFit")
@@ -1010,7 +911,7 @@ class CreateDrawerBaseplateTaskPanel:
     def reject(self) -> bool:
         if self._target_obj is not None:
             if self._created_preview_obj:
-                self._remove_drawer_container_tree(self._container_obj)
+                fc.ActiveDocument.removeObject(self._target_obj.Name)
             else:
                 self._restore_preview_visuals()
         fcg.Control.closeDialog()
@@ -1044,7 +945,7 @@ class CreateBaseplateTaskPanel:
 
         self._install_inline_error_rows()
 
-        self._target_obj = utils.new_object("PreviewBaseplate")
+        self._target_obj = utils.new_object("Baseplate")
         self._created_preview_obj = True
         if fc.GuiUp:
             view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
@@ -1335,17 +1236,6 @@ class CreateBaseplateTaskPanel:
         if params is None:
             return False
         output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
-        if self._edit_obj is None:
-            if self._target_obj is not None:
-                try:
-                    fc.ActiveDocument.removeObject(self._target_obj.Name)
-                except Exception:
-                    pass
-            output_obj = utils.new_object("Baseplate")
-            if fc.GuiUp:
-                view_object: fcg.ViewProviderDocumentObject = output_obj.ViewObject
-                ViewProviderGridfinity(view_object, str(self._pixmap))
-            features.Baseplate(output_obj)
         apply_params_to_obj(output_obj, params)
         output_obj.Label = self._format_simple_baseplate_label(
             int(params.core.x_grid_count),
@@ -1353,14 +1243,8 @@ class CreateBaseplateTaskPanel:
         )
         if hasattr(output_obj, "PreviewBuildMode"):
             output_obj.PreviewBuildMode = False
-        if self._created_preview_obj and self._edit_obj is not None:
+        if self._edit_obj is not None and self._created_preview_obj:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
-        if output_obj is self._target_obj and fc.GuiUp and hasattr(output_obj, "ViewObject"):
-            try:
-                if hasattr(output_obj.ViewObject, "ShowInTree"):
-                    output_obj.ViewObject.ShowInTree = True
-            except Exception:
-                pass
         fc.ActiveDocument.recompute()
         self._restore_preview_visuals()
         fcg.SendMsgToActiveView("ViewFit")
