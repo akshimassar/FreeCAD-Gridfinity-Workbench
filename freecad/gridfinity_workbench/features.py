@@ -662,10 +662,40 @@ class StackedBaseplates(SupportBaseplate):
         baseplate_shape = Baseplate.generate_gridfinity_shape(self, obj)
         support_shape = SupportBaseplate.generate_gridfinity_shape(self, obj)
 
+        instance_count = max(1, int(getattr(obj, "InstanceCount", 3)))
+        z_step = support_shape.BoundBox.ZMax
+
+        baseplate_shapes: list[Part.Shape] = []
+        for idx in range(instance_count):
+            shape = baseplate_shape.copy()
+            if idx:
+                shape.translate(fc.Vector(0, 0, idx * z_step))
+            baseplate_shapes.append(shape)
+
+        fused_baseplates = baseplate_shapes[0]
+        if len(baseplate_shapes) > 1:
+            fused_baseplates = fused_baseplates.multiFuse(baseplate_shapes[1:]).removeSplitter()
+
+        support_count = max(0, instance_count - 1)
+        support_shapes: list[Part.Shape] = []
+        for idx in range(support_count):
+            shape = support_shape.copy()
+            if idx:
+                shape.translate(fc.Vector(0, 0, idx * z_step))
+            support_shapes.append(shape)
+
+        fused_supports: Part.Shape | None = None
+        if support_shapes:
+            fused_supports = support_shapes[0]
+            if len(support_shapes) > 1:
+                fused_supports = fused_supports.multiFuse(support_shapes[1:]).removeSplitter()
+
         if original_total_height is not None and hasattr(obj, "TotalHeight"):
             obj.TotalHeight = original_total_height
 
-        return Part.makeCompound([baseplate_shape, support_shape])
+        if fused_supports is None:
+            return Part.makeCompound([fused_baseplates])
+        return Part.makeCompound([fused_baseplates, fused_supports])
 
 
 class MagnetBaseplate(FoundationGridfinity):
