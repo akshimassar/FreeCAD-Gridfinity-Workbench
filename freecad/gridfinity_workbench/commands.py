@@ -380,7 +380,11 @@ def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dic
 
 
 def _build_stacked_section(
-    layout: QVBoxLayout, *, instance_count: int, corner_stitching: bool
+    layout: QVBoxLayout,
+    *,
+    instance_count: int,
+    corner_stitching: bool,
+    stitching_thickness: float,
 ) -> dict[str, QWidget]:
     layout.addWidget(_section_label("Stacked"))
     form = QFormLayout()
@@ -393,10 +397,13 @@ def _build_stacked_section(
     corner_stitching_box = QCheckBox()
     corner_stitching_box.setChecked(corner_stitching)
     form.addRow("Corner stitching", corner_stitching_box)
+    stitching_thickness_box = _mm_spinbox(stitching_thickness, minimum=0.0, maximum=100.0)
+    form.addRow("Stitching thickness", stitching_thickness_box)
     layout.addLayout(form)
     return {
         "instance_count": instance_count_box,
         "corner_stitching": corner_stitching_box,
+        "stitching_thickness": stitching_thickness_box,
     }
 
 
@@ -1026,6 +1033,7 @@ class CreateBaseplateTaskPanel:
         self._feature_ctor(self._target_obj)
         if self._edit_obj is not None:
             apply_params_to_obj(self._target_obj, params_from_obj(self._edit_obj))
+            self._copy_extended_params_to_preview(self._edit_obj, self._target_obj)
 
         self._capture_and_set_preview_visuals()
 
@@ -1044,6 +1052,13 @@ class CreateBaseplateTaskPanel:
 
     def _build_pre_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
         return {}
+
+    def _copy_extended_params_to_preview(
+        self,
+        source_obj: fc.DocumentObject,
+        preview_obj: fc.DocumentObject,
+    ) -> None:
+        return
 
     def getStandardButtons(self) -> int:  # noqa: N802
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1119,9 +1134,13 @@ class CreateBaseplateTaskPanel:
 
     def _validate_controls(self, *, preview_mode: bool) -> BaseplateParams | None:
         result = params_from_dialog(self._control_values(), preview_mode=preview_mode)
-        self._render_validation_errors(result.errors)
+        errors = dict(result.errors)
+        errors.update(self._extra_validation_errors())
+        self._render_validation_errors(errors)
         if result.params is not None:
             self._last_valid_params = result.params
+        if errors:
+            return None
         return result.params
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
@@ -1170,8 +1189,11 @@ class CreateBaseplateTaskPanel:
             "filler_right_width",
             "filler_top_width",
             "filler_bottom_width",
+            "stitching_thickness",
         ]
         for key in field_keys:
+            if not hasattr(self, key):
+                continue
             widget = getattr(self, key)
             layout = self._find_form_layout_for_widget(widget)
             if layout is None:
@@ -1203,6 +1225,9 @@ class CreateBaseplateTaskPanel:
                 control.setStyleSheet("")
                 label.setText("")
                 label.hide()
+
+    def _extra_validation_errors(self) -> dict[str, str]:
+        return {}
 
     def _preview_style(self) -> tuple[tuple[float, float, float], int]:
         return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
@@ -1373,14 +1398,40 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
     def _build_extra_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
         return {}
 
+    def _copy_extended_params_to_preview(
+        self,
+        source_obj: fc.DocumentObject,
+        preview_obj: fc.DocumentObject,
+    ) -> None:
+        for property_name in (
+            "SupportOverhangAngle",
+            "InstanceCount",
+            "CornerStitching",
+            "StitchingThickness",
+        ):
+            if hasattr(source_obj, property_name) and hasattr(preview_obj, property_name):
+                setattr(preview_obj, property_name, getattr(source_obj, property_name))
+
     def _build_pre_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
         controls: dict[str, QWidget] = {}
-        controls.update(_build_stacked_section(layout, instance_count=3, corner_stitching=False))
+        controls.update(
+            _build_stacked_section(
+                layout,
+                instance_count=3,
+                corner_stitching=False,
+                stitching_thickness=0.4,
+            )
+        )
         controls.update(_build_support_section(layout, overhang_angle=50.0))
         return controls
 
     def _extra_preview_controls(self) -> list[QWidget]:
-        return [self.support_overhang_angle, self.instance_count, self.corner_stitching]
+        return [
+            self.support_overhang_angle,
+            self.instance_count,
+            self.corner_stitching,
+            self.stitching_thickness,
+        ]
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         super()._load_from_object(obj)
@@ -1390,6 +1441,8 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
             self.instance_count.setValue(int(obj.InstanceCount))
         if hasattr(obj, "CornerStitching"):
             self.corner_stitching.setChecked(bool(obj.CornerStitching))
+        if hasattr(obj, "StitchingThickness"):
+            self.stitching_thickness.setValue(float(obj.StitchingThickness))
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
         if not super()._apply_dialog_values(obj, preview_mode=preview_mode):
@@ -1400,7 +1453,16 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
             obj.InstanceCount = int(self.instance_count.value())
         if hasattr(obj, "CornerStitching"):
             obj.CornerStitching = bool(self.corner_stitching.isChecked())
+        if hasattr(obj, "StitchingThickness"):
+            obj.StitchingThickness = float(self.stitching_thickness.value())
         return True
+
+    def _extra_validation_errors(self) -> dict[str, str]:
+        errors: dict[str, str] = {}
+        top_crop_mm = float(self.top_crop.value())
+        if float(self.stitching_thickness.value()) > top_crop_mm:
+            errors["stitching_thickness"] = f"Must be <= Top crop ({top_crop_mm:.2f} mm)."
+        return errors
 
     @staticmethod
     def _support_label_for(base_label: str) -> str:

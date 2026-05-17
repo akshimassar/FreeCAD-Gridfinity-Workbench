@@ -634,6 +634,12 @@ class StackedBaseplates(Baseplate):
             "Enable corner stitching between stacked instances <br> <br> default = false",
         ).CornerStitching = False
         obj.addProperty(
+            "App::PropertyLength",
+            "StitchingThickness",
+            "GridfinityNonStandard",
+            "Corner stitching thickness <br> <br> default = 0.4 mm",
+        ).StitchingThickness = 0.4 * unitmm
+        obj.addProperty(
             "App::PropertyBool",
             "PreviewBuildMode",
             "ShouldBeHidden",
@@ -668,7 +674,82 @@ def _stacked_support_prototype(obj: fc.DocumentObject) -> Part.Shape:
     return SupportBaseplate.generate_gridfinity_shape(obj.Proxy, obj)
 
 
-def _build_stacked_baseplates_shape(obj: fc.DocumentObject) -> Part.Shape:
+def _build_corner_stitching_shape(
+    obj: fc.DocumentObject,
+    baseplates_bbox,
+) -> Part.Shape | None:
+    stitching_thickness = float(getattr(obj, "StitchingThickness", 0.4 * unitmm))
+    if not bool(getattr(obj, "CornerStitching", False)) or stitching_thickness <= 0:
+        return None
+
+    outer_radius = float(obj.BinOuterRadius)
+    if stitching_thickness >= outer_radius:
+        return None
+    if stitching_thickness > float(obj.BaseProfileTopCrop):
+        return None
+
+    x_min = float(baseplates_bbox.XMin)
+    x_max = float(baseplates_bbox.XMax)
+    y_min = float(baseplates_bbox.YMin)
+    y_max = float(baseplates_bbox.YMax)
+    z_min = float(baseplates_bbox.ZMin)
+    z_span = float(baseplates_bbox.ZMax - baseplates_bbox.ZMin)
+    if z_span <= 0:
+        return None
+
+    outer_mid_scale = 0.2928932188134524
+    inner_mid_offset = (outer_radius - stitching_thickness) * 0.7071067811865476
+
+    def _point(
+        corner_x: float, corner_y: float, sign_x: int, sign_y: int, local_x: float, local_y: float
+    ) -> fc.Vector:
+        return fc.Vector(corner_x + (sign_x * local_x), corner_y + (sign_y * local_y), 0)
+
+    corner_specs = [
+        (x_min, y_min, 1, 1),
+        (x_max, y_min, -1, 1),
+        (x_min, y_max, 1, -1),
+        (x_max, y_max, -1, -1),
+    ]
+    corner_faces: list[Part.Face] = []
+    for corner_x, corner_y, sign_x, sign_y in corner_specs:
+        outer_start = _point(corner_x, corner_y, sign_x, sign_y, outer_radius, 0.0)
+        outer_mid = _point(
+            corner_x,
+            corner_y,
+            sign_x,
+            sign_y,
+            outer_radius * outer_mid_scale,
+            outer_radius * outer_mid_scale,
+        )
+        outer_end = _point(corner_x, corner_y, sign_x, sign_y, 0.0, outer_radius)
+
+        inner_start = _point(corner_x, corner_y, sign_x, sign_y, stitching_thickness, outer_radius)
+        inner_mid = _point(
+            corner_x,
+            corner_y,
+            sign_x,
+            sign_y,
+            outer_radius - inner_mid_offset,
+            outer_radius - inner_mid_offset,
+        )
+        inner_end = _point(corner_x, corner_y, sign_x, sign_y, outer_radius, stitching_thickness)
+
+        profile_edges = [
+            Part.Arc(outer_start, outer_mid, outer_end).toShape(),
+            Part.LineSegment(outer_end, inner_start).toShape(),
+            Part.Arc(inner_start, inner_mid, inner_end).toShape(),
+            Part.LineSegment(inner_end, outer_start).toShape(),
+        ]
+        corner_faces.append(Part.Face(Part.Wire(profile_edges)))
+
+    stitching_profiles = Part.makeCompound(corner_faces)
+    stitching_shape = stitching_profiles.extrude(fc.Vector(0, 0, z_span))
+    stitching_shape.translate(fc.Vector(0, 0, z_min))
+    return stitching_shape
+
+
+def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
     baseplate_shape = Baseplate.generate_gridfinity_shape(obj.Proxy, obj)
     support_shape = _stacked_support_prototype(obj)
     instance_count = max(1, int(getattr(obj, "InstanceCount", 3)))
@@ -685,10 +766,18 @@ def _build_stacked_baseplates_shape(obj: fc.DocumentObject) -> Part.Shape:
     return shapes[0].multiFuse(shapes[1:])
 
 
+def _build_stacked_baseplates_shape(obj: fc.DocumentObject) -> Part.Shape:
+    stacked_baseplates = _build_stacked_baseplates_core_shape(obj)
+    stitching_shape = _build_corner_stitching_shape(obj, stacked_baseplates.BoundBox)
+    if stitching_shape is None:
+        return stacked_baseplates
+    return stacked_baseplates.fuse(stitching_shape)
+
+
 def _build_stacked_support_shape(obj: fc.DocumentObject) -> Part.Shape:
     support_shape = _stacked_support_prototype(obj)
     instance_count = max(1, int(getattr(obj, "InstanceCount", 3)))
-    support_count = max(0, instance_count - 1)
+    support_count = max(1, instance_count - 1)
     if support_count == 0:
         return Part.Shape()
 
@@ -700,8 +789,15 @@ def _build_stacked_support_shape(obj: fc.DocumentObject) -> Part.Shape:
             shape.translate(fc.Vector(0, 0, idx * z_step))
         shapes.append(shape)
     if len(shapes) == 1:
-        return shapes[0]
-    return shapes[0].multiFuse(shapes[1:])
+        stacked_supports = shapes[0]
+    else:
+        stacked_supports = shapes[0].multiFuse(shapes[1:])
+
+    baseplates_bbox = _build_stacked_baseplates_core_shape(obj).BoundBox
+    stitching_shape = _build_corner_stitching_shape(obj, baseplates_bbox)
+    if stitching_shape is None:
+        return stacked_supports
+    return stacked_supports.cut(stitching_shape)
 
 
 class MagnetBaseplate(FoundationGridfinity):
