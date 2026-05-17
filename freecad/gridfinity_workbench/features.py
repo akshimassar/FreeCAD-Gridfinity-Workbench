@@ -354,12 +354,6 @@ class Baseplate(FoundationGridfinity):
         grid_initial_layout.rectangle_layout_properties(obj, baseplate_default=True)
         baseplate_feat.solid_shape_properties(obj)
         baseplate_feat.base_values_properties(obj)
-        obj.addProperty(
-            "App::PropertyBool",
-            "PreviewBuildMode",
-            "ShouldBeHidden",
-            "Internal flag for simplified interactive preview build",
-        ).PreviewBuildMode = False
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         layout = grid_initial_layout.make_rectangle_layout(obj)
@@ -610,7 +604,6 @@ class SupportBaseplate(FoundationGridfinity):
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         layout = grid_initial_layout.make_rectangle_layout(obj)
-        obj.TotalHeight = obj.BaseProfileHeight
         shape = feat.make_baseplate_top_support(obj, layout)
         z_start = obj.BaseProfileMainHeight + obj.BaseProfileMainHalfWidth - obj.BaseProfileTopCrop
         z_matrix = fc.Matrix()
@@ -626,7 +619,7 @@ class SupportBaseplate(FoundationGridfinity):
             return shifted_shape
 
 
-class StackedBaseplates(SupportBaseplate):
+class StackedBaseplates(Baseplate):
     """Stacked baseplates for printing.
 
     Uses the same geometry backend as SupportBaseplate.
@@ -634,6 +627,12 @@ class StackedBaseplates(SupportBaseplate):
 
     def __init__(self, obj: fc.DocumentObject) -> None:
         super().__init__(obj)
+        obj.addProperty(
+            "App::PropertyAngle",
+            "SupportOverhangAngle",
+            "GridfinityNonStandard",
+            "Overhang angle used to calculate A-to-B loft height <br> <br> default = 50 deg",
+        ).SupportOverhangAngle = 50
         obj.addProperty(
             "App::PropertyInteger",
             "InstanceCount",
@@ -657,45 +656,64 @@ class StackedBaseplates(SupportBaseplate):
         if bool(getattr(obj, "PreviewBuildMode", False)):
             return Baseplate.generate_gridfinity_shape(self, obj)
 
-        original_total_height = getattr(obj, "TotalHeight", None)
+        return _build_stacked_baseplates_shape(obj)
 
-        baseplate_shape = Baseplate.generate_gridfinity_shape(self, obj)
-        support_shape = SupportBaseplate.generate_gridfinity_shape(self, obj)
 
-        instance_count = max(1, int(getattr(obj, "InstanceCount", 3)))
-        z_step = support_shape.BoundBox.ZMax
+class StackedBaseplatesSupport(FoundationGridfinity):
+    def __init__(self, obj: fc.DocumentObject, source_obj: fc.DocumentObject | None = None) -> None:
+        super().__init__(obj)
+        obj.addProperty(
+            "App::PropertyLink",
+            "SourceStackedBaseplates",
+            "Base",
+            "Primary stacked baseplates object linked to this support object.",
+        ).SourceStackedBaseplates = source_obj
 
-        baseplate_shapes: list[Part.Shape] = []
-        for idx in range(instance_count):
-            shape = baseplate_shape.copy()
-            if idx:
-                shape.translate(fc.Vector(0, 0, idx * z_step))
-            baseplate_shapes.append(shape)
+    def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
+        source = getattr(obj, "SourceStackedBaseplates", None)
+        if source is None:
+            return Part.Shape()
+        return _build_stacked_support_shape(source)
 
-        fused_baseplates = baseplate_shapes[0]
-        if len(baseplate_shapes) > 1:
-            fused_baseplates = fused_baseplates.multiFuse(baseplate_shapes[1:]).removeSplitter()
 
-        support_count = max(0, instance_count - 1)
-        support_shapes: list[Part.Shape] = []
-        for idx in range(support_count):
-            shape = support_shape.copy()
-            if idx:
-                shape.translate(fc.Vector(0, 0, idx * z_step))
-            support_shapes.append(shape)
+def _stacked_support_prototype(obj: fc.DocumentObject) -> Part.Shape:
+    return SupportBaseplate.generate_gridfinity_shape(obj.Proxy, obj)
 
-        fused_supports: Part.Shape | None = None
-        if support_shapes:
-            fused_supports = support_shapes[0]
-            if len(support_shapes) > 1:
-                fused_supports = fused_supports.multiFuse(support_shapes[1:]).removeSplitter()
 
-        if original_total_height is not None and hasattr(obj, "TotalHeight"):
-            obj.TotalHeight = original_total_height
+def _build_stacked_baseplates_shape(obj: fc.DocumentObject) -> Part.Shape:
+    baseplate_shape = Baseplate.generate_gridfinity_shape(obj.Proxy, obj)
+    support_shape = _stacked_support_prototype(obj)
+    instance_count = max(1, int(getattr(obj, "InstanceCount", 3)))
+    z_step = support_shape.BoundBox.ZMax
 
-        if fused_supports is None:
-            return Part.makeCompound([fused_baseplates])
-        return Part.makeCompound([fused_baseplates, fused_supports])
+    shapes = []
+    for idx in range(instance_count):
+        shape = baseplate_shape.copy()
+        if idx:
+            shape.translate(fc.Vector(0, 0, idx * z_step))
+        shapes.append(shape)
+    if len(shapes) == 1:
+        return shapes[0]
+    return shapes[0].multiFuse(shapes[1:]).removeSplitter()
+
+
+def _build_stacked_support_shape(obj: fc.DocumentObject) -> Part.Shape:
+    support_shape = _stacked_support_prototype(obj)
+    instance_count = max(1, int(getattr(obj, "InstanceCount", 3)))
+    support_count = max(0, instance_count - 1)
+    if support_count == 0:
+        return Part.Shape()
+
+    z_step = support_shape.BoundBox.ZMax
+    shapes = []
+    for idx in range(support_count):
+        shape = support_shape.copy()
+        if idx:
+            shape.translate(fc.Vector(0, 0, idx * z_step))
+        shapes.append(shape)
+    if len(shapes) == 1:
+        return shapes[0]
+    return shapes[0].multiFuse(shapes[1:]).removeSplitter()
 
 
 class MagnetBaseplate(FoundationGridfinity):

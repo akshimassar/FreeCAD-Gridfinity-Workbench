@@ -836,3 +836,80 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 "(3mm * (MainHeight + MainHalfWidth - TopCrop) * yGridSize * yGridUnits)"
             ),
         )
+
+    def test_stacked_baseplates_defaults_shape_and_timing(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+            import time
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            doc = fc.newDocument("StackedDefaults")
+            try:
+                base_obj = doc.addObject("Part::FeaturePython", "StackedBaseplates")
+                features.StackedBaseplates(base_obj)
+                support_obj = doc.addObject("Part::FeaturePython", "StackedBaseplatesSupport")
+                features.StackedBaseplatesSupport(support_obj, base_obj)
+
+                t0 = time.perf_counter()
+                doc.recompute()
+                elapsed = time.perf_counter() - t0
+
+                base_shape = base_obj.Shape
+                support_shape = support_obj.Shape
+                payload = {{
+                    "elapsed_s": float(elapsed),
+                    "base_solids": int(len(base_shape.Solids)),
+                    "support_solids": int(len(support_shape.Solids)),
+                    "base_valid": bool(base_shape.isValid()),
+                    "support_valid": bool(support_shape.isValid()),
+                    "base_volume": float(base_shape.Volume),
+                    "support_volume": float(support_shape.Volume),
+                }}
+                print("GRIDFINITY_RESULT=" + json.dumps(payload))
+            finally:
+                fc.closeDocument(doc.Name)
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        self.assertEqual(int(data["base_solids"]), 3)
+        self.assertEqual(int(data["support_solids"]), 2)
+        self.assertTrue(bool(data["base_valid"]))
+        self.assertTrue(bool(data["support_valid"]))
+        self.assertGreater(float(data["base_volume"]), 0.0)
+        self.assertGreater(float(data["support_volume"]), 0.0)

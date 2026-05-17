@@ -99,6 +99,14 @@ class ViewProviderGridfinity:
         if isinstance(proxy, features.StackedBaseplates):
             fcg.Control.showDialog(CreateStackedBaseplatesTaskPanel(self.icon_path, target_obj=obj))
             return True
+        if isinstance(proxy, features.StackedBaseplatesSupport):
+            source = getattr(obj, "SourceStackedBaseplates", None)
+            if source is None:
+                return False
+            fcg.Control.showDialog(
+                CreateStackedBaseplatesTaskPanel(self.icon_path, target_obj=source)
+            )
+            return True
         return False
 
 
@@ -1390,6 +1398,77 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
             obj.InstanceCount = int(self.instance_count.value())
         if hasattr(obj, "CornerStitching"):
             obj.CornerStitching = bool(self.corner_stitching.isChecked())
+        return True
+
+    @staticmethod
+    def _support_label_for(base_label: str) -> str:
+        return f"{base_label} Support"
+
+    @staticmethod
+    def _find_support_companions(base_obj: fc.DocumentObject) -> list[fc.DocumentObject]:
+        doc = fc.ActiveDocument
+        if doc is None:
+            return []
+        companions: list[fc.DocumentObject] = []
+        for obj in doc.Objects:
+            proxy = getattr(obj, "Proxy", None)
+            if not isinstance(proxy, features.StackedBaseplatesSupport):
+                continue
+            if getattr(obj, "SourceStackedBaseplates", None) is base_obj:
+                companions.append(obj)
+        return companions
+
+    def _resolve_or_create_support_companion(
+        self,
+        base_obj: fc.DocumentObject,
+    ) -> tuple[fc.DocumentObject, list[fc.DocumentObject]]:
+        companions = self._find_support_companions(base_obj)
+        if companions:
+            canonical = companions[0]
+            extras = companions[1:]
+            return canonical, extras
+
+        companion = utils.new_object("StackedBaseplatesSupport")
+        if fc.GuiUp:
+            view_object: fcg.ViewProviderDocumentObject = companion.ViewObject
+            ViewProviderGridfinity(view_object, str(self._pixmap))
+        features.StackedBaseplatesSupport(companion, base_obj)
+        return companion, []
+
+    def accept(self) -> bool:
+        if self._target_obj is None:
+            return False
+        params = self._validate_controls(preview_mode=False)
+        if params is None:
+            return False
+
+        base_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
+        companion, extra_companions = self._resolve_or_create_support_companion(base_obj)
+
+        if not self._apply_dialog_values(base_obj, preview_mode=False):
+            return False
+
+        base_label = self._format_simple_baseplate_label(
+            int(params.core.x_grid_count),
+            int(params.core.y_grid_count),
+        )
+        base_obj.Label = base_label
+
+        companion.Label = self._support_label_for(base_label)
+        companion.SourceStackedBaseplates = base_obj
+        for extra in extra_companions:
+            extra.SourceStackedBaseplates = None
+
+        if self._edit_obj is not None and self._created_preview_obj:
+            fc.ActiveDocument.removeObject(self._target_obj.Name)
+        else:
+            self._restore_preview_visuals()
+            self._set_show_in_tree(base_obj, True)
+
+        self._set_show_in_tree(companion, True)
+        fc.ActiveDocument.recompute()
+        fcg.SendMsgToActiveView("ViewFit")
+        fcg.Control.closeDialog()
         return True
 
 
