@@ -380,6 +380,8 @@ class Baseplate(FoundationGridfinity):
 class DrawerBaseplate(FoundationGridfinity):
     def __init__(self, obj: fc.DocumentObject) -> None:
         super().__init__(obj)
+        if not obj.hasExtension("App::GroupExtension"):
+            obj.addExtension("App::GroupExtensionPython")
 
         grid_initial_layout.rectangle_layout_properties(obj, baseplate_default=True)
         baseplate_feat.solid_shape_properties(obj)
@@ -443,6 +445,18 @@ class DrawerBaseplate(FoundationGridfinity):
             "ReferenceParameters",
             "Deterministic names for generated drawer baseplate pieces",
         ).PieceNames = []
+        obj.addProperty(
+            "App::PropertyStringList",
+            "PieceObjectNames",
+            "ShouldBeHidden",
+            "Generated drawer baseplate piece object names",
+        ).PieceObjectNames = []
+        obj.addProperty(
+            "App::PropertyString",
+            "DrawerContainerName",
+            "ShouldBeHidden",
+            "Optional App::Part container object name for drawer pieces",
+        ).DrawerContainerName = ""
         obj.addProperty(
             "App::PropertyBool",
             "PreviewBuildMode",
@@ -524,11 +538,7 @@ class DrawerBaseplate(FoundationGridfinity):
                 bottom_fill = y_axis_chunk.low_fill_mm
                 top_fill = y_axis_chunk.high_fill_mm
 
-                width_mm = x_units * grid_mm + left_fill + right_fill
-                depth_mm = y_units * grid_mm + bottom_fill + top_fill
-                baseplate_name = (
-                    f"Drawer Baseplates {int(round(width_mm))} x {int(round(depth_mm))} mm"
-                )
+                baseplate_name = f"Baseplate {x_units} x {y_units}."
                 baseplate_names.append(baseplate_name)
 
                 piece_params: BaseplateParams = replace(
@@ -579,12 +589,80 @@ class DrawerBaseplate(FoundationGridfinity):
                         pass
 
         obj.PieceNames = baseplate_names
+        self._refresh_piece_objects(
+            obj,
+            names=baseplate_names,
+            shapes=baseplate_shapes,
+            preview_mode=preview_mode,
+        )
         if status_bar is not None:
             # Use timeout so normal FreeCAD status updates (selection/hover/etc.) resume.
             status_bar.showMessage("Drawer baseplates build complete", 2500)
         if not baseplate_shapes:
             raise ValueError("No drawer baseplate pieces generated")
         return Part.makeCompound(baseplate_shapes)
+
+    def _refresh_piece_objects(
+        self,
+        obj: fc.DocumentObject,
+        *,
+        names: list[str],
+        shapes: list[Part.Shape],
+        preview_mode: bool,
+    ) -> None:
+        doc = obj.Document
+        if doc is None:
+            return
+
+        piece_parent = obj
+        container_name = str(getattr(obj, "DrawerContainerName", "") or "")
+        if container_name:
+            container_obj = doc.getObject(container_name)
+            if container_obj is not None and hasattr(container_obj, "addObject"):
+                piece_parent = container_obj
+
+        existing = list(getattr(obj, "PieceObjectNames", []))
+        for name in existing:
+            if not name:
+                continue
+            piece_obj = doc.getObject(name)
+            if piece_obj is not None:
+                try:
+                    if hasattr(piece_parent, "removeObject"):
+                        piece_parent.removeObject(piece_obj)
+                except Exception:
+                    pass
+                try:
+                    doc.removeObject(name)
+                except Exception:
+                    pass
+
+        if preview_mode:
+            obj.PieceObjectNames = []
+            return
+
+        created_names: list[str] = []
+        for piece_name, piece_shape in zip(names, shapes):
+            piece_obj = doc.addObject("Part::Feature", "DrawerBaseplatePiece")
+            piece_obj.Label = piece_name
+            piece_obj.Shape = piece_shape.copy()
+            if hasattr(piece_parent, "addObject"):
+                try:
+                    piece_parent.addObject(piece_obj)
+                except Exception:
+                    pass
+            if hasattr(piece_obj, "purgeTouched"):
+                try:
+                    piece_obj.purgeTouched()
+                except Exception:
+                    pass
+            created_names.append(piece_obj.Name)
+        obj.PieceObjectNames = created_names
+        if hasattr(piece_parent, "purgeTouched"):
+            try:
+                piece_parent.purgeTouched()
+            except Exception:
+                pass
 
 
 class SupportBaseplate(FoundationGridfinity):
