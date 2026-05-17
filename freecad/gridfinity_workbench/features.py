@@ -626,6 +626,48 @@ class SupportBaseplate(FoundationGridfinity):
             return shifted_shape
 
 
+class StackedBaseplates(SupportBaseplate):
+    """Stacked baseplates for printing.
+
+    Uses the same geometry backend as SupportBaseplate.
+    """
+
+    def __init__(self, obj: fc.DocumentObject) -> None:
+        super().__init__(obj)
+        obj.addProperty(
+            "App::PropertyInteger",
+            "InstanceCount",
+            "GridfinityNonStandard",
+            "Number of stacked baseplate instances <br> <br> default = 3",
+        ).InstanceCount = 3
+        obj.addProperty(
+            "App::PropertyBool",
+            "CornerStitching",
+            "GridfinityNonStandard",
+            "Enable corner stitching between stacked instances <br> <br> default = false",
+        ).CornerStitching = False
+        obj.addProperty(
+            "App::PropertyBool",
+            "PreviewBuildMode",
+            "ShouldBeHidden",
+            "Internal flag for simplified interactive preview build",
+        ).PreviewBuildMode = False
+
+    def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
+        if bool(getattr(obj, "PreviewBuildMode", False)):
+            return Baseplate.generate_gridfinity_shape(self, obj)
+
+        original_total_height = getattr(obj, "TotalHeight", None)
+
+        baseplate_shape = Baseplate.generate_gridfinity_shape(self, obj)
+        support_shape = SupportBaseplate.generate_gridfinity_shape(self, obj)
+
+        if original_total_height is not None and hasattr(obj, "TotalHeight"):
+            obj.TotalHeight = original_total_height
+
+        return Part.makeCompound([baseplate_shape, support_shape])
+
+
 class MagnetBaseplate(FoundationGridfinity):
     def __init__(self, obj: fc.DocumentObject) -> None:
         super().__init__(obj)

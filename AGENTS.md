@@ -5,3 +5,5 @@
 - Use canonical domain terms from `UBIQUITOUS_LANGUAGE.md` in code, tests, and discussion.
 - Prefer variable and function names that reflect canonical terms from `UBIQUITOUS_LANGUAGE.md`.
 - In case you need to make changes not mentioned by user, prefer to pause and ask user a question.
+- Do not assume, ask user. If you have to assume, mark that as assumption.
+- Don't use shortcuts. If something doesn't fit, pause and ask user. Better to change architecture right away.

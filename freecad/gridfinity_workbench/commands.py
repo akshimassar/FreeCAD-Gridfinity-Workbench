@@ -89,13 +89,17 @@ class ViewProviderGridfinity:
         obj = getattr(vobj, "Object", None)
         if obj is None:
             return False
-        if not isinstance(getattr(obj, "Proxy", None), features.Baseplate):
-            if not isinstance(getattr(obj, "Proxy", None), features.DrawerBaseplate):
-                return False
+        proxy = getattr(obj, "Proxy", None)
+        if isinstance(proxy, features.DrawerBaseplate):
             fcg.Control.showDialog(CreateDrawerBaseplateTaskPanel(self.icon_path, target_obj=obj))
             return True
-        fcg.Control.showDialog(CreateBaseplateTaskPanel(self.icon_path, target_obj=obj))
-        return True
+        if isinstance(proxy, features.Baseplate):
+            fcg.Control.showDialog(CreateBaseplateTaskPanel(self.icon_path, target_obj=obj))
+            return True
+        if isinstance(proxy, features.StackedBaseplates):
+            fcg.Control.showDialog(CreateStackedBaseplatesTaskPanel(self.icon_path, target_obj=obj))
+            return True
+        return False
 
 
 class BaseCommand:
@@ -350,6 +354,42 @@ def _build_bin_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     return {"clearance": clearance, "half_grid_size": half_grid_size}
 
 
+def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dict[str, QWidget]:
+    layout.addWidget(_section_label("Support"))
+    form = QFormLayout()
+    form.setContentsMargins(20, 0, 0, 0)
+    support_overhang_angle = QDoubleSpinBox()
+    support_overhang_angle.setDecimals(1)
+    support_overhang_angle.setMinimum(1.0)
+    support_overhang_angle.setMaximum(89.0)
+    support_overhang_angle.setSuffix(" deg")
+    support_overhang_angle.setValue(overhang_angle)
+    form.addRow("Overhang angle", support_overhang_angle)
+    layout.addLayout(form)
+    return {"support_overhang_angle": support_overhang_angle}
+
+
+def _build_stacked_section(
+    layout: QVBoxLayout, *, instance_count: int, corner_stitching: bool
+) -> dict[str, QWidget]:
+    layout.addWidget(_section_label("Stacked"))
+    form = QFormLayout()
+    form.setContentsMargins(20, 0, 0, 0)
+    instance_count_box = QSpinBox()
+    instance_count_box.setMinimum(1)
+    instance_count_box.setMaximum(999)
+    instance_count_box.setValue(instance_count)
+    form.addRow("Instance count", instance_count_box)
+    corner_stitching_box = QCheckBox()
+    corner_stitching_box.setChecked(corner_stitching)
+    form.addRow("Corner stitching", corner_stitching_box)
+    layout.addLayout(form)
+    return {
+        "instance_count": instance_count_box,
+        "corner_stitching": corner_stitching_box,
+    }
+
+
 class CreateCommand(BaseCommand):
     """Base for gridfinity workbench command.
 
@@ -570,7 +610,10 @@ class CreateDrawerBaseplateTaskPanel:
     def _restore_preview_visuals(self) -> None:
         if not fc.GuiUp or self._target_obj is None or self._original_view is None:
             return
-        view = self._target_obj.ViewObject
+        try:
+            view = self._target_obj.ViewObject
+        except ReferenceError:
+            return
         view.ShapeColor = self._original_view["ShapeColor"]
         if hasattr(view, "LineColor") and self._original_view.get("LineColor") is not None:
             view.LineColor = self._original_view["LineColor"]
@@ -921,9 +964,20 @@ class CreateDrawerBaseplateTaskPanel:
 class CreateBaseplateTaskPanel:
     """Task panel for creating a simple baseplate with custom parameters."""
 
-    def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
+    def __init__(
+        self,
+        pixmap: Path | str,
+        target_obj: fc.DocumentObject | None = None,
+        *,
+        object_name: str = "Baseplate",
+        label_name: str = "Baseplate",
+        feature_ctor: type[features.FoundationGridfinity] = features.Baseplate,
+    ) -> None:
         self._pixmap = pixmap
         self._edit_obj = target_obj
+        self._object_name = object_name
+        self._label_name = label_name
+        self._feature_ctor = feature_ctor
         self._target_obj: fc.DocumentObject | None = None
         self._created_preview_obj = False
         self._original_view: dict[str, Any] | None = None
@@ -932,20 +986,24 @@ class CreateBaseplateTaskPanel:
         self._error_labels: dict[str, QLabel] = {}
         self._error_containers: dict[str, QWidget] = {}
         self.form = QWidget()
-        self.form.setWindowTitle("Edit Baseplate" if target_obj is not None else "Create Baseplate")
+        self.form.setWindowTitle(
+            f"Edit {self._label_name}" if target_obj is not None else f"Create {self._label_name}"
+        )
         layout = QVBoxLayout(self.form)
         controls: dict[str, QWidget] = {}
         controls.update(_build_size_section(layout))
+        controls.update(self._build_pre_sections(layout))
         controls.update(_build_fundamentals_section(layout, show_note=False))
         controls.update(
             _build_baseplate_section(layout, include_clearance=True, include_filler=True)
         )
+        controls.update(self._build_extra_sections(layout))
         for key, widget in controls.items():
             setattr(self, key, widget)
 
         self._install_inline_error_rows()
 
-        self._target_obj = utils.new_object("Baseplate")
+        self._target_obj = utils.new_object(self._object_name)
         self._created_preview_obj = True
         if fc.GuiUp:
             view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
@@ -955,7 +1013,7 @@ class CreateBaseplateTaskPanel:
                     view_object.ShowInTree = False
                 except Exception:
                     pass
-        features.Baseplate(self._target_obj)
+        self._feature_ctor(self._target_obj)
         if self._edit_obj is not None:
             apply_params_to_obj(self._target_obj, params_from_obj(self._edit_obj))
 
@@ -970,6 +1028,12 @@ class CreateBaseplateTaskPanel:
         self._preview_timer.timeout.connect(self._update_preview)
         self._connect_preview_signals()
         self._update_preview()
+
+    def _build_extra_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
+        return {}
+
+    def _build_pre_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
+        return {}
 
     def getStandardButtons(self) -> int:  # noqa: N802
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1188,11 +1252,15 @@ class CreateBaseplateTaskPanel:
             self.filler_bottom_enabled,
             self.filler_bottom_width,
         ]
+        controls.extend(self._extra_preview_controls())
         for control in controls:
             if isinstance(control, (QDoubleSpinBox, QSpinBox)):
                 control.valueChanged.connect(lambda *_: self._preview_timer.start())
             else:
                 control.stateChanged.connect(lambda *_: self._preview_timer.start())
+
+    def _extra_preview_controls(self) -> list[QWidget]:
+        return []
 
     def _update_preview(self) -> None:
         if self._target_obj is None:
@@ -1229,6 +1297,19 @@ class CreateBaseplateTaskPanel:
     def _format_preview_label(base_label: str) -> str:
         return f"[Preview] {base_label}"
 
+    def _set_show_in_tree(self, obj: fc.DocumentObject, visible: bool) -> None:
+        if not fc.GuiUp:
+            return
+        try:
+            view = obj.ViewObject
+        except ReferenceError:
+            return
+        if hasattr(view, "ShowInTree"):
+            try:
+                view.ShowInTree = visible
+            except Exception:
+                pass
+
     def accept(self) -> bool:
         if self._target_obj is None:
             return False
@@ -1243,10 +1324,14 @@ class CreateBaseplateTaskPanel:
         )
         if hasattr(output_obj, "PreviewBuildMode"):
             output_obj.PreviewBuildMode = False
+
         if self._edit_obj is not None and self._created_preview_obj:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
+        else:
+            self._restore_preview_visuals()
+            self._set_show_in_tree(output_obj, True)
+
         fc.ActiveDocument.recompute()
-        self._restore_preview_visuals()
         fcg.SendMsgToActiveView("ViewFit")
         fcg.Control.closeDialog()
         return True
@@ -1261,6 +1346,53 @@ class CreateBaseplateTaskPanel:
         return True
 
 
+class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
+    def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
+        super().__init__(
+            pixmap,
+            target_obj,
+            object_name="StackedBaseplates",
+            label_name="Stacked Baseplates",
+            feature_ctor=features.StackedBaseplates,
+        )
+
+    @staticmethod
+    def _format_simple_baseplate_label(x_cells: int, y_cells: int) -> str:
+        return f"Stacked Baseplates {x_cells} x {y_cells}"
+
+    def _build_extra_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
+        return {}
+
+    def _build_pre_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
+        controls: dict[str, QWidget] = {}
+        controls.update(_build_stacked_section(layout, instance_count=3, corner_stitching=False))
+        controls.update(_build_support_section(layout, overhang_angle=50.0))
+        return controls
+
+    def _extra_preview_controls(self) -> list[QWidget]:
+        return [self.support_overhang_angle, self.instance_count, self.corner_stitching]
+
+    def _load_from_object(self, obj: fc.DocumentObject) -> None:
+        super()._load_from_object(obj)
+        if hasattr(obj, "SupportOverhangAngle"):
+            self.support_overhang_angle.setValue(float(obj.SupportOverhangAngle))
+        if hasattr(obj, "InstanceCount"):
+            self.instance_count.setValue(int(obj.InstanceCount))
+        if hasattr(obj, "CornerStitching"):
+            self.corner_stitching.setChecked(bool(obj.CornerStitching))
+
+    def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
+        if not super()._apply_dialog_values(obj, preview_mode=preview_mode):
+            return False
+        if hasattr(obj, "SupportOverhangAngle"):
+            obj.SupportOverhangAngle = float(self.support_overhang_angle.value())
+        if hasattr(obj, "InstanceCount"):
+            obj.InstanceCount = int(self.instance_count.value())
+        if hasattr(obj, "CornerStitching"):
+            obj.CornerStitching = bool(self.corner_stitching.isChecked())
+        return True
+
+
 class CreateSupportBaseplate(CreateCommand):
     def __init__(self) -> None:
         super().__init__(
@@ -1268,6 +1400,18 @@ class CreateSupportBaseplate(CreateCommand):
             gridfinity_function=features.SupportBaseplate,
             pixmap=ICONDIR / "support_baseplate.svg",
         )
+
+
+class CreateStackedBaseplates(CreateCommand):
+    def __init__(self) -> None:
+        super().__init__(
+            name="StackedBaseplates",
+            gridfinity_function=features.StackedBaseplates,
+            pixmap=ICONDIR / "stacked_baseplates.svg",
+        )
+
+    def Activated(self) -> None:
+        fcg.Control.showDialog(CreateStackedBaseplatesTaskPanel(self.pixmap))
 
 
 class CreateMagnetBaseplate(CreateCommand):
