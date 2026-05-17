@@ -415,6 +415,14 @@ class DrawerBaseplate(FoundationGridfinity):
         )
         obj.DepthFillerAlignment = ["Bottom", "Top", "Both"]
         obj.DepthFillerAlignment = "Top"
+        obj.addProperty(
+            "App::PropertyEnumeration",
+            "SplitAlgorithm",
+            "Drawer",
+            "Chunk split algorithm used for drawer fitting",
+        )
+        obj.SplitAlgorithm = ["Balanced", "Greedy"]
+        obj.SplitAlgorithm = "Balanced"
 
         obj.addProperty(
             "App::PropertyLength",
@@ -455,6 +463,9 @@ class DrawerBaseplate(FoundationGridfinity):
         )
 
         grid_mm = float(params.fundamentals.x_grid_size)
+        split_algorithm = (
+            "greedy" if str(getattr(obj, "SplitAlgorithm", "Balanced")) == "Greedy" else "balanced"
+        )
         x_axis_chunks = split_axis_into_printable_chunks(
             length_mm=float(obj.DrawerWidth),
             bed_mm=float(obj.PrinterBedWidth),
@@ -464,6 +475,7 @@ class DrawerBaseplate(FoundationGridfinity):
                 if str(obj.WidthFillerAlignment) == "Left"
                 else ("high" if str(obj.WidthFillerAlignment) == "Right" else "both")
             ),
+            algorithm=split_algorithm,
         )
         y_axis_chunks = split_axis_into_printable_chunks(
             length_mm=float(obj.DrawerDepth),
@@ -474,6 +486,7 @@ class DrawerBaseplate(FoundationGridfinity):
                 if str(obj.DepthFillerAlignment) == "Bottom"
                 else ("high" if str(obj.DepthFillerAlignment) == "Top" else "both")
             ),
+            algorithm=split_algorithm,
         )
 
         x_chunk_count = len(x_axis_chunks)

@@ -29,12 +29,27 @@ def _build_balanced_chunk_cell_counts(total: int, pieces: int) -> list[int]:
     return low + high
 
 
+def _build_greedy_chunk_cell_counts(total: int, cap_cells: int) -> list[int]:
+    if cap_cells < 1:
+        raise ValueError("cap_cells must be >= 1")
+    if total < 1:
+        return []
+    sizes: list[int] = []
+    remaining = total
+    while remaining > 0:
+        take = min(cap_cells, remaining)
+        sizes.append(take)
+        remaining -= take
+    return sizes
+
+
 def split_axis_into_printable_chunks(
     *,
     length_mm: float,
     grid_mm: float,
     bed_mm: float,
     alignment: str,
+    algorithm: str = "balanced",
 ) -> list[PrintableAxisChunk]:
     if grid_mm <= 0 or bed_mm <= 0 or length_mm <= 0:
         raise ValueError("length, grid and bed must be > 0")
@@ -64,7 +79,12 @@ def split_axis_into_printable_chunks(
         return []
 
     pieces_n = (sim_total + cap_cells - 1) // cap_cells
-    sizes = sorted(_build_balanced_chunk_cell_counts(sim_total, pieces_n))
+    if algorithm == "balanced":
+        sizes = sorted(_build_balanced_chunk_cell_counts(sim_total, pieces_n))
+    elif algorithm == "greedy":
+        sizes = sorted(_build_greedy_chunk_cell_counts(sim_total, cap_cells))
+    else:
+        raise ValueError("algorithm must be balanced/greedy")
 
     tokens = ["C"] * cell_count
     if low_slot:

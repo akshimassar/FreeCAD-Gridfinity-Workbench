@@ -491,6 +491,10 @@ class CreateDrawerBaseplateTaskPanel:
         self.depth_alignment.addItems(["Bottom", "Top", "Both"])
         self.depth_alignment.setCurrentText("Top")
         drawer_form.addRow("Depth filler alignment", self.depth_alignment)
+        self.split_algorithm = QComboBox()
+        self.split_algorithm.addItems(["Balanced", "Greedy"])
+        self.split_algorithm.setCurrentText("Balanced")
+        drawer_form.addRow("Split algorithm", self.split_algorithm)
         layout.addLayout(drawer_form)
 
         layout.addWidget(_section_label("Printer bed"))
@@ -586,6 +590,7 @@ class CreateDrawerBaseplateTaskPanel:
             "DrawerDepth": obj.DrawerDepth,
             "WidthFillerAlignment": str(obj.WidthFillerAlignment),
             "DepthFillerAlignment": str(obj.DepthFillerAlignment),
+            "SplitAlgorithm": str(getattr(obj, "SplitAlgorithm", "Balanced")),
             "PrinterBedWidth": obj.PrinterBedWidth,
             "PrinterBedDepth": obj.PrinterBedDepth,
             "xGridSize": obj.xGridSize,
@@ -624,6 +629,8 @@ class CreateDrawerBaseplateTaskPanel:
             self.width_alignment.setCurrentText(str(obj.WidthFillerAlignment))
         if hasattr(obj, "DepthFillerAlignment"):
             self.depth_alignment.setCurrentText(str(obj.DepthFillerAlignment))
+        if hasattr(obj, "SplitAlgorithm"):
+            self.split_algorithm.setCurrentText(str(obj.SplitAlgorithm))
         if hasattr(obj, "PrinterBedWidth"):
             self.bed_width.setValue(float(obj.PrinterBedWidth))
         if hasattr(obj, "PrinterBedDepth"):
@@ -754,6 +761,9 @@ class CreateDrawerBaseplateTaskPanel:
                     if self.width_alignment.currentText() == "Left"
                     else ("high" if self.width_alignment.currentText() == "Right" else "both")
                 ),
+                algorithm=(
+                    "greedy" if self.split_algorithm.currentText() == "Greedy" else "balanced"
+                ),
             )
             y_chunks = split_axis_into_printable_chunks(
                 length_mm=float(self.drawer_depth.value()),
@@ -763,6 +773,9 @@ class CreateDrawerBaseplateTaskPanel:
                     "low"
                     if self.depth_alignment.currentText() == "Bottom"
                     else ("high" if self.depth_alignment.currentText() == "Top" else "both")
+                ),
+                algorithm=(
+                    "greedy" if self.split_algorithm.currentText() == "Greedy" else "balanced"
                 ),
             )
         except ValueError as exc:
@@ -787,6 +800,7 @@ class CreateDrawerBaseplateTaskPanel:
             self.grid_size,
             self.width_alignment,
             self.depth_alignment,
+            self.split_algorithm,
         ]
         for control in controls:
             if isinstance(control, QDoubleSpinBox):
@@ -809,6 +823,8 @@ class CreateDrawerBaseplateTaskPanel:
         obj.DrawerDepth = float(self.drawer_depth.value()) * fc.Units.Quantity("1 mm")
         obj.WidthFillerAlignment = self.width_alignment.currentText()
         obj.DepthFillerAlignment = self.depth_alignment.currentText()
+        if hasattr(obj, "SplitAlgorithm"):
+            obj.SplitAlgorithm = self.split_algorithm.currentText()
         obj.PrinterBedWidth = float(self.bed_width.value()) * fc.Units.Quantity("1 mm")
         obj.PrinterBedDepth = float(self.bed_depth.value()) * fc.Units.Quantity("1 mm")
 
