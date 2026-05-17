@@ -9,6 +9,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, replace
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
+from typing import Callable
 
 import FreeCAD as fc  # noqa: N813
 import Part
@@ -72,12 +73,67 @@ def _baseplate_cache_key(
     preview: bool,
 ) -> str:
     payload = {
+        "kind": "simple_baseplate",
         "params": _cache_normalize(params),
         "layout": _cache_normalize(layout),
         "options": _cache_normalize(options),
         "preview": bool(preview),
     }
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _shape_cache_get_or_build(key: str, build_fn: Callable[[], Part.Shape]) -> Part.Shape:
+    if _BASEPLATE_SHAPE_CACHE_MAX <= 0:
+        return build_fn()
+
+    cached_shape = _BASEPLATE_SHAPE_CACHE.get(key)
+    if cached_shape is not None:
+        _BASEPLATE_SHAPE_CACHE.move_to_end(key)
+        return cached_shape.copy()
+
+    shape = build_fn()
+    _BASEPLATE_SHAPE_CACHE[key] = shape
+    _BASEPLATE_SHAPE_CACHE.move_to_end(key)
+    while len(_BASEPLATE_SHAPE_CACHE) > _BASEPLATE_SHAPE_CACHE_MAX:
+        _BASEPLATE_SHAPE_CACHE.popitem(last=False)
+    return shape.copy()
+
+
+def build_baseplate_support_cached(
+    obj: fc.DocumentObject,
+    layout: GridfinityLayout,
+) -> Part.Shape:
+    obj_payload = {
+        name: _cache_normalize(getattr(obj, name))
+        for name in getattr(obj, "PropertiesList", [])
+        if name != "Shape"
+    }
+    key = json.dumps(
+        {
+            "kind": "support_baseplate",
+            "obj": obj_payload,
+            "layout": _cache_normalize(layout),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    def _build() -> Part.Shape:
+        shape = feat.make_baseplate_top_support(obj, layout)
+        z_start = obj.BaseProfileMainHeight + obj.BaseProfileMainHalfWidth - obj.BaseProfileTopCrop
+        z_matrix = fc.Matrix()
+        z_matrix.move(fc.Vector(0, 0, z_start.Value))
+        try:
+            return shape.transformGeometry(z_matrix)
+        except Exception:
+            shifted_shape = shape.copy()
+            try:
+                shifted_shape.transformShape(z_matrix, copy=False)
+            except TypeError:
+                shifted_shape.transformShape(z_matrix, False)
+            return shifted_shape
+
+    return _shape_cache_get_or_build(key, _build)
 
 
 def _layout_dims(layout: GridfinityLayout, params: BaseplateParams) -> tuple[int, int]:

@@ -7,3 +7,4 @@
 - In case you need to make changes not mentioned by user, prefer to pause and ask user a question.
 - Do not assume, ask user. If you have to assume, mark that as assumption.
 - Don't use shortcuts. If something doesn't fit, pause and ask user. Better to change architecture right away.
+- Do not use removeSplitter() call as it is expensive unless explicitly confirmed by user.
