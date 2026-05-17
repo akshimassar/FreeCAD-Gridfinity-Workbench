@@ -367,8 +367,8 @@ class CreateCommand(BaseCommand):
         super().__init__(
             name=name,
             pixmap=pixmap,
-            menu_text=f"Gridfinity {PASCAL_CASE_REGEX.sub(' ', name)}",
-            tooltip=f"Create a Gridfinty {PASCAL_CASE_REGEX.sub(' ', name)}.",
+            menu_text=PASCAL_CASE_REGEX.sub(" ", name),
+            tooltip=f"Create a {PASCAL_CASE_REGEX.sub(' ', name)}.",
         )
         self.gridfinity_function = gridfinity_function
 
@@ -1421,8 +1421,8 @@ class OpenGridfinitySettings(BaseCommand):
         super().__init__(
             name="OpenGridfinitySettings",
             pixmap=ICONDIR / "settings.svg",
-            menu_text="Gridfinity default settings",
-            tooltip="Open Gridfinity default settings task dialog.",
+            menu_text="Default settings",
+            tooltip="Open default settings task dialog.",
         )
 
     def Activated(self) -> None:
@@ -1476,8 +1476,8 @@ class DrawBin(DrawCommand):
         super().__init__(
             name="CustomBin",
             pixmap=ICONDIR / "CustomBin.svg",
-            menu_text="Gridfinity Custom Bin",
-            tooltip="Draw a custom gridfinity bin of any type.",
+            menu_text="Custom Bin",
+            tooltip="Draw a custom bin of any type.",
             gridfinity_functions=OrderedDict(
                 [
                     ("Blank Bin", features.CustomBlankBin),
@@ -1494,8 +1494,8 @@ class DrawBaseplate(DrawCommand):
         super().__init__(
             name="CustomBaseplate",
             pixmap=ICONDIR / "CustomBaseplate.svg",
-            menu_text="Gridfinity Custom Baseplate",
-            tooltip="Draw a custom gridfinity baseplate of any type.",
+            menu_text="Custom Baseplate",
+            tooltip="Draw a custom baseplate of any type.",
             gridfinity_functions=OrderedDict(
                 [
                     ("Simple Baseplate", features.CustomBaseplate),
@@ -1539,7 +1539,7 @@ class StandaloneLabelShelf(BaseCommand):
             menu_text="Standalone label shelf",
             tooltip=(
                 "Create a standalone label shelf.<br><br>"
-                "Select any Gridfinity Bin face and run this command to create a label shelf"
+                "Select any bin face and run this command to create a label shelf"
                 "attached to selected face."
             ),
         )
