@@ -93,9 +93,8 @@ class ViewProviderGridfinity:
         if isinstance(proxy, features.DrawerBaseplate):
             fcg.Control.showDialog(CreateDrawerBaseplateTaskPanel(self.icon_path, target_obj=obj))
             return True
-        if isinstance(proxy, features.Baseplate):
-            fcg.Control.showDialog(CreateBaseplateTaskPanel(self.icon_path, target_obj=obj))
-            return True
+        # Keep subclass checks before Baseplate: StackedBaseplates inherits Baseplate,
+        # and generic dispatch here would skip stacked-specific relabeling/link handling.
         if isinstance(proxy, features.StackedBaseplates):
             fcg.Control.showDialog(CreateStackedBaseplatesTaskPanel(self.icon_path, target_obj=obj))
             return True
@@ -106,6 +105,9 @@ class ViewProviderGridfinity:
             fcg.Control.showDialog(
                 CreateStackedBaseplatesTaskPanel(self.icon_path, target_obj=source)
             )
+            return True
+        if isinstance(proxy, features.Baseplate):
+            fcg.Control.showDialog(CreateBaseplateTaskPanel(self.icon_path, target_obj=obj))
             return True
         return False
 
