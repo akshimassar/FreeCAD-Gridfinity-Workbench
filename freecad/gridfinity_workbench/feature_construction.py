@@ -10,9 +10,10 @@ import Part
 
 from . import const, utils
 from . import baseplate_click_springs as click_springs
+from . import baseplate_full_layout
 from . import label_shelf as label_shelf_module
 from . import magnet_hole as magnet_hole_module
-from .baseplate_params import BaseplateCoreParams, FundamentalsParams
+from .baseplate_params import BaseplateCoreParams, FundamentalsParams, params_from_obj
 
 unitmm = fc.Units.Quantity("1 mm")
 zeromm = fc.Units.Quantity("0 mm")
@@ -1129,7 +1130,7 @@ def make_baseplate_top_support(
     obj: fc.DocumentObject,
     layout: GridfinityLayout,
 ) -> Part.Shape:
-    """Create support body per cell from a loft cutter and subtract from a cell box."""
+    """Create support body from per-cell slabs and optional center cutouts."""
     main_half_width = obj.BaseProfileMainHalfWidth
     top_half_width = obj.BaseProfileTopCrop
     run = main_half_width + obj.ClickOffset - top_half_width
@@ -1144,76 +1145,108 @@ def make_baseplate_top_support(
     if loft_height <= 0:
         raise ValueError("Invalid support geometry: computed loft height must be positive")
 
-    x_a = obj.xGridSize - 2 * main_half_width
-    y_a = obj.yGridSize - 2 * main_half_width
-    x_b = obj.xGridSize - 2 * top_half_width
-    y_b = obj.yGridSize - 2 * top_half_width
-    r_a = obj.BinVerticalRadius
-    r_b = obj.BinVerticalRadius + main_half_width - top_half_width
+    params = params_from_obj(obj)
+    geometry = baseplate_full_layout.build_full_layout(
+        params,
+        layout,
+        include_spring_masks=bool(getattr(obj, "ClickSpringsEnabled", False)),
+    )
+    use_layout = geometry.layout
+    tiny = geometry.tiny
+    x_lines = geometry.x_lines
+    y_lines = geometry.y_lines
 
-    profile_a_face = Part.Face(utils.create_rounded_rectangle(x_a, y_a, 0, r_a))
+    slabs: list[Part.Shape] = []
+    cutters: list[Part.Shape] = []
+    for ix in range(len(use_layout)):
+        for iy in range(len(use_layout[0])):
+            if not use_layout[ix][iy]:
+                continue
 
-    if bool(getattr(obj, "ClickSpringsEnabled", False)):
-        click_length = obj.ClickLength
-        step = click_length / 3
-        x0 = x_a / 2
-        x1 = x0 - obj.ClickOffset
-        x2 = x1
-        x3 = x2 + obj.ClickOffset
-        y0 = obj.yGridSize / 4 + click_length / 2
-        y1 = y0 - step
-        y2 = y1 - step
-        y3 = y2 - step
-
-        click_spring_support_profile_points = [
-            fc.Vector(x0, y0, 0),
-            fc.Vector(x1, y1, 0),
-            fc.Vector(x2, y2, 0),
-            fc.Vector(x3, y3, 0),
-            fc.Vector(x0, y0, 0),
-        ]
-        click_spring_support_profile_wire = Part.Wire(
-            Part.makePolygon(click_spring_support_profile_points)
-        )
-        if not click_spring_support_profile_wire.isClosed():
-            raise ValueError("Support A-profile click spring support profile wire is not closed")
-
-        click_spring_support_profile_seed = Part.Face(click_spring_support_profile_wire)
-
-        click_spring_support_profiles = click_springs.make_click_spring_prototypes_from_seed(
-            click_spring_support_profile_seed
-        ).fused_all()
-        if click_spring_support_profiles is None:
-            raise ValueError("Support A-profile click spring support profiles generation failed")
-
-        profile_a_shape = profile_a_face.cut(click_spring_support_profiles)
-        if not profile_a_shape.Faces:
-            raise ValueError(
-                "Support A-profile generation failed: no faces after click spring support profile cut"
+            cell_width = x_lines[ix + 1] - x_lines[ix]
+            cell_height = y_lines[iy + 1] - y_lines[iy]
+            cell_center = fc.Vector(
+                (x_lines[ix] + x_lines[ix + 1]) / 2 - float(obj.xLocationOffset),
+                (y_lines[iy] + y_lines[iy + 1]) / 2 - float(obj.yLocationOffset),
+                0,
             )
-        profile_a_face = max(profile_a_shape.Faces, key=lambda f: f.Area)
-    profile_a = profile_a_face.OuterWire
-    profile_a.translate(fc.Vector(0, 0, loft_height))
 
-    profile_b = utils.create_rounded_rectangle(x_b, y_b, 0, r_b)
-    cutter = Part.makeLoft([profile_b, profile_a], True)
+            slab = Part.makeBox(
+                cell_width,
+                cell_height,
+                float(loft_height),
+                fc.Vector(cell_center.x - cell_width / 2, cell_center.y - cell_height / 2, 0),
+                fc.Vector(0, 0, 1),
+            )
+            slabs.append(slab)
 
-    cutters = utils.copy_in_layout(cutter, layout, obj.xGridSize, obj.yGridSize)
-    cutters = cutters.translate(
-        fc.Vector(obj.xGridSize / 2 - obj.xLocationOffset, obj.yGridSize / 2 - obj.yLocationOffset),
-    )
+            cell_meta = geometry.cells[ix][iy]
+            is_tiny = cell_meta.is_tiny
+            tiny[ix][iy] = is_tiny
+            if is_tiny:
+                continue
 
-    baseplate_outside_shape = utils.create_rounded_rectangle(
-        obj.xTotalWidth,
-        obj.yTotalWidth,
-        0,
-        obj.BinOuterRadius,
-    )
-    baseplate_outside_shape.translate(fc.Vector(obj.xTotalWidth / 2, obj.yTotalWidth / 2, 0))
-    support_solid = Part.Face(baseplate_outside_shape).extrude(fc.Vector(0, 0, loft_height))
-    support_solid = support_solid.translate(fc.Vector(-obj.xLocationOffset, -obj.yLocationOffset))
+            x_a = cell_width - 2 * float(main_half_width)
+            y_a = cell_height - 2 * float(main_half_width)
+            x_b = cell_width - 2 * float(top_half_width)
+            y_b = cell_height - 2 * float(top_half_width)
+            if x_a <= 0 or y_a <= 0 or x_b <= 0 or y_b <= 0:
+                continue
 
-    return support_solid.cut(cutters).removeSplitter()
+            r_a = min(float(obj.BinVerticalRadius), max(0.001, min(x_a, y_a) / 2 - 1e-6))
+            r_b = min(
+                float(obj.BinVerticalRadius + main_half_width - top_half_width),
+                max(0.001, min(x_b, y_b) / 2 - 1e-6),
+            )
+
+            profile_a_face = Part.Face(utils.create_rounded_rectangle(x_a, y_a, 0, r_a))
+
+            if bool(getattr(obj, "ClickSpringsEnabled", False)):
+                click_length = float(obj.ClickLength)
+                step = click_length / 3
+                x0 = x_a / 2
+                x1 = x0 - float(obj.ClickOffset)
+                x2 = x1
+                x3 = x2 + float(obj.ClickOffset)
+                y0 = cell_height / 4 + click_length / 2
+                y1 = y0 - step
+                y2 = y1 - step
+                y3 = y2 - step
+                points = [
+                    fc.Vector(x0, y0, 0),
+                    fc.Vector(x1, y1, 0),
+                    fc.Vector(x2, y2, 0),
+                    fc.Vector(x3, y3, 0),
+                    fc.Vector(x0, y0, 0),
+                ]
+                wire = Part.Wire(Part.makePolygon(points))
+                if wire.isClosed():
+                    seed = Part.Face(wire)
+                    shift = fc.Vector(cell_meta.spring_shift_x, cell_meta.spring_shift_y, 0)
+                    if shift.x != 0 or shift.y != 0:
+                        seed.translate(shift)
+                    profiles = click_springs.make_click_spring_prototypes_from_seed(seed)
+                    mask = cell_meta.get_mask()
+                    support_profiles = profiles.fused(mask) if mask is not None else None
+                    if support_profiles is not None:
+                        cut = profile_a_face.cut(support_profiles)
+                        if cut.Faces:
+                            profile_a_face = max(cut.Faces, key=lambda f: f.Area)
+
+            profile_a = profile_a_face.OuterWire
+            profile_a.translate(fc.Vector(0, 0, float(loft_height)))
+            profile_b = utils.create_rounded_rectangle(x_b, y_b, 0, r_b)
+            cutter = Part.makeLoft([profile_b, profile_a], True)
+            cutter.translate(cell_center)
+            cutters.append(cutter)
+
+    if not slabs:
+        return Part.Shape()
+
+    support_solid = utils.multi_fuse(slabs)
+    if not cutters:
+        return support_solid
+    return support_solid.cut(utils.multi_fuse(cutters))
 
 
 def blank_bin_recessed_top_properties(obj: fc.DocumentObject) -> None:

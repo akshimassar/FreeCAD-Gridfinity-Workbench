@@ -17,6 +17,7 @@ import Part
 from . import baseplate_feature_construction as baseplate_feat
 from . import baseplate_click_springs as click_springs
 from . import baseplate_corner_roundover
+from . import baseplate_full_layout
 from . import feature_construction as feat
 from . import utils
 from .baseplate_params import BaseplateParams, params_from_obj
@@ -279,7 +280,13 @@ def add_filler_strips(
     *,
     preview: bool = False,
 ) -> tuple[Part.Shape, GridfinityLayoutGeometry]:
-    expanded = _build_expanded_layout_with_fillers(params, layout)
+    expanded = baseplate_full_layout.build_full_layout(
+        params,
+        layout,
+        include_spring_masks=(
+            not preview and options.include_snap_springs and params.click_springs.enabled
+        ),
+    )
     nx, ny = _layout_dims(layout, params)
     has_fillers = len(expanded.layout) != nx or len(expanded.layout[0]) != ny
     if not has_fillers:
@@ -290,84 +297,6 @@ def add_filler_strips(
         return filler_shape, expanded
     combined = shape.fuse(filler_shape)
     return combined, expanded
-
-
-def _build_expanded_layout_with_fillers(
-    params: BaseplateParams,
-    layout: GridfinityLayout,
-) -> GridfinityLayoutGeometry:
-    nx, ny = _layout_dims(layout, params)
-
-    left_w = (
-        params.fillers.left_width
-        if params.fillers.left_enabled
-        else 0 * params.fundamentals.x_grid_size
-    )
-    right_w = (
-        params.fillers.right_width
-        if params.fillers.right_enabled
-        else 0 * params.fundamentals.x_grid_size
-    )
-    bottom_w = (
-        params.fillers.bottom_width
-        if params.fillers.bottom_enabled
-        else 0 * params.fundamentals.y_grid_size
-    )
-    top_w = (
-        params.fillers.top_width
-        if params.fillers.top_enabled
-        else 0 * params.fundamentals.y_grid_size
-    )
-
-    use_fillers = any(float(v) > 0 for v in (left_w, right_w, bottom_w, top_w))
-    if not use_fillers:
-        return GridfinityLayoutGeometry(
-            layout=[[bool(layout[ix][iy]) for iy in range(ny)] for ix in range(nx)]
-            if nx > 0
-            else [],
-            tiny=[[False for _ in range(ny)] for _ in range(nx)] if nx > 0 else [],
-            x_lines=_build_grid_lines([params.fundamentals.x_grid_size] * nx),
-            y_lines=_build_grid_lines([params.fundamentals.y_grid_size] * ny),
-        )
-
-    x_sizes: list[fc.Units.Quantity] = [left_w] + [params.fundamentals.x_grid_size] * nx + [right_w]
-    y_sizes: list[fc.Units.Quantity] = [bottom_w] + [params.fundamentals.y_grid_size] * ny + [top_w]
-
-    expanded: GridfinityLayout = [[False for _ in range(ny + 2)] for _ in range(nx + 2)]
-    tiny: GridfinityLayout = [[False for _ in range(ny + 2)] for _ in range(nx + 2)]
-
-    for ix in range(nx):
-        for iy in range(ny):
-            expanded[ix + 1][iy + 1] = bool(layout[ix][iy])
-
-    if float(left_w) > 0:
-        for iy in range(1, ny + 1):
-            expanded[0][iy] = True
-    if float(right_w) > 0:
-        for iy in range(1, ny + 1):
-            expanded[nx + 1][iy] = True
-    if float(bottom_w) > 0:
-        for ix in range(1, nx + 1):
-            expanded[ix][0] = True
-    if float(top_w) > 0:
-        for ix in range(1, nx + 1):
-            expanded[ix][ny + 1] = True
-
-    if float(left_w) > 0 and float(bottom_w) > 0:
-        expanded[0][0] = True
-    if float(left_w) > 0 and float(top_w) > 0:
-        expanded[0][ny + 1] = True
-    if float(right_w) > 0 and float(bottom_w) > 0:
-        expanded[nx + 1][0] = True
-    if float(right_w) > 0 and float(top_w) > 0:
-        expanded[nx + 1][ny + 1] = True
-
-    return GridfinityLayoutGeometry(
-        layout=expanded,
-        tiny=tiny,
-        x_lines=[x - float(left_w) for x in _build_grid_lines(x_sizes)],
-        y_lines=[y - float(bottom_w) for y in _build_grid_lines(y_sizes)],
-    )
 
 
 def _build_grid_lines(sizes: list[fc.Units.Quantity]) -> list[float]:
@@ -399,65 +328,6 @@ def _build_filler_cell_shape(
     if preview:
         return build_preview_single_cell_baseplate_core(filler_params)
     return build_single_cell_baseplate_core(filler_params, options)
-
-
-def _filler_spring_mask(
-    params: BaseplateParams,
-    *,
-    leftmost: bool,
-    rightmost: bool,
-    bottommost: bool,
-    topmost: bool,
-    target_cell_width: float,
-    target_cell_height: float,
-) -> click_springs.SpringSlotMask:
-    mask = click_springs.SpringSlotMask.all_true()
-
-    # X-first matrix indexing with y=0 as top row:
-    # left  -> x=0 column, right -> x=1 column, top -> y=0 row, bottom -> y=1 row.
-    side_masks = [
-        (leftmost, [[True, True], [False, False]]),
-        (rightmost, [[False, False], [True, True]]),
-        (topmost, [[True, False], [True, False]]),
-        (bottommost, [[False, True], [False, True]]),
-    ]
-    for enabled, side_mask in side_masks:
-        if not enabled:
-            continue
-        mask = mask.with_vertical_disabled(side_mask)
-        mask = mask.with_horizontal_disabled(side_mask)
-
-    if (
-        target_cell_width < float(params.fundamentals.x_grid_size) / 2
-        or target_cell_height < float(params.fundamentals.y_grid_size) / 2
-    ):
-        mask = mask.with_all_horizontal_disabled()
-        mask = mask.with_all_vertical_disabled()
-
-    return mask
-
-
-def _filler_alignment_shift(
-    params: BaseplateParams,
-    *,
-    leftmost: bool,
-    rightmost: bool,
-    bottommost: bool,
-    topmost: bool,
-    target_cell_width: float,
-    target_cell_height: float,
-) -> fc.Vector:
-    sx = -1 if leftmost else (1 if rightmost else 0)
-    sy = -1 if bottommost else (1 if topmost else 0)
-
-    grid_half_x = float(params.fundamentals.x_grid_size) / 2
-    grid_half_y = float(params.fundamentals.y_grid_size) / 2
-    cell_half_x = target_cell_width / 2
-    cell_half_y = target_cell_height / 2
-
-    shift_x = sx * (cell_half_x - grid_half_x)
-    shift_y = sy * (cell_half_y - grid_half_y)
-    return fc.Vector(shift_x, shift_y, 0)
 
 
 def _build_filler_ring_shape(
@@ -496,10 +366,7 @@ def _build_filler_ring_shape(
         width: float,
         height: float,
         *,
-        leftmost: bool,
-        rightmost: bool,
-        bottommost: bool,
-        topmost: bool,
+        cell_meta: baseplate_full_layout.FullLayoutCell,
     ) -> CoreCellBuildResult:
         filler_result = _build_filler_cell_shape(
             params,
@@ -509,26 +376,10 @@ def _build_filler_ring_shape(
             preview=preview,
         )
         cell = filler_result.shape
-        if negative_slots is not None and positive_slots is not None and not filler_result.is_tiny:
-            align_shift = _filler_alignment_shift(
-                params,
-                leftmost=leftmost,
-                rightmost=rightmost,
-                bottommost=bottommost,
-                topmost=topmost,
-                target_cell_width=width,
-                target_cell_height=height,
-            )
+        mask = cell_meta.get_mask()
+        if negative_slots is not None and positive_slots is not None and mask is not None:
+            align_shift = fc.Vector(cell_meta.spring_shift_x, cell_meta.spring_shift_y, 0)
             cell.translate(align_shift)
-            mask = _filler_spring_mask(
-                params,
-                leftmost=leftmost,
-                rightmost=rightmost,
-                bottommost=bottommost,
-                topmost=topmost,
-                target_cell_width=width,
-                target_cell_height=height,
-            )
             cell = click_springs.apply_click_spring_slots_to_cell(
                 cell,
                 params.fundamentals,
@@ -601,25 +452,26 @@ def _build_filler_ring_shape(
         if not spec["enabled"]:
             continue
         t_side = time.perf_counter() if timing_on else 0.0
-        leftmost, rightmost, bottommost, topmost = spec["flags"]
-        t0 = time.perf_counter() if timing_on else 0.0
-        side_result = proto(
-            spec["width"],
-            spec["height"],
-            leftmost=leftmost,
-            rightmost=rightmost,
-            bottommost=bottommost,
-            topmost=topmost,
-        )
-        if timing_on:
-            t_proto += time.perf_counter() - t0
-            t1 = time.perf_counter()
-        pieces.append(utils.copy_and_translate(side_result.shape, spec["vectors"]))
-        if timing_on:
-            t_translate += time.perf_counter() - t1
-            t_sides += time.perf_counter() - t_side
-        for ix, iy in spec["indices"]:
+        if not spec["indices"]:
+            continue
+        for (ix, iy), vec in zip(spec["indices"], spec["vectors"]):
+            t0 = time.perf_counter() if timing_on else 0.0
+            side_result = proto(
+                spec["width"],
+                spec["height"],
+                cell_meta=geometry.cells[ix][iy],
+            )
+            if timing_on:
+                t_proto += time.perf_counter() - t0
+                t1 = time.perf_counter()
+            side = side_result.shape.copy()
+            side.translate(vec)
+            pieces.append(side)
+            if timing_on:
+                t_translate += time.perf_counter() - t1
             geometry.tiny[ix][iy] = side_result.is_tiny
+        if timing_on:
+            t_sides += time.perf_counter() - t_side
 
     corner_specs = [
         {
@@ -665,10 +517,7 @@ def _build_filler_ring_shape(
         corner_result = proto(
             spec["width"],
             spec["height"],
-            leftmost=leftmost,
-            rightmost=rightmost,
-            bottommost=bottommost,
-            topmost=topmost,
+            cell_meta=geometry.cells[spec["ix"]][spec["iy"]],
         )
         if timing_on:
             t_proto += time.perf_counter() - t0

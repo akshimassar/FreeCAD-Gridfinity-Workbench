@@ -5,12 +5,11 @@
 | Term | Definition | Aliases to avoid |
 | --- | --- | --- |
 | **Baseplate** | The generated part composed of standard grid cells plus optional fillers and feature cuts. | Plate, model |
-| **Standard Cell** | A nominal 42 mm grid cell used as the primary repeated unit in a baseplate. | Core cell, normal cell |
+| **Core Cell** | A nominal 42 mm grid cell used as the primary repeated unit in a baseplate. | Normal cell |
 | **Filler Cell** | A side or corner cell with custom width/height used to extend baseplate footprint. | Strip cell, border cell |
 | **Tiny Cell** | A cell that did not have enough room for bin-base geometry and therefore has an empty bin-base cutout. | Empty cell, null cell |
 | **Baseplate Layout** | The occupancy matrix used for final baseplate operations, including fillers when enabled. | Expanded layout, layout |
-| **Baseplate Tiny Layout** | A matrix aligned with Baseplate Layout indicating whether each present cell is tiny. | Tiny map, tiny flags |
-| **Initial Baseplate Layout** | The pre-filler layout containing only standard-cell occupancy. | Base layout, core layout |
+| **Core Baseplate Layout** | The pre-filler layout containing only core-cell occupancy. | Base layout |
 
 ## Profile and dimensional terms
 

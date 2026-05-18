@@ -11,3 +11,6 @@
 - Never leave compatibility aliases for functions.
 - Don't use compatibility layer, always check call sites and replace with optimized architecture.
 - When modifying function, do a code cleanup -- remove unused functions, variables, update internal naming to be consistent.
+- After substantial changes or refactoring, run all tests by using ./test.sh
+- Keep code brief and interfaces clean.
+- Avoid special-casing in code, prefer cleaner architectural decisions.

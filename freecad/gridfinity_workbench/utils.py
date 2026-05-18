@@ -29,6 +29,7 @@ class GridfinityLayoutGeometry:
     tiny: GridfinityLayout
     x_lines: list[float]
     y_lines: list[float]
+    cells: list[list[object]] | None = None
 
 
 unitmm = fc.Units.Quantity("1 mm")
