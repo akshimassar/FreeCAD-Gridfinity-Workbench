@@ -10,6 +10,7 @@ import Part
 
 from . import const, utils
 from . import baseplate_click_springs as click_springs
+from . import baseplate_cell_cache
 from . import baseplate_full_layout
 from . import label_shelf as label_shelf_module
 from . import magnet_hole as magnet_hole_module
@@ -1171,13 +1172,25 @@ def make_baseplate_top_support(
                 0,
             )
 
-            slab = Part.makeBox(
-                cell_width,
-                cell_height,
-                float(loft_height),
-                fc.Vector(cell_center.x - cell_width / 2, cell_center.y - cell_height / 2, 0),
-                fc.Vector(0, 0, 1),
+            slab_key = baseplate_cell_cache.make_key(
+                {
+                    "kind": "support_cell_slab",
+                    "width": cell_width,
+                    "height": cell_height,
+                    "loft_height": float(loft_height),
+                }
             )
+
+            def _build_slab() -> Part.Shape:
+                return Part.makeBox(
+                    cell_width,
+                    cell_height,
+                    float(loft_height),
+                    fc.Vector(cell_center.x - cell_width / 2, cell_center.y - cell_height / 2, 0),
+                    fc.Vector(0, 0, 1),
+                )
+
+            slab = baseplate_cell_cache.get_or_build(slab_key, _build_slab)
             slabs.append(slab)
 
             cell_meta = geometry.cells[ix][iy]
@@ -1236,7 +1249,29 @@ def make_baseplate_top_support(
             profile_a = profile_a_face.OuterWire
             profile_a.translate(fc.Vector(0, 0, float(loft_height)))
             profile_b = utils.create_rounded_rectangle(x_b, y_b, 0, r_b)
-            cutter = Part.makeLoft([profile_b, profile_a], True)
+            cutter_key = baseplate_cell_cache.make_key(
+                {
+                    "kind": "support_cell_cutter",
+                    "x_a": x_a,
+                    "y_a": y_a,
+                    "x_b": x_b,
+                    "y_b": y_b,
+                    "r_a": r_a,
+                    "r_b": r_b,
+                    "loft_height": float(loft_height),
+                    "click_enabled": bool(getattr(obj, "ClickSpringsEnabled", False)),
+                    "click_length": float(obj.ClickLength),
+                    "click_offset": float(obj.ClickOffset),
+                    "mask": cell_meta.get_mask(),
+                    "shift_x": cell_meta.spring_shift_x,
+                    "shift_y": cell_meta.spring_shift_y,
+                }
+            )
+
+            def _build_cutter() -> Part.Shape:
+                return Part.makeLoft([profile_b, profile_a], True)
+
+            cutter = baseplate_cell_cache.get_or_build(cutter_key, _build_cutter)
             cutter.translate(cell_center)
             cutters.append(cutter)
 

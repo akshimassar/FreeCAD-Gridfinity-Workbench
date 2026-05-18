@@ -16,6 +16,7 @@ import Part
 
 from . import baseplate_feature_construction as baseplate_feat
 from . import baseplate_click_springs as click_springs
+from . import baseplate_cell_cache
 from . import baseplate_corner_roundover
 from . import baseplate_full_layout
 from . import feature_construction as feat
@@ -44,6 +45,10 @@ def set_baseplate_shape_cache_max_entries(max_entries: int) -> None:
         return
     while len(_BASEPLATE_SHAPE_CACHE) > _BASEPLATE_SHAPE_CACHE_MAX:
         _BASEPLATE_SHAPE_CACHE.popitem(last=False)
+
+
+def set_cell_shape_cache_max_entries(max_entries: int) -> None:
+    baseplate_cell_cache.set_cell_cache_max_entries(max_entries)
 
 
 def _cache_normalize(value: object) -> object:
@@ -232,6 +237,28 @@ def build_single_cell_baseplate_core(
     return CoreCellBuildResult(shape=solid_shape.cut(bin_base_shape), is_tiny=False)
 
 
+def build_single_cell_baseplate_core_cached(
+    params: BaseplateParams,
+    options: BaseplateBuildOptions,
+) -> CoreCellBuildResult:
+    key = baseplate_cell_cache.make_key(
+        {
+            "kind": "baseplate_core_cell",
+            "params": params,
+            "options": options,
+        }
+    )
+
+    def _build() -> Part.Shape:
+        return build_single_cell_baseplate_core(params, options).shape
+
+    shape = baseplate_cell_cache.get_or_build(key, _build)
+    tiny_cell = feat.make_complex_bin_base_single_from_params(
+        params.fundamentals, params.core
+    ).isNull()
+    return CoreCellBuildResult(shape=shape, is_tiny=tiny_cell)
+
+
 def build_preview_single_cell_baseplate_core(
     params: BaseplateParams,
 ) -> CoreCellBuildResult:
@@ -249,6 +276,22 @@ def build_preview_single_cell_baseplate_core(
         z_min=-margin,
     )
     return CoreCellBuildResult(shape=outer.cut(inner), is_tiny=False)
+
+
+def build_preview_single_cell_baseplate_core_cached(
+    params: BaseplateParams,
+) -> CoreCellBuildResult:
+    key = baseplate_cell_cache.make_key(
+        {
+            "kind": "baseplate_preview_core_cell",
+            "params": params,
+        }
+    )
+
+    def _build() -> Part.Shape:
+        return build_preview_single_cell_baseplate_core(params).shape
+
+    return CoreCellBuildResult(shape=baseplate_cell_cache.get_or_build(key, _build), is_tiny=False)
 
 
 def replicate_layout(
@@ -326,8 +369,8 @@ def _build_filler_cell_shape(
         ),
     )
     if preview:
-        return build_preview_single_cell_baseplate_core(filler_params)
-    return build_single_cell_baseplate_core(filler_params, options)
+        return build_preview_single_cell_baseplate_core_cached(filler_params)
+    return build_single_cell_baseplate_core_cached(filler_params, options)
 
 
 def _build_filler_ring_shape(
@@ -790,9 +833,9 @@ def build_simple_baseplate_from_params(
 
     t_core = time.perf_counter() if timing_on else 0.0
     core_result = (
-        build_preview_single_cell_baseplate_core(params)
+        build_preview_single_cell_baseplate_core_cached(params)
         if preview
-        else build_single_cell_baseplate_core(params, options)
+        else build_single_cell_baseplate_core_cached(params, options)
     )
     if timing_on:
         _timing_print("baseplate.core_build", time.perf_counter() - t_core)

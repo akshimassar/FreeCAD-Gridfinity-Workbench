@@ -14,3 +14,4 @@
 - After substantial changes or refactoring, run all tests by using ./test.sh
 - Keep code brief and interfaces clean.
 - Avoid special-casing in code, prefer cleaner architectural decisions.
+- Compose internal TODO before implementing changes if there is more than 2-3 steps.

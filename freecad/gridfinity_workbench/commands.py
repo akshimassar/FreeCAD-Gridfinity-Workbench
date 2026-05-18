@@ -1609,6 +1609,11 @@ class GridfinitySettingsTaskPanel:
         self.baseplate_cache_size.setValue(int(defaults.baseplate_cache_size))
         self.baseplate_cache_size.setSuffix(" entries")
         perf_form.addRow("Baseplate cache size", self.baseplate_cache_size)
+        self.cell_cache_size = QSpinBox()
+        self.cell_cache_size.setRange(0, 4096)
+        self.cell_cache_size.setValue(int(defaults.cell_cache_size))
+        self.cell_cache_size.setSuffix(" entries")
+        perf_form.addRow("Cell cache size", self.cell_cache_size)
         layout.addLayout(perf_form)
 
         self._wire_default_warning_colors()
@@ -1642,6 +1647,7 @@ class GridfinitySettingsTaskPanel:
             (self.clip_length, factory_defaults.clip_length),
             (self.clearance, factory_defaults.clearance),
             (self.baseplate_cache_size, factory_defaults.baseplate_cache_size),
+            (self.cell_cache_size, factory_defaults.cell_cache_size),
         ]
 
         for control, default_value in numeric_controls:
@@ -1694,6 +1700,7 @@ class GridfinitySettingsTaskPanel:
         defaults.clip_cutouts_enabled = self.clip_cutouts_enabled.isChecked()
         defaults.clip_length = self.clip_length.value()
         defaults.baseplate_cache_size = int(self.baseplate_cache_size.value())
+        defaults.cell_cache_size = int(self.cell_cache_size.value())
         defaults.save()
         fcg.Control.closeDialog()
         return True
