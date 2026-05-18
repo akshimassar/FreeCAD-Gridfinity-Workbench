@@ -269,6 +269,8 @@ def build_preview_single_cell_baseplate_core(
     main_half_width = float(params.fundamentals.base_profile_main_half_width)
 
     outer = _make_centered_box(x_grid_size, y_grid_size, main_height)
+    if x_grid_size <= main_half_width or y_grid_size <= main_half_width:
+        return CoreCellBuildResult(shape=outer, is_tiny=True)
     inner = _make_centered_box(
         x_grid_size - main_half_width,
         y_grid_size - main_half_width,

@@ -63,6 +63,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             import FreeCAD as fc  # noqa: N813
             import gridfinity_workbench.features as features
+            from gridfinity_workbench.baseplate_builder import BaseplateBuildOptions
+            from gridfinity_workbench.baseplate_params import params_from_obj
+            from gridfinity_workbench.baseplate_builder import BaseplateBuildOptions
+            from gridfinity_workbench.baseplate_params import params_from_obj
 
             def build_case(name: str, click_springs: bool) -> dict[str, float | int | bool]:
                 doc = fc.newDocument(name)
@@ -294,6 +298,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             import FreeCAD as fc  # noqa: N813
             import gridfinity_workbench.features as features
+            from gridfinity_workbench.baseplate_builder import BaseplateBuildOptions
+            from gridfinity_workbench.baseplate_params import params_from_obj
 
             doc = fc.newDocument("DrawerPreview")
             try:
@@ -540,6 +546,85 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         data = json.loads(line[len(RESULT_PREFIX) :])
         self.assertEqual(int(data["solids"]), 1)
         self.assertTrue(bool(data["valid"]))
+
+    def test_baseplate_preview_right_filler_2mm_builds(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+            from gridfinity_workbench.baseplate_builder import BaseplateBuildOptions
+            from gridfinity_workbench.baseplate_params import params_from_obj
+
+            doc = fc.newDocument("BasePreviewFill2")
+            try:
+                obj = doc.addObject("Part::FeaturePython", "Baseplate")
+                features.Baseplate(obj)
+                obj.xGridUnits = 2
+                obj.yGridUnits = 2
+                obj.FillerRightEnabled = True
+                obj.FillerRightWidth = 2
+                obj.FillerLeftEnabled = False
+                obj.FillerTopEnabled = False
+                obj.FillerBottomEnabled = False
+                layout = features.grid_initial_layout.make_rectangle_layout(obj)
+                params = params_from_obj(obj)
+                shape = features.baseplate_builder.build_simple_baseplate_from_params(
+                    params,
+                    layout,
+                    BaseplateBuildOptions(),
+                    preview=True,
+                )
+                payload = {{
+                    "solids": int(len(shape.Solids)),
+                    "valid": bool(shape.isValid()),
+                    "is_null": bool(shape.isNull()),
+                }}
+                print("GRIDFINITY_RESULT=" + json.dumps(payload))
+            finally:
+                fc.closeDocument(doc.Name)
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+        data = json.loads(line[len(RESULT_PREFIX) :])
+        self.assertFalse(bool(data["is_null"]))
+        self.assertTrue(bool(data["valid"]))
+        self.assertGreaterEqual(int(data["solids"]), 1)
 
     def test_baseplate_x2_y2_radius2_right_filler_5_1_rejected(self) -> None:
         freecad_cmd = _resolve_freecad_cmd()

@@ -644,6 +644,19 @@ class CreateDrawerBaseplateTaskPanel:
     def _format_preview_label(base_label: str) -> str:
         return f"[Preview] {base_label}"
 
+    def _set_show_in_tree(self, obj: fc.DocumentObject, visible: bool) -> None:
+        if not fc.GuiUp:
+            return
+        try:
+            view = obj.ViewObject
+        except ReferenceError:
+            return
+        if hasattr(view, "ShowInTree"):
+            try:
+                view.ShowInTree = visible
+            except Exception:
+                pass
+
     def _capture_object_values(self, obj: fc.DocumentObject) -> dict[str, Any]:
         return {
             "DrawerWidth": obj.DrawerWidth,
@@ -962,6 +975,7 @@ class CreateDrawerBaseplateTaskPanel:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
         elif output_obj is self._target_obj:
             self._restore_preview_visuals()
+            self._set_show_in_tree(output_obj, True)
 
         fc.ActiveDocument.recompute()
         fcg.SendMsgToActiveView("ViewFit")
