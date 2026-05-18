@@ -120,7 +120,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
-        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
         data = json.loads(line[len(RESULT_PREFIX) :])
 
         baseline = data["baseline"]
@@ -216,7 +219,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
-        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
         data = json.loads(line[len(RESULT_PREFIX) :])
 
         baseline = data["baseline"]
@@ -340,7 +346,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
-        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
         data = json.loads(line[len(RESULT_PREFIX) :])
 
         self.assertGreaterEqual(float(data["elapsed_seconds"]), 0.0)
@@ -424,7 +433,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
-        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
         data = json.loads(line[len(RESULT_PREFIX) :])
 
         self.assertEqual(int(data["solids"]), 1, "Expected a single solid")
@@ -521,7 +533,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
-        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
         data = json.loads(line[len(RESULT_PREFIX) :])
         self.assertEqual(int(data["solids"]), 1)
         self.assertTrue(bool(data["valid"]))
@@ -637,7 +652,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
-        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
         data = json.loads(line[len(RESULT_PREFIX) :])
         self.assertEqual(int(data["solids"]), 1)
         self.assertTrue(bool(data["valid"]))
@@ -810,7 +828,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
-        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
         data = json.loads(line[len(RESULT_PREFIX) :])
 
         baseline = data["baseline"]
@@ -904,7 +925,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
-        self.assertIsNotNone(line, msg=f"No result marker found\nSTDOUT:\n{proc.stdout}")
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
         data = json.loads(line[len(RESULT_PREFIX) :])
 
         self.assertEqual(int(data["base_solids"]), 3)
