@@ -262,3 +262,56 @@ def apply_click_spring_slots_to_cell(
     if positive is not None:
         shape = shape.fuse(positive)
     return shape
+
+
+def make_support_click_spring_seed(
+    *,
+    cell_inner_width: float,
+    cell_height: float,
+    click_offset: float,
+    click_length: float,
+) -> Part.Shape:
+    step = click_length / 3
+    x0 = cell_inner_width / 2
+    x1 = x0 - click_offset
+    x2 = x1
+    x3 = x2 + click_offset
+    y0 = cell_height / 4 + click_length / 2
+    y1 = y0 - step
+    y2 = y1 - step
+    y3 = y2 - step
+    points = [
+        fc.Vector(x0, y0, 0),
+        fc.Vector(x1, y1, 0),
+        fc.Vector(x2, y2, 0),
+        fc.Vector(x3, y3, 0),
+        fc.Vector(x0, y0, 0),
+    ]
+    wire = Part.Wire(Part.makePolygon(points))
+    if not wire.isClosed():
+        raise ValueError("Support click spring profile wire is not closed")
+    return Part.Face(wire)
+
+
+def carve_support_profile_with_click_springs(
+    profile_a_face: Part.Face,
+    *,
+    support_seed: Part.Shape,
+    mask: SpringSlotMask | None,
+    shift_x: float,
+    shift_y: float,
+) -> Part.Face:
+    if mask is None:
+        return profile_a_face
+    seed = support_seed.copy()
+    if shift_x != 0 or shift_y != 0:
+        seed.translate(fc.Vector(shift_x, shift_y, 0))
+    support_profiles = make_click_spring_prototypes_from_seed(seed).fused(mask)
+    if support_profiles is None:
+        return profile_a_face
+    cut = profile_a_face.cut(support_profiles)
+    if not cut.Faces:
+        raise ValueError(
+            "Support A-profile generation failed after click spring support profile cut"
+        )
+    return max(cut.Faces, key=lambda f: f.Area)

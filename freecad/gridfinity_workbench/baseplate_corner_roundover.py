@@ -5,6 +5,8 @@ from __future__ import annotations
 import FreeCAD as fc  # noqa: N813
 import Part
 
+from . import utils
+
 ShapeMatrix2x2 = list[list[Part.Shape]]
 BoolMatrix2x2 = list[list[bool]]
 
@@ -75,3 +77,65 @@ class BaseplateCornerRoundover:
             x, y = idx
             return None, self._inside_matrix[x][y].copy()
         return None, None
+
+
+def apply_layout_corner_roundover(
+    shape: Part.Shape,
+    *,
+    layout: list[list[bool]],
+    x_lines: list[float],
+    y_lines: list[float],
+    outside_radius: float,
+    height: float,
+) -> Part.Shape:
+    if height <= 0:
+        return shape
+
+    nx = len(layout)
+    ny = len(layout[0]) if nx > 0 else 0
+
+    def cell(x: int, y: int) -> bool:
+        if 0 <= x < nx and 0 <= y < ny:
+            return bool(layout[x][y])
+        return False
+
+    roundover = BaseplateCornerRoundover(outside_radius)
+    negative_profiles: list[Part.Shape] = []
+    positive_profiles: list[Part.Shape] = []
+    for ix in range(nx + 1):
+        for iy in range(ny + 1):
+            populated_2x2 = [
+                [cell(ix - 1, iy), cell(ix - 1, iy - 1)],
+                [cell(ix, iy), cell(ix, iy - 1)],
+            ]
+            negative_profile, positive_profile = roundover.get_corner_profiles(populated_2x2)
+            if negative_profile is None and positive_profile is None:
+                continue
+            translation = fc.Vector(x_lines[ix], y_lines[iy], 0)
+            if negative_profile is not None:
+                prof = negative_profile.copy()
+                prof.translate(translation)
+                negative_profiles.append(prof)
+            if positive_profile is not None:
+                prof = positive_profile.copy()
+                prof.translate(translation)
+                positive_profiles.append(prof)
+
+    if not negative_profiles and not positive_profiles:
+        return shape
+
+    extrude_vec = fc.Vector(0, 0, float(height))
+    out = shape
+    if negative_profiles:
+        negative_solids = [profile.extrude(extrude_vec) for profile in negative_profiles]
+        negative_shape = (
+            utils.multi_fuse(negative_solids) if len(negative_solids) > 1 else negative_solids[0]
+        )
+        out = out.cut(negative_shape)
+    if positive_profiles:
+        positive_solids = [profile.extrude(extrude_vec) for profile in positive_profiles]
+        positive_shape = (
+            utils.multi_fuse(positive_solids) if len(positive_solids) > 1 else positive_solids[0]
+        )
+        out = out.fuse(positive_shape)
+    return out

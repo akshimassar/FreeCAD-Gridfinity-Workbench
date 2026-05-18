@@ -10,6 +10,7 @@ import Part
 
 from . import const, utils
 from . import baseplate_click_springs as click_springs
+from . import baseplate_corner_roundover
 from . import baseplate_cell_cache
 from . import baseplate_full_layout
 from . import label_shelf as label_shelf_module
@@ -1186,11 +1187,12 @@ def make_baseplate_top_support(
                     cell_width,
                     cell_height,
                     float(loft_height),
-                    fc.Vector(cell_center.x - cell_width / 2, cell_center.y - cell_height / 2, 0),
+                    fc.Vector(-cell_width / 2, -cell_height / 2, 0),
                     fc.Vector(0, 0, 1),
                 )
 
             slab = baseplate_cell_cache.get_or_build(slab_key, _build_slab)
+            slab.translate(cell_center)
             slabs.append(slab)
 
             cell_meta = geometry.cells[ix][iy]
@@ -1215,36 +1217,21 @@ def make_baseplate_top_support(
             profile_a_face = Part.Face(utils.create_rounded_rectangle(x_a, y_a, 0, r_a))
 
             if bool(getattr(obj, "ClickSpringsEnabled", False)):
-                click_length = float(obj.ClickLength)
-                step = click_length / 3
-                x0 = x_a / 2
-                x1 = x0 - float(obj.ClickOffset)
-                x2 = x1
-                x3 = x2 + float(obj.ClickOffset)
-                y0 = cell_height / 4 + click_length / 2
-                y1 = y0 - step
-                y2 = y1 - step
-                y3 = y2 - step
-                points = [
-                    fc.Vector(x0, y0, 0),
-                    fc.Vector(x1, y1, 0),
-                    fc.Vector(x2, y2, 0),
-                    fc.Vector(x3, y3, 0),
-                    fc.Vector(x0, y0, 0),
-                ]
-                wire = Part.Wire(Part.makePolygon(points))
-                if wire.isClosed():
-                    seed = Part.Face(wire)
-                    shift = fc.Vector(cell_meta.spring_shift_x, cell_meta.spring_shift_y, 0)
-                    if shift.x != 0 or shift.y != 0:
-                        seed.translate(shift)
-                    profiles = click_springs.make_click_spring_prototypes_from_seed(seed)
-                    mask = cell_meta.get_mask()
-                    support_profiles = profiles.fused(mask) if mask is not None else None
-                    if support_profiles is not None:
-                        cut = profile_a_face.cut(support_profiles)
-                        if cut.Faces:
-                            profile_a_face = max(cut.Faces, key=lambda f: f.Area)
+                seed = click_springs.make_support_click_spring_seed(
+                    cell_inner_width=x_a,
+                    cell_height=cell_height,
+                    click_offset=float(obj.ClickOffset),
+                    click_length=float(obj.ClickLength),
+                )
+                shift_x = cell_meta.spring_shift_x if cell_meta.kind == "Filler" else 0.0
+                shift_y = cell_meta.spring_shift_y if cell_meta.kind == "Filler" else 0.0
+                profile_a_face = click_springs.carve_support_profile_with_click_springs(
+                    profile_a_face,
+                    support_seed=seed,
+                    mask=cell_meta.get_mask(),
+                    shift_x=shift_x,
+                    shift_y=shift_y,
+                )
 
             profile_a = profile_a_face.OuterWire
             profile_a.translate(fc.Vector(0, 0, float(loft_height)))
@@ -1263,8 +1250,8 @@ def make_baseplate_top_support(
                     "click_length": float(obj.ClickLength),
                     "click_offset": float(obj.ClickOffset),
                     "mask": cell_meta.get_mask(),
-                    "shift_x": cell_meta.spring_shift_x,
-                    "shift_y": cell_meta.spring_shift_y,
+                    "shift_x": cell_meta.spring_shift_x if cell_meta.kind == "Filler" else 0.0,
+                    "shift_y": cell_meta.spring_shift_y if cell_meta.kind == "Filler" else 0.0,
                 }
             )
 
@@ -1279,9 +1266,17 @@ def make_baseplate_top_support(
         return Part.Shape()
 
     support_solid = utils.multi_fuse(slabs)
-    if not cutters:
-        return support_solid
-    return support_solid.cut(utils.multi_fuse(cutters))
+    if cutters:
+        support_solid = support_solid.cut(utils.multi_fuse(cutters))
+
+    return baseplate_corner_roundover.apply_layout_corner_roundover(
+        support_solid,
+        layout=use_layout,
+        x_lines=x_lines,
+        y_lines=y_lines,
+        outside_radius=float(obj.BinOuterRadius),
+        height=float(loft_height),
+    )
 
 
 def blank_bin_recessed_top_properties(obj: fc.DocumentObject) -> None:
