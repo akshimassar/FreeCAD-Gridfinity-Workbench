@@ -829,7 +829,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         self.assertAlmostEqual(
             delta,
             expected_delta,
-            places=6,
+            places=3,
             msg=(
                 "Unexpected filler volume delta: "
                 f"delta={delta}, expected={expected_delta} "

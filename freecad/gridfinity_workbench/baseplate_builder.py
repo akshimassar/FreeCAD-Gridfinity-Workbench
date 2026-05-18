@@ -16,6 +16,7 @@ import Part
 
 from . import baseplate_feature_construction as baseplate_feat
 from . import baseplate_click_springs as click_springs
+from . import baseplate_corner_roundover
 from . import feature_construction as feat
 from . import utils
 from .baseplate_params import BaseplateParams, params_from_obj
@@ -703,74 +704,65 @@ def _apply_layout_corner_roundover(
 ) -> Part.Shape:
     nx = len(layout)
     ny = len(layout[0])
-    tol = 1e-6
 
     def cell(x: int, y: int) -> bool:
         if 0 <= x < nx and 0 <= y < ny:
             return bool(layout[x][y])
         return False
 
-    corner_points: dict[tuple[float, float], int] = {}
+    roundover = baseplate_corner_roundover.BaseplateCornerRoundover(
+        float(params.fundamentals.bin_outer_radius)
+    )
+
+    negative_profiles: list[Part.Shape] = []
+    positive_profiles: list[Part.Shape] = []
     for ix in range(nx + 1):
         for iy in range(ny + 1):
-            sw = cell(ix - 1, iy - 1)
-            se = cell(ix, iy - 1)
-            nw = cell(ix - 1, iy)
-            ne = cell(ix, iy)
-            populated = sw + se + nw + ne
-            if populated not in (1, 3):
+            populated_2x2 = [
+                [cell(ix - 1, iy), cell(ix - 1, iy - 1)],
+                [cell(ix, iy), cell(ix, iy - 1)],
+            ]
+            negative_profile, positive_profile = roundover.get_corner_profiles(populated_2x2)
+            if negative_profile is None and positive_profile is None:
                 continue
-            x = x_lines[ix]
-            y = y_lines[iy]
-            corner_points[(x, y)] = populated
-    if not corner_points:
+
+            translation = fc.Vector(x_lines[ix], y_lines[iy], 0)
+            if negative_profile is not None:
+                translated = negative_profile.copy()
+                translated.translate(translation)
+                negative_profiles.append(translated)
+            if positive_profile is not None:
+                translated = positive_profile.copy()
+                translated.translate(translation)
+                positive_profiles.append(translated)
+
+    if not negative_profiles and not positive_profiles:
         return shape
 
-    def key_for(x: float, y: float) -> tuple[int, int]:
-        return (int(round(x / tol)), int(round(y / tol)))
-
-    target_keys = {key_for(x, y): populated for (x, y), populated in corner_points.items()}
-
-    vertical_edges_by_key: dict[tuple[int, int], list[Part.Edge]] = {}
-    for edge in shape.Edges:
-        v0 = edge.Vertexes[0]
-        v1 = edge.Vertexes[1]
-        if abs(v0.Z - v1.Z) <= tol:
-            continue
-        if abs(v0.X - v1.X) > tol or abs(v0.Y - v1.Y) > tol:
-            continue
-        key = key_for(v0.X, v0.Y)
-        if key in target_keys:
-            vertical_edges_by_key.setdefault(key, []).append(edge)
-    edges_pop1: list[Part.Edge] = []
-    edges_pop3: list[Part.Edge] = []
-    for key, populated in target_keys.items():
-        edges = vertical_edges_by_key.get(key, [])
-        if populated == 1:
-            edges_pop1.extend(edges)
-        else:
-            edges_pop3.extend(edges)
-
-    if not edges_pop1 and not edges_pop3:
+    apex = float(
+        params.fundamentals.base_profile_main_height
+        + params.fundamentals.base_profile_main_half_width
+    )
+    top_crop = float(params.core.base_profile_top_crop)
+    roundover_height = apex - top_crop
+    if roundover_height <= 0:
         return shape
+
+    extrude_vec = fc.Vector(0, 0, roundover_height)
 
     rounded = shape
-    if edges_pop1:
-        try:
-            rounded = rounded.makeFillet(params.fundamentals.bin_outer_radius, edges_pop1)
-        except Part.OCCError:
-            fc.Console.PrintError(
-                "[Gridfinity] Baseplate corners roundover failed. Returning shape before roundover.\n"
-            )
-            return shape
-    if edges_pop3:
-        try:
-            rounded = rounded.makeFillet(params.fundamentals.bin_outer_radius / 4, edges_pop3)
-        except Part.OCCError:
-            fc.Console.PrintError(
-                "[Gridfinity] Baseplate corners roundover failed. Returning shape before roundover.\n"
-            )
-            return shape
+    if negative_profiles:
+        negative_solids = [profile.extrude(extrude_vec) for profile in negative_profiles]
+        negative_shape = (
+            utils.multi_fuse(negative_solids) if len(negative_solids) > 1 else negative_solids[0]
+        )
+        rounded = rounded.cut(negative_shape)
+    if positive_profiles:
+        positive_solids = [profile.extrude(extrude_vec) for profile in positive_profiles]
+        positive_shape = (
+            utils.multi_fuse(positive_solids) if len(positive_solids) > 1 else positive_solids[0]
+        )
+        rounded = rounded.fuse(positive_shape)
     return rounded
 
 
