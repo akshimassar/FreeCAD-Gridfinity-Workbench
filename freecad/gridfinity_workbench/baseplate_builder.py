@@ -15,6 +15,7 @@ import FreeCAD as fc  # noqa: N813
 import Part
 
 from . import baseplate_feature_construction as baseplate_feat
+from . import baseplate_click_springs as click_springs
 from . import feature_construction as feat
 from . import utils
 from .baseplate_params import BaseplateParams, params_from_obj
@@ -408,8 +409,8 @@ def _filler_spring_mask(
     topmost: bool,
     target_cell_width: float,
     target_cell_height: float,
-) -> feat.SpringSlotMask:
-    mask = feat.SpringSlotMask.all_true()
+) -> click_springs.SpringSlotMask:
+    mask = click_springs.SpringSlotMask.all_true()
 
     # X-first matrix indexing with y=0 as top row:
     # left  -> x=0 column, right -> x=1 column, top -> y=0 row, bottom -> y=1 row.
@@ -478,14 +479,14 @@ def _build_filler_ring_shape(
     bottom_on = params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
     top_on = params.fillers.top_enabled and float(params.fillers.top_width) > 0
 
-    negative_slots: feat.SpringShapeSlots | None = None
-    positive_slots: feat.SpringShapeSlots | None = None
+    negative_slots: click_springs.SpringShapeSlots | None = None
+    positive_slots: click_springs.SpringShapeSlots | None = None
     if not preview and options.include_snap_springs and params.click_springs.enabled:
-        negative_slots = feat.make_click_spring_prototype_negative(
+        negative_slots = click_springs.make_click_spring_prototype_negative(
             params.fundamentals,
             params.click_springs,
         )
-        positive_slots = feat.make_click_spring_prototype_positive(
+        positive_slots = click_springs.make_click_spring_prototype_positive(
             params.fundamentals,
             params.click_springs,
         )
@@ -527,7 +528,7 @@ def _build_filler_ring_shape(
                 target_cell_width=width,
                 target_cell_height=height,
             )
-            cell = feat.apply_click_spring_slots_to_cell(
+            cell = click_springs.apply_click_spring_slots_to_cell(
                 cell,
                 params.fundamentals,
                 params.core,
@@ -840,22 +841,22 @@ def apply_snap_springs(
 ) -> Part.Shape:
     if not options.include_snap_springs:
         return shape
-    negative_slots = feat.make_click_spring_prototype_negative(
+    negative_slots = click_springs.make_click_spring_prototype_negative(
         params.fundamentals,
         params.click_springs,
     )
-    positive_slots = feat.make_click_spring_prototype_positive(
+    positive_slots = click_springs.make_click_spring_prototype_positive(
         params.fundamentals,
         params.click_springs,
     )
-    return feat.apply_click_spring_slots_to_cell(
+    return click_springs.apply_click_spring_slots_to_cell(
         shape,
         params.fundamentals,
         params.core,
         params.click_springs,
         negative_slots,
         positive_slots,
-        feat.SpringSlotMask.all_true(),
+        click_springs.SpringSlotMask.all_true(),
     )
 
 
