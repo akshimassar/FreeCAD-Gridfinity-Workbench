@@ -478,9 +478,14 @@ def _build_filler_ring_shape(
     bottom_on = params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
     top_on = params.fillers.top_enabled and float(params.fillers.top_width) > 0
 
-    spring_slots = None
+    negative_slots: feat.SpringShapeSlots | None = None
+    positive_slots: feat.SpringShapeSlots | None = None
     if not preview and options.include_snap_springs and params.click_springs.enabled:
-        spring_slots = feat.make_click_spring_shape_slots(
+        negative_slots = feat.make_click_spring_prototype_negative(
+            params.fundamentals,
+            params.click_springs,
+        )
+        positive_slots = feat.make_click_spring_prototype_positive(
             params.fundamentals,
             params.click_springs,
         )
@@ -502,7 +507,7 @@ def _build_filler_ring_shape(
             preview=preview,
         )
         cell = filler_result.shape
-        if spring_slots is not None and not filler_result.is_tiny:
+        if negative_slots is not None and positive_slots is not None and not filler_result.is_tiny:
             align_shift = _filler_alignment_shift(
                 params,
                 leftmost=leftmost,
@@ -527,7 +532,8 @@ def _build_filler_ring_shape(
                 params.fundamentals,
                 params.core,
                 params.click_springs,
-                spring_slots,
+                negative_slots,
+                positive_slots,
                 mask,
             )
             cell.translate(fc.Vector(-align_shift.x, -align_shift.y, 0))
@@ -834,7 +840,11 @@ def apply_snap_springs(
 ) -> Part.Shape:
     if not options.include_snap_springs:
         return shape
-    spring_slots = feat.make_click_spring_shape_slots(
+    negative_slots = feat.make_click_spring_prototype_negative(
+        params.fundamentals,
+        params.click_springs,
+    )
+    positive_slots = feat.make_click_spring_prototype_positive(
         params.fundamentals,
         params.click_springs,
     )
@@ -843,7 +853,8 @@ def apply_snap_springs(
         params.fundamentals,
         params.core,
         params.click_springs,
-        spring_slots,
+        negative_slots,
+        positive_slots,
         feat.SpringSlotMask.all_true(),
     )
 

@@ -8,3 +8,6 @@
 - Do not assume, ask user. If you have to assume, mark that as assumption.
 - Don't use shortcuts. If something doesn't fit, pause and ask user. Better to change architecture right away.
 - Do not use removeSplitter() call as it is expensive unless explicitly confirmed by user.
+- Never leave compatibility aliases for functions.
+- Don't use compatibility layer, always check call sites and replace with optimized architecture.
+- When modifying function, do a code cleanup -- remove unused functions, variables, update internal naming to be consistent.
