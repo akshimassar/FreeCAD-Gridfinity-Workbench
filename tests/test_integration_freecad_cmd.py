@@ -281,6 +281,110 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             "YMax drift indicates misplaced springs",
         )
 
+    def test_connecting_clip_defaults_volume_locked(self) -> None:
+        # LOCKED INVARIANT:
+        # Expected dimensions/volume are strict regression locks for default clip.
+        # Do not modify expected values or relax assertions without explicit
+        # user confirmation in the current conversation.
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+        expected_volume = 21.979791192690158
+        expected_x_size = 2.7
+        expected_y_size = 3.5
+        expected_z_size = 4.1
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            doc = fc.newDocument("ConnectingClipDefaults")
+            try:
+                obj = doc.addObject("Part::FeaturePython", "ConnectingClip")
+                features.ConnectingClip(obj)
+                obj.HalfWidth = 2.15
+                obj.Height = 4.0
+                obj.Tolerance = 0.15
+                obj.ClipLength = 3.0
+                doc.recompute()
+                shape = obj.Shape
+                bbox = shape.BoundBox
+                payload = {{
+                    "volume": float(shape.Volume),
+                    "solids": int(len(shape.Solids)),
+                    "valid": bool(shape.isValid()),
+                    "x_size": float(bbox.XMax - bbox.XMin),
+                    "y_size": float(bbox.YMax - bbox.YMin),
+                    "z_size": float(bbox.ZMax - bbox.ZMin),
+                }}
+                print("GRIDFINITY_RESULT=" + json.dumps(payload))
+            finally:
+                fc.closeDocument(doc.Name)
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        self.assertEqual(int(data["solids"]), 1, "Expected a single solid")
+        self.assertTrue(bool(data["valid"]), "Resulting shape must be valid")
+        self.assertAlmostEqual(
+            float(data["x_size"]),
+            expected_x_size,
+            places=6,
+            msg=f"Unexpected X size: got {data['x_size']}, expected {expected_x_size}",
+        )
+        self.assertAlmostEqual(
+            float(data["y_size"]),
+            expected_y_size,
+            places=6,
+            msg=f"Unexpected Y size: got {data['y_size']}, expected {expected_y_size}",
+        )
+        self.assertAlmostEqual(
+            float(data["z_size"]),
+            expected_z_size,
+            places=6,
+            msg=f"Unexpected Z size: got {data['z_size']}, expected {expected_z_size}",
+        )
+        self.assertAlmostEqual(
+            float(data["volume"]),
+            expected_volume,
+            places=6,
+            msg=f"Unexpected volume drift: got {data['volume']}, expected {expected_volume}",
+        )
+
     def test_drawer_baseplate_preview_build_reports_time(self) -> None:
         freecad_cmd = _resolve_freecad_cmd()
         if not freecad_cmd:
