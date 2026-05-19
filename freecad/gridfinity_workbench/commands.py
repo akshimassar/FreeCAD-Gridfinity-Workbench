@@ -496,7 +496,7 @@ class CreateBaseplate(CreateCommand):
         )
 
     def Activated(self) -> None:
-        fcg.Control.showDialog(CreateBaseplateTaskPanel(self.pixmap))
+        fcg.Control.showDialog(CreateBaseplateTaskPanel(ICONDIR / "baseplate-obj.svg"))
 
 
 class CreateDrawerBaseplate(BaseCommand):
