@@ -8,12 +8,10 @@ import FreeCAD as fc  # noqa: N813
 import Part
 
 from . import utils
+from .baseplate_full_layout import BoolMatrix2x2, ShapeMatrix2x2
 from .baseplate_params import BaseplateCoreParams, ClickSpringParams, FundamentalsParams
 
 unitmm = fc.Units.Quantity("1 mm")
-
-BoolMatrix2x2 = list[list[bool]]
-ShapeMatrix2x2 = list[list[Part.Shape]]
 
 
 def _assert_2x2_bool_matrix(name: str, matrix: BoolMatrix2x2) -> None:

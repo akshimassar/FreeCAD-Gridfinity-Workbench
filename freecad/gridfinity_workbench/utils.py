@@ -7,7 +7,6 @@ workbench code.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import FreeCAD as fc  # noqa: N813
@@ -19,17 +18,6 @@ if TYPE_CHECKING:
 
 
 GridfinityLayout = list[list[bool]]
-
-
-@dataclass
-class GridfinityLayoutGeometry:
-    """Layout occupancy plus variable grid-line coordinates."""
-
-    layout: GridfinityLayout
-    tiny: GridfinityLayout
-    x_lines: list[float]
-    y_lines: list[float]
-    cells: list[list[object]] | None = None
 
 
 unitmm = fc.Units.Quantity("1 mm")

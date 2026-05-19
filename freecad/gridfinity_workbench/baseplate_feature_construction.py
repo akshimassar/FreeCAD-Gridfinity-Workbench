@@ -16,8 +16,8 @@ from .baseplate_params import (
     FundamentalsParams,
     JunctionScrewParams,
 )
+from .baseplate_full_layout import GridfinityLayout, GridfinityLayoutGeometry
 from .settings import defaults
-from .utils import GridfinityLayout, GridfinityLayoutGeometry
 
 
 def magnet_holes_properties(obj: fc.DocumentObject) -> None:
@@ -428,7 +428,11 @@ def make_clip_cutouts(
             f"2*BaseProfileMainHalfWidth ({max_clip_length})"
         )
 
-    use_layout = geometry.layout if geometry is not None else layout
+    use_layout = (
+        [[cell.exists for cell in col] for col in geometry.cells]
+        if geometry is not None
+        else layout
+    )
     nx = len(use_layout)
     ny = len(use_layout[0])
     clip_wire = clip_profiles.build_clip_cutout_profile_wire(
@@ -447,40 +451,61 @@ def make_clip_cutouts(
     clip_y = clip_x.copy()
     clip_y.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
 
-    def cell(x: int, y: int) -> bool:
-        if 0 <= x < nx and 0 <= y < ny:
-            return bool(use_layout[x][y])
-        return False
-
     cutouts = []
-    for ix in range(nx + 1):
-        for iy in range(ny + 1):
-            sw = cell(ix - 1, iy - 1)
-            se = cell(ix, iy - 1)
-            nw = cell(ix - 1, iy)
-            ne = cell(ix, iy)
+    if geometry is not None:
+        nx, ny = geometry.size()
+        for ix in range(nx + 1):
+            for iy in range(ny + 1):
+                neighbours = geometry.junction_neighbours(ix, iy)
+                if neighbours.count_true() != 2:
+                    continue
+                orientation = neighbours.exists().is_side()
+                if orientation is None:
+                    continue
+                x = geometry.line_x(ix)
+                y = geometry.line_y(iy)
+                if orientation == "horizontal":
+                    cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
+                else:
+                    cutouts.append(clip_y.translated(fc.Vector(x, y, 0)))
+    else:
 
-            populated = sw + se + nw + ne
-            if populated != 2:
-                continue
+        def cell(x: int, y: int) -> bool:
+            if 0 <= x < nx and 0 <= y < ny:
+                return bool(use_layout[x][y])
+            return False
 
-            horizontal = (sw and se) or (nw and ne)
-            vertical = (sw and nw) or (se and ne)
-            if not (horizontal or vertical):
-                continue
+        for ix in range(nx + 1):
+            for iy in range(ny + 1):
+                south_west_present = cell(ix - 1, iy - 1)
+                south_east_present = cell(ix, iy - 1)
+                north_west_present = cell(ix - 1, iy)
+                north_east_present = cell(ix, iy)
 
-            if geometry is None:
+                neighbour_count = (
+                    south_west_present
+                    + south_east_present
+                    + north_west_present
+                    + north_east_present
+                )
+                if neighbour_count != 2:
+                    continue
+
+                has_horizontal_pair = (south_west_present and south_east_present) or (
+                    north_west_present and north_east_present
+                )
+                has_vertical_pair = (south_west_present and north_west_present) or (
+                    south_east_present and north_east_present
+                )
+                if not (has_horizontal_pair or has_vertical_pair):
+                    continue
+
                 x = ix * obj.xGridSize
-            else:
-                x = geometry.x_lines[ix]
-            if geometry is None:
                 y = iy * obj.yGridSize
-            else:
-                y = geometry.y_lines[iy]
-            if horizontal:
-                cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
-            else:
-                cutouts.append(clip_y.translated(fc.Vector(x, y, 0)))
+                if has_horizontal_pair:
+                    cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
+                else:
+                    cutouts.append(clip_y.translated(fc.Vector(x, y, 0)))
 
     if not cutouts:
         return None
@@ -490,8 +515,6 @@ def make_clip_cutouts(
 def make_clip_cutouts_from_params(
     fundamentals: FundamentalsParams,
     clip_cutouts: ClipCutoutParams,
-    layout: GridfinityLayout,
-    tiny: GridfinityLayout,
     *,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
@@ -504,9 +527,6 @@ def make_clip_cutouts_from_params(
             f"2*BaseProfileMainHalfWidth ({max_clip_length})"
         )
 
-    use_layout = layout
-    nx = len(use_layout)
-    ny = len(use_layout[0])
     clip_wire = clip_profiles.build_clip_cutout_profile_wire(
         fundamentals.base_profile_main_half_width,
         fundamentals.base_profile_main_height,
@@ -525,40 +545,29 @@ def make_clip_cutouts_from_params(
     clip_y = clip_x.copy()
     clip_y.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
 
-    def cell(x: int, y: int) -> bool:
-        if 0 <= x < nx and 0 <= y < ny:
-            return bool(use_layout[x][y])
-        return False
-
     cutouts = []
+    nx, ny = geometry.size()
     for ix in range(nx + 1):
         for iy in range(ny + 1):
-            sw = cell(ix - 1, iy - 1)
-            se = cell(ix, iy - 1)
-            nw = cell(ix - 1, iy)
-            ne = cell(ix, iy)
-
-            populated = sw + se + nw + ne
-            if populated != 2:
+            neighbours = geometry.junction_neighbours(ix, iy)
+            if neighbours.count_true() != 2:
                 continue
 
-            horizontal = (sw and se) or (nw and ne)
-            vertical = (sw and nw) or (se and ne)
-            if not (horizontal or vertical):
+            orientation = neighbours.exists().is_side()
+            if orientation is None:
                 continue
 
-            if sw and tiny[ix - 1][iy - 1]:
-                continue
-            if se and tiny[ix][iy - 1]:
-                continue
-            if nw and tiny[ix - 1][iy]:
-                continue
-            if ne and tiny[ix][iy]:
+            exists_matrix = neighbours.exists()
+            tiny_matrix = neighbours.is_tiny()
+            has_tiny = any(
+                exists_matrix[x][y] and tiny_matrix[x][y] for x in range(2) for y in range(2)
+            )
+            if has_tiny:
                 continue
 
-            x = geometry.x_lines[ix]
-            y = geometry.y_lines[iy]
-            if horizontal:
+            x = geometry.line_x(ix)
+            y = geometry.line_y(iy)
+            if orientation == "horizontal":
                 cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
             else:
                 cutouts.append(clip_y.translated(fc.Vector(x, y, 0)))
@@ -579,7 +588,11 @@ def make_junction_screw_holes(
     For custom layouts, a junction hole is only created where all four surrounding
     cells exist in the layout.
     """
-    use_layout = geometry.layout if geometry is not None else layout
+    use_layout = (
+        [[cell.exists for cell in col] for col in geometry.cells]
+        if geometry is not None
+        else layout
+    )
     nx = len(use_layout)
     ny = len(use_layout[0])
 
@@ -600,11 +613,11 @@ def make_junction_screw_holes(
             if geometry is None:
                 x = ix * obj.xGridSize
             else:
-                x = geometry.x_lines[ix]
+                x = geometry.line_x(ix)
             if geometry is None:
                 y = iy * obj.yGridSize
             else:
-                y = geometry.y_lines[iy]
+                y = geometry.line_y(iy)
 
             through = Part.makeCylinder(
                 obj.JunctionScrewDiameter / 2,
@@ -637,34 +650,31 @@ def make_junction_screw_holes(
 def make_junction_screw_holes_from_params(
     fundamentals: FundamentalsParams,
     junction_screws: JunctionScrewParams,
-    layout: GridfinityLayout,
-    tiny: GridfinityLayout,
     top_z: fc.Units.Quantity,
     *,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
-    use_layout = layout
-    nx = len(use_layout)
-    ny = len(use_layout[0])
+    nx, ny = geometry.size()
 
     through_depth = top_z + 0.1 * fc.Units.Quantity("1 mm")
 
     cutters = []
     for ix in range(1, nx):
         for iy in range(1, ny):
-            if not (
-                use_layout[ix - 1][iy - 1]
-                and use_layout[ix][iy - 1]
-                and use_layout[ix - 1][iy]
-                and use_layout[ix][iy]
-            ):
+            neighbours = geometry.junction_neighbours(ix, iy)
+            if neighbours.count_true() != 4:
                 continue
 
-            if tiny[ix - 1][iy - 1] or tiny[ix][iy - 1] or tiny[ix - 1][iy] or tiny[ix][iy]:
+            exists_matrix = neighbours.exists()
+            tiny_matrix = neighbours.is_tiny()
+            has_tiny = any(
+                exists_matrix[x][y] and tiny_matrix[x][y] for x in range(2) for y in range(2)
+            )
+            if has_tiny:
                 continue
 
-            x = geometry.x_lines[ix]
-            y = geometry.y_lines[iy]
+            x = geometry.line_x(ix)
+            y = geometry.line_y(iy)
 
             through = Part.makeCylinder(
                 junction_screws.screw_diameter / 2,

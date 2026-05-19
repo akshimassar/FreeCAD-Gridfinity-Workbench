@@ -1153,10 +1153,9 @@ def make_baseplate_top_support(
         layout,
         include_spring_masks=bool(getattr(obj, "ClickSpringsEnabled", False)),
     )
-    use_layout = geometry.layout
-    tiny = geometry.tiny
-    x_lines = geometry.x_lines
-    y_lines = geometry.y_lines
+    use_layout = [[cell.exists for cell in col] for col in geometry.cells]
+    x_lines = [geometry.line_x(ix) for ix in range(len(geometry.cells) + 1)]
+    y_lines = [geometry.line_y(iy) for iy in range(len(geometry.cells[0]) + 1)]
 
     slabs: list[Part.Shape] = []
     cutters: list[Part.Shape] = []
@@ -1197,7 +1196,7 @@ def make_baseplate_top_support(
 
             cell_meta = geometry.cells[ix][iy]
             is_tiny = cell_meta.is_tiny
-            tiny[ix][iy] = is_tiny
+            geometry.cells[ix][iy].is_tiny = is_tiny
             if is_tiny:
                 continue
 

@@ -22,7 +22,7 @@ from . import baseplate_full_layout
 from . import feature_construction as feat
 from . import utils
 from .baseplate_params import BaseplateParams, params_from_obj
-from .utils import GridfinityLayout, GridfinityLayoutGeometry
+from .baseplate_full_layout import GridfinityLayout, GridfinityLayoutGeometry
 
 
 def _timing_enabled() -> bool:
@@ -333,9 +333,23 @@ def add_filler_strips(
         ),
     )
     nx, ny = _layout_dims(layout, params)
-    has_fillers = len(expanded.layout) != nx or len(expanded.layout[0]) != ny
+    expanded_nx, expanded_ny = expanded.size()
+    has_fillers = expanded_nx != nx or expanded_ny != ny
     if not has_fillers:
         return shape, expanded
+
+    if not shape.isNull():
+        x_core_shift = (
+            params.fillers.left_width
+            if params.fillers.left_enabled and float(params.fillers.left_width) > 0
+            else 0 * params.fundamentals.x_grid_size
+        )
+        y_core_shift = (
+            params.fillers.bottom_width
+            if params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
+            else 0 * params.fundamentals.y_grid_size
+        )
+        shape.translate(fc.Vector(x_core_shift, y_core_shift, 0))
 
     filler_shape = _build_filler_ring_shape(params, expanded, options, preview=preview)
     if shape.isNull():
@@ -385,8 +399,7 @@ def _build_filler_ring_shape(
     timing_on = _timing_enabled()
     t_total = time.perf_counter() if timing_on else 0.0
 
-    nx_exp = len(geometry.layout)
-    ny_exp = len(geometry.layout[0])
+    nx_exp, ny_exp = geometry.size()
     nx = nx_exp - 2
     ny = ny_exp - 2
 
@@ -448,8 +461,7 @@ def _build_filler_ring_shape(
         return CoreCellBuildResult(shape=cell, is_tiny=filler_result.is_tiny)
 
     def center(ix: int, iy: int) -> fc.Vector:
-        x = geometry.x_lines[ix] + (geometry.x_lines[ix + 1] - geometry.x_lines[ix]) / 2
-        y = geometry.y_lines[iy] + (geometry.y_lines[iy + 1] - geometry.y_lines[iy]) / 2
+        x, y = geometry.cell_center(ix, iy)
         return fc.Vector(x, y, 0)
 
     pieces: list[Part.Shape] = []
@@ -461,32 +473,32 @@ def _build_filler_ring_shape(
     side_specs = [
         {
             "enabled": left_on,
-            "width": geometry.x_lines[1] - geometry.x_lines[0],
-            "height": geometry.y_lines[2] - geometry.y_lines[1],
+            "width": geometry.cells[0][1].width,
+            "height": geometry.cells[0][1].height,
             "flags": (True, False, False, False),
             "vectors": [center(0, iy) for iy in range(1, ny + 1)],
             "indices": [(0, iy) for iy in range(1, ny + 1)],
         },
         {
             "enabled": right_on,
-            "width": geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
-            "height": geometry.y_lines[2] - geometry.y_lines[1],
+            "width": geometry.cells[nx + 1][1].width,
+            "height": geometry.cells[nx + 1][1].height,
             "flags": (False, True, False, False),
             "vectors": [center(nx + 1, iy) for iy in range(1, ny + 1)],
             "indices": [(nx + 1, iy) for iy in range(1, ny + 1)],
         },
         {
             "enabled": bottom_on,
-            "width": geometry.x_lines[2] - geometry.x_lines[1],
-            "height": geometry.y_lines[1] - geometry.y_lines[0],
+            "width": geometry.cells[1][0].width,
+            "height": geometry.cells[1][0].height,
             "flags": (False, False, True, False),
             "vectors": [center(ix, 0) for ix in range(1, nx + 1)],
             "indices": [(ix, 0) for ix in range(1, nx + 1)],
         },
         {
             "enabled": top_on,
-            "width": geometry.x_lines[2] - geometry.x_lines[1],
-            "height": geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
+            "width": geometry.cells[1][ny + 1].width,
+            "height": geometry.cells[1][ny + 1].height,
             "flags": (False, False, False, True),
             "vectors": [center(ix, ny + 1) for ix in range(1, nx + 1)],
             "indices": [(ix, ny + 1) for ix in range(1, nx + 1)],
@@ -514,7 +526,7 @@ def _build_filler_ring_shape(
             pieces.append(side)
             if timing_on:
                 t_translate += time.perf_counter() - t1
-            geometry.tiny[ix][iy] = side_result.is_tiny
+            geometry.cells[ix][iy].is_tiny = side_result.is_tiny
         if timing_on:
             t_sides += time.perf_counter() - t_side
 
@@ -523,32 +535,32 @@ def _build_filler_ring_shape(
             "enabled": left_on and bottom_on,
             "ix": 0,
             "iy": 0,
-            "width": geometry.x_lines[1] - geometry.x_lines[0],
-            "height": geometry.y_lines[1] - geometry.y_lines[0],
+            "width": geometry.cells[0][0].width,
+            "height": geometry.cells[0][0].height,
             "flags": (True, False, True, False),
         },
         {
             "enabled": left_on and top_on,
             "ix": 0,
             "iy": ny + 1,
-            "width": geometry.x_lines[1] - geometry.x_lines[0],
-            "height": geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
+            "width": geometry.cells[0][ny + 1].width,
+            "height": geometry.cells[0][ny + 1].height,
             "flags": (True, False, False, True),
         },
         {
             "enabled": right_on and bottom_on,
             "ix": nx + 1,
             "iy": 0,
-            "width": geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
-            "height": geometry.y_lines[1] - geometry.y_lines[0],
+            "width": geometry.cells[nx + 1][0].width,
+            "height": geometry.cells[nx + 1][0].height,
             "flags": (False, True, True, False),
         },
         {
             "enabled": right_on and top_on,
             "ix": nx + 1,
             "iy": ny + 1,
-            "width": geometry.x_lines[nx + 2] - geometry.x_lines[nx + 1],
-            "height": geometry.y_lines[ny + 2] - geometry.y_lines[ny + 1],
+            "width": geometry.cells[nx + 1][ny + 1].width,
+            "height": geometry.cells[nx + 1][ny + 1].height,
             "flags": (False, True, False, True),
         },
     ]
@@ -573,7 +585,7 @@ def _build_filler_ring_shape(
             t_translate += time.perf_counter() - t1
             t_corners += time.perf_counter() - t_corner
         pieces.append(corner)
-        geometry.tiny[spec["ix"]][spec["iy"]] = corner_result.is_tiny
+        geometry.cells[spec["ix"]][spec["iy"]].is_tiny = corner_result.is_tiny
 
     if not pieces:
         raise ValueError("No filler pieces generated")
@@ -636,8 +648,6 @@ def make_post_replication_cutter(
         junction_holes = baseplate_feat.make_junction_screw_holes_from_params(
             params.fundamentals,
             params.junction_screws,
-            geometry.layout,
-            geometry.tiny,
             top_z,
             geometry=geometry,
         )
@@ -648,8 +658,6 @@ def make_post_replication_cutter(
         clip_cutouts = baseplate_feat.make_clip_cutouts_from_params(
             params.fundamentals,
             params.clip_cutouts,
-            geometry.layout,
-            geometry.tiny,
             geometry=geometry,
         )
         if clip_cutouts is not None:
@@ -775,9 +783,9 @@ def build_simple_baseplate_from_params(
             shape = _apply_layout_corner_roundover(
                 shape,
                 params,
-                geometry.layout,
-                geometry.x_lines,
-                geometry.y_lines,
+                [[cell.exists for cell in col] for col in geometry.cells],
+                [geometry.line_x(ix) for ix in range(geometry.size()[0] + 1)],
+                [geometry.line_y(iy) for iy in range(geometry.size()[1] + 1)],
             )
             if timing_on:
                 _timing_print("baseplate.filler_only.roundover", time.perf_counter() - t_round)
@@ -814,23 +822,24 @@ def build_simple_baseplate_from_params(
     shape, geometry = add_filler_strips(shape, params, layout, options, preview=preview)
     if timing_on:
         _timing_print("baseplate.add_filler_strips", time.perf_counter() - t_fill)
-    x_offset = 1 if len(geometry.layout) == nx + 2 else 0
-    y_offset = 1 if len(geometry.layout[0]) == ny + 2 else 0
+    geometry_nx, geometry_ny = geometry.size()
+    x_offset = 1 if geometry_nx == nx + 2 else 0
+    y_offset = 1 if geometry_ny == ny + 2 else 0
     for ix in range(nx):
         for iy in range(ny):
             gx = ix + x_offset
             gy = iy + y_offset
-            if geometry.layout[gx][gy]:
-                geometry.tiny[gx][gy] = core_result.is_tiny
+            if geometry.cells[gx][gy].exists:
+                geometry.cells[gx][gy].is_tiny = core_result.is_tiny
 
     if not preview:
         t_round = time.perf_counter() if timing_on else 0.0
         shape = _apply_layout_corner_roundover(
             shape,
             params,
-            geometry.layout,
-            geometry.x_lines,
-            geometry.y_lines,
+            [[cell.exists for cell in col] for col in geometry.cells],
+            [geometry.line_x(ix) for ix in range(geometry.size()[0] + 1)],
+            [geometry.line_y(iy) for iy in range(geometry.size()[1] + 1)],
         )
         if timing_on:
             _timing_print("baseplate.roundover", time.perf_counter() - t_round)

@@ -6,9 +6,7 @@ import FreeCAD as fc  # noqa: N813
 import Part
 
 from . import utils
-
-ShapeMatrix2x2 = list[list[Part.Shape]]
-BoolMatrix2x2 = list[list[bool]]
+from .baseplate_full_layout import BoolMatrix2x2, ShapeMatrix2x2
 
 
 class BaseplateCornerRoundover:
@@ -104,10 +102,12 @@ def apply_layout_corner_roundover(
     positive_profiles: list[Part.Shape] = []
     for ix in range(nx + 1):
         for iy in range(ny + 1):
-            populated_2x2 = [
-                [cell(ix - 1, iy), cell(ix - 1, iy - 1)],
-                [cell(ix, iy), cell(ix, iy - 1)],
-            ]
+            populated_2x2 = BoolMatrix2x2(
+                [
+                    [cell(ix - 1, iy), cell(ix - 1, iy - 1)],
+                    [cell(ix, iy), cell(ix, iy - 1)],
+                ]
+            )
             negative_profile, positive_profile = roundover.get_corner_profiles(populated_2x2)
             if negative_profile is None and positive_profile is None:
                 continue

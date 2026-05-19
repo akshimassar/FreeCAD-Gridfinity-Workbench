@@ -3,10 +3,106 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
+from typing import TYPE_CHECKING
 
-from . import baseplate_click_springs as click_springs
+import Part
+
 from .baseplate_params import BaseplateParams
-from .utils import GridfinityLayout, GridfinityLayoutGeometry
+
+if TYPE_CHECKING:
+    from . import baseplate_click_springs as click_springs
+
+
+GridfinityLayout = list[list[bool]]
+ShapeMatrix2x2 = list[list[Part.Shape]]
+
+
+@dataclass(frozen=True)
+class BoolMatrix2x2:
+    values: list[list[bool]]
+
+    def __post_init__(self) -> None:
+        if len(self.values) != 2 or any(len(col) != 2 for col in self.values):
+            raise ValueError("BoolMatrix2x2 must be a 2x2 bool matrix")
+        for col in self.values:
+            for value in col:
+                if not isinstance(value, bool):
+                    raise ValueError("BoolMatrix2x2 must contain only bool values")
+
+    def __getitem__(self, index: int) -> list[bool]:
+        return self.values[index]
+
+    def __iter__(self):
+        return iter(self.values)
+
+    def __len__(self) -> int:
+        return len(self.values)
+
+    def count_true(self) -> int:
+        return sum(1 for x in range(2) for y in range(2) if self.values[x][y])
+
+    def is_side(self) -> Literal["horizontal", "vertical"] | None:
+        if self.count_true() != 2:
+            return None
+        has_horizontal_pair = (self.values[0][0] and self.values[1][0]) or (
+            self.values[0][1] and self.values[1][1]
+        )
+        has_vertical_pair = (self.values[0][0] and self.values[0][1]) or (
+            self.values[1][0] and self.values[1][1]
+        )
+        if has_horizontal_pair:
+            return "horizontal"
+        if has_vertical_pair:
+            return "vertical"
+        return None
+
+
+@dataclass
+class GridfinityLayoutGeometry:
+    """Layout occupancy plus variable grid-line coordinates."""
+
+    cells: list[list["FullLayoutCell"]]
+
+    def size(self) -> tuple[int, int]:
+        nx = len(self.cells)
+        if nx == 0:
+            return 0, 0
+        return nx, len(self.cells[0])
+
+    def line_x(self, ix: int) -> float:
+        nx, _ = self.size()
+        if not (0 <= ix <= nx):
+            raise IndexError(f"X line index out of bounds: {ix} for nx={nx}")
+        return sum(self.cells[x][0].width for x in range(ix))
+
+    def line_y(self, iy: int) -> float:
+        _, ny = self.size()
+        if not (0 <= iy <= ny):
+            raise IndexError(f"Y line index out of bounds: {iy} for ny={ny}")
+        return sum(self.cells[0][y].height for y in range(iy))
+
+    def cell_center(self, ix: int, iy: int) -> tuple[float, float]:
+        nx, ny = self.size()
+        if not (0 <= ix < nx and 0 <= iy < ny):
+            raise IndexError(f"Cell index out of bounds: ({ix}, {iy}) for size ({nx}, {ny})")
+        return self.line_x(ix) + self.cells[ix][iy].width / 2, self.line_y(iy) + self.cells[ix][
+            iy
+        ].height / 2
+
+    def junction_neighbours(self, ix: int, iy: int) -> "FullCellNeighbours2x2":
+        def at(x: int, y: int) -> FullLayoutCell:
+            nx, ny = self.size()
+            if 0 <= x < nx and 0 <= y < ny:
+                return self.cells[x][y]
+            return FullLayoutCell.empty()
+
+        return FullCellNeighbours2x2(
+            [
+                [at(ix - 1, iy - 1), at(ix - 1, iy)],
+                [at(ix, iy - 1), at(ix, iy)],
+            ]
+        )
 
 
 @dataclass
@@ -16,12 +112,63 @@ class FullLayoutCell:
     is_tiny: bool
     width: float
     height: float
-    spring_mask: click_springs.SpringSlotMask | None
+    spring_mask: "click_springs.SpringSlotMask" | None
     spring_shift_x: float
     spring_shift_y: float
 
-    def get_mask(self) -> click_springs.SpringSlotMask | None:
+    def get_mask(self) -> "click_springs.SpringSlotMask" | None:
         return self.spring_mask
+
+    @classmethod
+    def empty(cls) -> "FullLayoutCell":
+        return cls(
+            exists=False,
+            kind="Empty",
+            is_tiny=False,
+            width=0.0,
+            height=0.0,
+            spring_mask=None,
+            spring_shift_x=0.0,
+            spring_shift_y=0.0,
+        )
+
+
+@dataclass(frozen=True)
+class FullCellNeighbours2x2:
+    values: list[list[FullLayoutCell]]
+
+    def __post_init__(self) -> None:
+        if len(self.values) != 2 or any(len(col) != 2 for col in self.values):
+            raise ValueError("FullCellNeighbours2x2 must be a 2x2 full-cell matrix")
+
+    def count_true(self) -> int:
+        return sum(1 for x in range(2) for y in range(2) if self.values[x][y].exists)
+
+    def exists(self) -> BoolMatrix2x2:
+        return BoolMatrix2x2([[self.values[x][y].exists for y in range(2)] for x in range(2)])
+
+    def is_tiny(self) -> BoolMatrix2x2:
+        return BoolMatrix2x2([[self.values[x][y].is_tiny for y in range(2)] for x in range(2)])
+
+    def has_tiny(self) -> bool:
+        return any(
+            self.values[x][y].exists and self.values[x][y].is_tiny
+            for x in range(2)
+            for y in range(2)
+        )
+
+    def is_side(self) -> Literal["horizontal", "vertical"] | None:
+        has_horizontal_pair = (self.values[0][0].exists and self.values[1][0].exists) or (
+            self.values[0][1].exists and self.values[1][1].exists
+        )
+        has_vertical_pair = (self.values[0][0].exists and self.values[0][1].exists) or (
+            self.values[1][0].exists and self.values[1][1].exists
+        )
+        if has_horizontal_pair and not has_vertical_pair:
+            return "horizontal"
+        if has_vertical_pair and not has_horizontal_pair:
+            return "vertical"
+        return None
 
 
 def build_full_layout(
@@ -61,23 +208,16 @@ def build_full_layout(
     use_fillers = any(float(v) > 0 for v in (left_w, right_w, bottom_w, top_w))
     if not use_fillers:
         base = [[bool(layout[ix][iy]) for iy in range(ny)] for ix in range(nx)] if nx > 0 else []
-        tiny = [[False for _ in range(ny)] for _ in range(nx)] if nx > 0 else []
-        x_lines = _build_grid_lines([params.fundamentals.x_grid_size] * nx)
-        y_lines = _build_grid_lines([params.fundamentals.y_grid_size] * ny)
+        x_sizes = [float(params.fundamentals.x_grid_size)] * nx
+        y_sizes = [float(params.fundamentals.y_grid_size)] * ny
         return GridfinityLayoutGeometry(
-            layout=base,
-            tiny=tiny,
-            x_lines=x_lines,
-            y_lines=y_lines,
-            cells=_build_cells(base, tiny, x_lines, y_lines, include_spring_masks, params),
+            cells=_build_cells(base, x_sizes, y_sizes, include_spring_masks, params),
         )
 
     x_sizes = [left_w] + [params.fundamentals.x_grid_size] * nx + [right_w]
     y_sizes = [bottom_w] + [params.fundamentals.y_grid_size] * ny + [top_w]
 
     expanded: GridfinityLayout = [[False for _ in range(ny + 2)] for _ in range(nx + 2)]
-    tiny: GridfinityLayout = [[False for _ in range(ny + 2)] for _ in range(nx + 2)]
-
     for ix in range(nx):
         for iy in range(ny):
             expanded[ix + 1][iy + 1] = bool(layout[ix][iy])
@@ -104,34 +244,22 @@ def build_full_layout(
     if float(right_w) > 0 and float(top_w) > 0:
         expanded[nx + 1][ny + 1] = True
 
-    x_lines = [x - float(left_w) for x in _build_grid_lines(x_sizes)]
-    y_lines = [y - float(bottom_w) for y in _build_grid_lines(y_sizes)]
+    x_sizes = [float(size) for size in x_sizes]
+    y_sizes = [float(size) for size in y_sizes]
     return GridfinityLayoutGeometry(
-        layout=expanded,
-        tiny=tiny,
-        x_lines=x_lines,
-        y_lines=y_lines,
-        cells=_build_cells(expanded, tiny, x_lines, y_lines, include_spring_masks, params),
+        cells=_build_cells(expanded, x_sizes, y_sizes, include_spring_masks, params),
     )
-
-
-def _build_grid_lines(sizes: list) -> list[float]:
-    lines = [0.0]
-    total = 0.0
-    for size in sizes:
-        total += float(size)
-        lines.append(total)
-    return lines
 
 
 def _build_cells(
     layout: GridfinityLayout,
-    tiny: GridfinityLayout,
-    x_lines: list[float],
-    y_lines: list[float],
+    x_sizes: list[float],
+    y_sizes: list[float],
     include_spring_masks: bool,
     params: BaseplateParams,
 ) -> list[list[FullLayoutCell]]:
+    from . import baseplate_click_springs as click_springs
+
     cells: list[list[FullLayoutCell]] = []
     nx = len(layout)
     ny = len(layout[0]) if nx > 0 else 0
@@ -139,13 +267,12 @@ def _build_cells(
         col: list[FullLayoutCell] = []
         for iy in range(ny):
             exists = bool(layout[ix][iy])
-            width = x_lines[ix + 1] - x_lines[ix]
-            height = y_lines[iy + 1] - y_lines[iy]
+            width = x_sizes[ix]
+            height = y_sizes[iy]
             is_tiny = (
                 width < float(params.fundamentals.x_grid_size) / 2
                 or height < float(params.fundamentals.y_grid_size) / 2
             )
-            tiny[ix][iy] = is_tiny
             kind = "Core"
             if nx > 2 and ny > 2 and (ix in (0, nx - 1) or iy in (0, ny - 1)):
                 kind = "Filler"
@@ -203,7 +330,9 @@ def _filler_spring_mask(
     topmost: bool,
     target_cell_width: float,
     target_cell_height: float,
-) -> click_springs.SpringSlotMask:
+) -> "click_springs.SpringSlotMask":
+    from . import baseplate_click_springs as click_springs
+
     mask = click_springs.SpringSlotMask.all_true()
     side_masks = [
         (leftmost, [[True, True], [False, False]]),
