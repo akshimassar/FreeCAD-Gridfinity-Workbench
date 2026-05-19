@@ -8,7 +8,7 @@ import FreeCAD as fc  # noqa: N813
 import Part
 
 from . import utils
-from .baseplate_full_layout import BoolMatrix2x2, ShapeMatrix2x2
+from .baseplate_full_layout import BoolMatrix2x2, ShapeMatrix2x2, expand_seed_to_shape_matrix
 from .baseplate_params import BaseplateCoreParams, ClickSpringParams, FundamentalsParams
 
 unitmm = fc.Units.Quantity("1 mm")
@@ -166,38 +166,27 @@ def make_click_spring_seed_negative(
 
 
 def make_click_spring_prototypes_from_seed(seed: Part.Shape) -> SpringShapeSlots:
-    def mirror_x(shape: Part.Shape) -> Part.Shape:
-        return shape.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
-
-    def mirror_y(shape: Part.Shape) -> Part.Shape:
-        return shape.mirror(fc.Vector(0, 0, 0), fc.Vector(0, 1, 0))
-
-    def expand_vertical_slots(top_right_vertical_seed: Part.Shape) -> ShapeMatrix2x2:
-        matrix: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
-        matrix[1][0] = top_right_vertical_seed
-        matrix[0][0] = mirror_x(matrix[1][0])
-        matrix[0][1] = mirror_y(matrix[0][0])
-        matrix[1][1] = mirror_y(matrix[1][0])
-        return matrix
-
     def rot90_clockwise(shape: Part.Shape) -> Part.Shape:
         out = shape.copy()
         out.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), -90)
         return out
 
     def rotate_matrix_clockwise(matrix: ShapeMatrix2x2) -> ShapeMatrix2x2:
-        out: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
+        out: list[list[Part.Shape]] = [
+            [matrix[0][0].copy(), matrix[0][0].copy()],
+            [matrix[0][0].copy(), matrix[0][0].copy()],
+        ]
         for x in range(2):
             for y in range(2):
                 x_new = 1 - y
                 y_new = x
                 out[x_new][y_new] = matrix[x][y]
-        return out
+        return ShapeMatrix2x2(out)
 
     def rotate_shapes_clockwise(matrix: ShapeMatrix2x2) -> ShapeMatrix2x2:
-        return [[rot90_clockwise(matrix[x][y]) for y in range(2)] for x in range(2)]
+        return ShapeMatrix2x2([[rot90_clockwise(matrix[x][y]) for y in range(2)] for x in range(2)])
 
-    vertical = expand_vertical_slots(seed)
+    vertical = expand_seed_to_shape_matrix(seed)
     vertical_rot = rotate_shapes_clockwise(vertical)
     horizontal = rotate_matrix_clockwise(vertical_rot)
     return SpringShapeSlots(vertical=vertical, horizontal=horizontal)

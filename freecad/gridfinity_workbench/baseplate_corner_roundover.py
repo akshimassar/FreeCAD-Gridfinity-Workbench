@@ -6,112 +6,72 @@ import FreeCAD as fc  # noqa: N813
 import Part
 
 from . import utils
-from .baseplate_full_layout import BoolMatrix2x2, ShapeMatrix2x2
+from .baseplate_full_layout import (
+    BoolMatrix2x2,
+    GridfinityLayoutGeometry,
+    ShapeMatrix2x2,
+    expand_seed_to_shape_matrix,
+)
 
 
 class BaseplateCornerRoundover:
     def __init__(self, outside_radius: float) -> None:
         self.outside_radius = float(outside_radius)
         self.inside_radius = self.outside_radius / 4.0
-        self._outside_matrix = self._build_profile_matrix(
-            self._make_corner_seed(self.outside_radius)
-        )
-        self._inside_matrix = self._build_profile_matrix(self._make_corner_seed(self.inside_radius))
+        self._outside_matrix = self._build_from_seed(self._make_corner_seed(self.outside_radius))
+        self._inside_matrix = self._build_from_seed(self._make_corner_seed(self.inside_radius))
 
     @staticmethod
     def _make_corner_seed(radius: float) -> Part.Shape:
-        start = fc.Vector(radius, 0, 0)
         p0 = fc.Vector(0, 0, 0)
-        p1 = fc.Vector(0, radius, 0)
-        mid = fc.Vector(radius * 0.2928932188134524, radius * 0.2928932188134524, 0)
-        arc = Part.Arc(p1, mid, start).toShape()
+        start = fc.Vector(radius, 0, 0)
+        end = fc.Vector(0, radius, 0)
+        center = fc.Vector(radius, radius, 0)
+        arc = Part.makeCircle(radius, center, fc.Vector(0, 0, 1), 180, 270)
         edges = [
             Part.LineSegment(start, p0).toShape(),
-            Part.LineSegment(p0, p1).toShape(),
+            Part.LineSegment(p0, end).toShape(),
             arc,
         ]
         return Part.Face(Part.Wire(edges))
 
     @staticmethod
-    def _build_profile_matrix(seed: Part.Shape) -> ShapeMatrix2x2:
-        def mirror_x(shape: Part.Shape) -> Part.Shape:
-            return shape.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
-
-        def mirror_y(shape: Part.Shape) -> Part.Shape:
-            return shape.mirror(fc.Vector(0, 0, 0), fc.Vector(0, 1, 0))
-
-        matrix: ShapeMatrix2x2 = [[None, None], [None, None]]  # type: ignore[assignment]
-        matrix[1][0] = seed
-        matrix[0][0] = mirror_x(matrix[1][0])
-        matrix[0][1] = mirror_y(matrix[0][0])
-        matrix[1][1] = mirror_y(matrix[1][0])
-        return matrix
-
-    @staticmethod
-    def _find_single(matrix: BoolMatrix2x2, value: bool) -> tuple[int, int] | None:
-        found: tuple[int, int] | None = None
-        for x in range(2):
-            for y in range(2):
-                if matrix[x][y] is value:
-                    if found is not None:
-                        return None
-                    found = (x, y)
-        return found
+    def _build_from_seed(seed: Part.Shape) -> ShapeMatrix2x2:
+        return expand_seed_to_shape_matrix(seed)
 
     def get_corner_profiles(
         self, populated_2x2: BoolMatrix2x2
     ) -> tuple[Part.Shape | None, Part.Shape | None]:
-        populated_count = sum(1 for x in range(2) for y in range(2) if populated_2x2[x][y])
-        if populated_count == 1:
-            idx = self._find_single(populated_2x2, True)
-            if idx is None:
-                return None, None
-            x, y = idx
-            return self._outside_matrix[x][y].copy(), None
-        if populated_count == 3:
-            idx = self._find_single(populated_2x2, False)
-            if idx is None:
-                return None, None
-            x, y = idx
-            return None, self._inside_matrix[x][y].copy()
+        if populated_2x2.count_true() == 1:
+            return self._outside_matrix.select_single(populated_2x2), None
+        if populated_2x2.count_true() == 3:
+            return None, self._inside_matrix.select_single(populated_2x2.negated())
         return None, None
 
 
 def apply_layout_corner_roundover(
     shape: Part.Shape,
     *,
-    layout: list[list[bool]],
-    x_lines: list[float],
-    y_lines: list[float],
+    geometry: GridfinityLayoutGeometry,
     outside_radius: float,
     height: float,
 ) -> Part.Shape:
     if height <= 0:
         return shape
 
-    nx = len(layout)
-    ny = len(layout[0]) if nx > 0 else 0
-
-    def cell(x: int, y: int) -> bool:
-        if 0 <= x < nx and 0 <= y < ny:
-            return bool(layout[x][y])
-        return False
+    nx, ny = geometry.size()
 
     roundover = BaseplateCornerRoundover(outside_radius)
     negative_profiles: list[Part.Shape] = []
     positive_profiles: list[Part.Shape] = []
     for ix in range(nx + 1):
         for iy in range(ny + 1):
-            populated_2x2 = BoolMatrix2x2(
-                [
-                    [cell(ix - 1, iy), cell(ix - 1, iy - 1)],
-                    [cell(ix, iy), cell(ix, iy - 1)],
-                ]
-            )
+            neighbours = geometry.junction_neighbours(ix, iy)
+            populated_2x2 = neighbours.exists()
             negative_profile, positive_profile = roundover.get_corner_profiles(populated_2x2)
             if negative_profile is None and positive_profile is None:
                 continue
-            translation = fc.Vector(x_lines[ix], y_lines[iy], 0)
+            translation = fc.Vector(geometry.line_x(ix), geometry.line_y(iy), 0)
             if negative_profile is not None:
                 prof = negative_profile.copy()
                 prof.translate(translation)

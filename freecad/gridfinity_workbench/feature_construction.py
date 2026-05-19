@@ -1154,21 +1154,23 @@ def make_baseplate_top_support(
         include_spring_masks=bool(getattr(obj, "ClickSpringsEnabled", False)),
     )
     use_layout = [[cell.exists for cell in col] for col in geometry.cells]
-    x_lines = [geometry.line_x(ix) for ix in range(len(geometry.cells) + 1)]
-    y_lines = [geometry.line_y(iy) for iy in range(len(geometry.cells[0]) + 1)]
+    nx_cells = len(geometry.cells)
+    ny_cells = len(geometry.cells[0]) if nx_cells > 0 else 0
 
     slabs: list[Part.Shape] = []
     cutters: list[Part.Shape] = []
-    for ix in range(len(use_layout)):
-        for iy in range(len(use_layout[0])):
+    for ix in range(nx_cells):
+        for iy in range(ny_cells):
             if not use_layout[ix][iy]:
                 continue
 
-            cell_width = x_lines[ix + 1] - x_lines[ix]
-            cell_height = y_lines[iy + 1] - y_lines[iy]
+            cell_meta = geometry.cells[ix][iy]
+            cell_width = cell_meta.width
+            cell_height = cell_meta.height
+            center_x, center_y = geometry.cell_center(ix, iy)
             cell_center = fc.Vector(
-                (x_lines[ix] + x_lines[ix + 1]) / 2 - float(obj.xLocationOffset),
-                (y_lines[iy] + y_lines[iy + 1]) / 2 - float(obj.yLocationOffset),
+                center_x - float(obj.xLocationOffset),
+                center_y - float(obj.yLocationOffset),
                 0,
             )
 
@@ -1194,7 +1196,6 @@ def make_baseplate_top_support(
             slab.translate(cell_center)
             slabs.append(slab)
 
-            cell_meta = geometry.cells[ix][iy]
             is_tiny = cell_meta.is_tiny
             geometry.cells[ix][iy].is_tiny = is_tiny
             if is_tiny:
@@ -1270,9 +1271,7 @@ def make_baseplate_top_support(
 
     return baseplate_corner_roundover.apply_layout_corner_roundover(
         support_solid,
-        layout=use_layout,
-        x_lines=x_lines,
-        y_lines=y_lines,
+        geometry=geometry,
         outside_radius=float(obj.BinOuterRadius),
         height=float(loft_height),
     )

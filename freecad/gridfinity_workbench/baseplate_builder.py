@@ -604,9 +604,7 @@ def _build_filler_ring_shape(
 def _apply_layout_corner_roundover(
     shape: Part.Shape,
     params: BaseplateParams,
-    layout: GridfinityLayout,
-    x_lines: list[float],
-    y_lines: list[float],
+    geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape:
     apex = float(
         params.fundamentals.base_profile_main_height
@@ -616,9 +614,7 @@ def _apply_layout_corner_roundover(
     roundover_height = apex - top_crop
     return baseplate_corner_roundover.apply_layout_corner_roundover(
         shape,
-        layout=layout,
-        x_lines=x_lines,
-        y_lines=y_lines,
+        geometry=geometry,
         outside_radius=float(params.fundamentals.bin_outer_radius),
         height=roundover_height,
     )
@@ -783,9 +779,7 @@ def build_simple_baseplate_from_params(
             shape = _apply_layout_corner_roundover(
                 shape,
                 params,
-                [[cell.exists for cell in col] for col in geometry.cells],
-                [geometry.line_x(ix) for ix in range(geometry.size()[0] + 1)],
-                [geometry.line_y(iy) for iy in range(geometry.size()[1] + 1)],
+                geometry,
             )
             if timing_on:
                 _timing_print("baseplate.filler_only.roundover", time.perf_counter() - t_round)
@@ -837,9 +831,7 @@ def build_simple_baseplate_from_params(
         shape = _apply_layout_corner_roundover(
             shape,
             params,
-            [[cell.exists for cell in col] for col in geometry.cells],
-            [geometry.line_x(ix) for ix in range(geometry.size()[0] + 1)],
-            [geometry.line_y(iy) for iy in range(geometry.size()[1] + 1)],
+            geometry,
         )
         if timing_on:
             _timing_print("baseplate.roundover", time.perf_counter() - t_round)

@@ -7,6 +7,7 @@ from typing import Literal
 from typing import TYPE_CHECKING
 
 import Part
+import FreeCAD as fc  # noqa: N813
 
 from .baseplate_params import BaseplateParams
 
@@ -15,7 +16,52 @@ if TYPE_CHECKING:
 
 
 GridfinityLayout = list[list[bool]]
-ShapeMatrix2x2 = list[list[Part.Shape]]
+
+
+@dataclass(frozen=True)
+class ShapeMatrix2x2:
+    values: list[list[Part.Shape]]
+
+    def __post_init__(self) -> None:
+        if len(self.values) != 2 or any(len(col) != 2 for col in self.values):
+            raise ValueError("ShapeMatrix2x2 must be a 2x2 shape matrix")
+
+    def __getitem__(self, index: int) -> list[Part.Shape]:
+        return self.values[index]
+
+    def __iter__(self):
+        return iter(self.values)
+
+    def __len__(self) -> int:
+        return len(self.values)
+
+    def select_single(self, mask: "BoolMatrix2x2") -> Part.Shape | None:
+        if mask.count_true() != 1:
+            return None
+        if mask[0][0]:
+            return self.values[0][0].copy()
+        if mask[0][1]:
+            return self.values[0][1].copy()
+        if mask[1][0]:
+            return self.values[1][0].copy()
+        if mask[1][1]:
+            return self.values[1][1].copy()
+        return None
+
+
+def expand_seed_to_shape_matrix(seed: Part.Shape) -> ShapeMatrix2x2:
+    def mirror_x(shape: Part.Shape) -> Part.Shape:
+        return shape.mirror(fc.Vector(0, 0, 0), fc.Vector(1, 0, 0))
+
+    def mirror_y(shape: Part.Shape) -> Part.Shape:
+        return shape.mirror(fc.Vector(0, 0, 0), fc.Vector(0, 1, 0))
+
+    matrix: list[list[Part.Shape]] = [[seed.copy(), seed.copy()], [seed.copy(), seed.copy()]]
+    matrix[1][0] = seed
+    matrix[0][0] = mirror_x(matrix[1][0])
+    matrix[0][1] = mirror_y(matrix[0][0])
+    matrix[1][1] = mirror_y(matrix[1][0])
+    return ShapeMatrix2x2(matrix)
 
 
 @dataclass(frozen=True)
@@ -41,6 +87,12 @@ class BoolMatrix2x2:
 
     def count_true(self) -> int:
         return sum(1 for x in range(2) for y in range(2) if self.values[x][y])
+
+    def flatten(self) -> list[bool]:
+        return [self.values[x][y] for x in range(2) for y in range(2)]
+
+    def negated(self) -> BoolMatrix2x2:
+        return BoolMatrix2x2([[not self.values[x][y] for y in range(2)] for x in range(2)])
 
     def is_side(self) -> Literal["horizontal", "vertical"] | None:
         if self.count_true() != 2:
@@ -96,11 +148,12 @@ class GridfinityLayoutGeometry:
             if 0 <= x < nx and 0 <= y < ny:
                 return self.cells[x][y]
             return FullLayoutCell.empty()
-
+        
+        # this is kinda tricky because neighbours expect Y axis inverted
         return FullCellNeighbours2x2(
             [
-                [at(ix - 1, iy - 1), at(ix - 1, iy)],
-                [at(ix, iy - 1), at(ix, iy)],
+                [at(ix - 1, iy), at(ix - 1, iy - 1)],
+                [at(ix, iy), at(ix, iy - 1)],
             ]
         )
 

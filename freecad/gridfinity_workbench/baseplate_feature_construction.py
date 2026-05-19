@@ -557,12 +557,7 @@ def make_clip_cutouts_from_params(
             if orientation is None:
                 continue
 
-            exists_matrix = neighbours.exists()
-            tiny_matrix = neighbours.is_tiny()
-            has_tiny = any(
-                exists_matrix[x][y] and tiny_matrix[x][y] for x in range(2) for y in range(2)
-            )
-            if has_tiny:
+            if neighbours.has_tiny():
                 continue
 
             x = geometry.line_x(ix)
@@ -588,13 +583,11 @@ def make_junction_screw_holes(
     For custom layouts, a junction hole is only created where all four surrounding
     cells exist in the layout.
     """
-    use_layout = (
-        [[cell.exists for cell in col] for col in geometry.cells]
-        if geometry is not None
-        else layout
-    )
-    nx = len(use_layout)
-    ny = len(use_layout[0])
+    if geometry is None:
+        nx = len(layout)
+        ny = len(layout[0])
+    else:
+        nx, ny = geometry.size()
 
     through_depth = obj.TotalHeight + 0.1 * fc.Units.Quantity("1 mm")
     top_z = obj.TotalHeight
@@ -602,21 +595,21 @@ def make_junction_screw_holes(
     cutters = []
     for ix in range(1, nx):
         for iy in range(1, ny):
-            if not (
-                use_layout[ix - 1][iy - 1]
-                and use_layout[ix][iy - 1]
-                and use_layout[ix - 1][iy]
-                and use_layout[ix][iy]
-            ):
-                continue
-
             if geometry is None:
+                if not (
+                    layout[ix - 1][iy - 1]
+                    and layout[ix][iy - 1]
+                    and layout[ix - 1][iy]
+                    and layout[ix][iy]
+                ):
+                    continue
                 x = ix * obj.xGridSize
-            else:
-                x = geometry.line_x(ix)
-            if geometry is None:
                 y = iy * obj.yGridSize
             else:
+                neighbours = geometry.junction_neighbours(ix, iy)
+                if neighbours.count_true() != 4:
+                    continue
+                x = geometry.line_x(ix)
                 y = geometry.line_y(iy)
 
             through = Part.makeCylinder(
@@ -665,12 +658,7 @@ def make_junction_screw_holes_from_params(
             if neighbours.count_true() != 4:
                 continue
 
-            exists_matrix = neighbours.exists()
-            tiny_matrix = neighbours.is_tiny()
-            has_tiny = any(
-                exists_matrix[x][y] and tiny_matrix[x][y] for x in range(2) for y in range(2)
-            )
-            if has_tiny:
+            if neighbours.has_tiny():
                 continue
 
             x = geometry.line_x(ix)
