@@ -447,7 +447,7 @@ class CreateBinBlank(CreateCommand):
         super().__init__(
             name="BinBlank",
             gridfinity_function=features.BinBlank,
-            pixmap=ICONDIR / "BinBlank.svg",
+            pixmap=ICONDIR / "bin-blank.svg",
         )
 
 
@@ -456,7 +456,7 @@ class CreateBinBase(CreateCommand):
         super().__init__(
             name="BinBase",
             gridfinity_function=features.BinBase,
-            pixmap=ICONDIR / "BinBase.svg",
+            pixmap=ICONDIR / "bin-base.svg",
         )
 
 
@@ -465,7 +465,7 @@ class CreateSimpleStorageBin(CreateCommand):
         super().__init__(
             name="SimpleStorageBin",
             gridfinity_function=features.SimpleStorageBin,
-            pixmap=ICONDIR / "SimpleStorageBin.svg",
+            pixmap=ICONDIR / "bin-std.svg",
         )
 
 
@@ -492,7 +492,7 @@ class CreateBaseplate(CreateCommand):
         super().__init__(
             name="Baseplate",
             gridfinity_function=features.Baseplate,
-            pixmap=ICONDIR / "Baseplate.svg",
+            pixmap=ICONDIR / "baseplate-std.svg",
         )
 
     def Activated(self) -> None:
@@ -503,7 +503,7 @@ class CreateDrawerBaseplate(BaseCommand):
     def __init__(self) -> None:
         super().__init__(
             name="DrawerBaseplate",
-            pixmap=ICONDIR / "drawer_baseplate.svg",
+            pixmap=ICONDIR / "drawer-baseplate.svg",
             menu_text="Fit drawer with printable baseplates",
             tooltip="Fit drawer with printable baseplates",
         )
@@ -1564,7 +1564,7 @@ class CreateStackedBaseplates(CreateCommand):
         super().__init__(
             name="StackedBaseplates",
             gridfinity_function=features.StackedBaseplates,
-            pixmap=ICONDIR / "stacked_baseplates.svg",
+            pixmap=ICONDIR / "baseplate-stacked.svg",
         )
 
     def Activated(self) -> None:
@@ -1594,7 +1594,7 @@ class CreateConnectingClip(CreateCommand):
         super().__init__(
             name="ConnectingClip",
             gridfinity_function=features.ConnectingClip,
-            pixmap=ICONDIR / "connecting_clip.svg",
+            pixmap=ICONDIR / "connecting-clip.svg",
         )
 
 
