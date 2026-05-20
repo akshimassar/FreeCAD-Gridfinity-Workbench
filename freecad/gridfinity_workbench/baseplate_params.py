@@ -58,6 +58,12 @@ class JunctionScrewParams:
 
 
 @dataclass(frozen=True)
+class ScrewStubParams:
+    enabled: bool
+    clearance: fc.Units.Quantity
+
+
+@dataclass(frozen=True)
 class ClipCutoutParams:
     enabled: bool
     clip_length: fc.Units.Quantity
@@ -70,6 +76,7 @@ class BaseplateParams:
     fillers: BaseplateFillersParams
     click_springs: ClickSpringParams
     junction_screws: JunctionScrewParams
+    screw_stubs: ScrewStubParams
     clip_cutouts: ClipCutoutParams
 
 
@@ -136,6 +143,10 @@ def _params_from_controls(data: dict[str, Any], *, preview_mode: bool) -> Basepl
             screw_diameter=_q_mm(float(data["junction_screw_diameter"])),
             counterbore_diameter=_q_mm(float(data["junction_counterbore_diameter"])),
             counterbore_depth=_q_mm(float(data["junction_counterbore_depth"])),
+        ),
+        screw_stubs=ScrewStubParams(
+            enabled=bool(data.get("screw_stubs_enabled", False)) and not preview_mode,
+            clearance=_q_mm(float(data.get("screw_stub_clearance", 0.15))),
         ),
         clip_cutouts=ClipCutoutParams(
             enabled=clip_enabled,
@@ -222,6 +233,22 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
             add_error(
                 "clip_length",
                 f"ClipLength must be less than 2*BaseProfileMainHalfWidth ({_fmt_mm(max_clip)})",
+            )
+
+    if params.screw_stubs.enabled:
+        if not params.junction_screws.enabled:
+            add_error("screw_stubs_enabled", "Screw stubs require Junction screws to be enabled")
+        stub_d = float(params.junction_screws.screw_diameter) - 2 * float(
+            params.screw_stubs.clearance
+        )
+        if not float(params.screw_stubs.clearance) >= 0:
+            add_error(
+                "screw_stub_clearance",
+                f"ScrewStubClearance must be greater than or equal to {_fmt_mm(0)}",
+            )
+        if not stub_d > 0:
+            add_error(
+                "screw_stub_clearance", "ScrewStubClearance is too large for JunctionScrewDiameter"
             )
 
     x_grid_size = float(params.fundamentals.x_grid_size)
@@ -374,6 +401,10 @@ def params_from_obj(obj: fc.DocumentObject) -> BaseplateParams:
             counterbore_diameter=getattr(obj, "JunctionCounterboreDiameter", zero_x),
             counterbore_depth=getattr(obj, "JunctionCounterboreDepth", zero_x),
         ),
+        screw_stubs=ScrewStubParams(
+            enabled=bool(getattr(obj, "ScrewStubsEnabled", False)),
+            clearance=getattr(obj, "ScrewStubClearance", zero_x),
+        ),
         clip_cutouts=ClipCutoutParams(
             enabled=bool(getattr(obj, "ClipCutoutsEnabled", False)),
             clip_length=getattr(obj, "ClipLength", zero_x),
@@ -403,6 +434,8 @@ def apply_params_to_obj(obj: fc.DocumentObject, params: BaseplateParams) -> None
     obj.JunctionScrewDiameter = params.junction_screws.screw_diameter
     obj.JunctionCounterboreDiameter = params.junction_screws.counterbore_diameter
     obj.JunctionCounterboreDepth = params.junction_screws.counterbore_depth
+    obj.ScrewStubsEnabled = params.screw_stubs.enabled
+    obj.ScrewStubClearance = params.screw_stubs.clearance
 
     obj.ClipCutoutsEnabled = params.clip_cutouts.enabled
     obj.ClipLength = params.clip_cutouts.clip_length

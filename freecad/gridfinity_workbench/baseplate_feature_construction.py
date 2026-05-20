@@ -9,6 +9,7 @@ import FreeCAD as fc  # noqa: N813
 import Part
 
 from . import clip_profiles
+from . import junction_screws as junction_screw_shapes
 from . import const, utils
 from . import magnet_hole as magnet_hole_module
 from .baseplate_params import (
@@ -335,6 +336,20 @@ def junction_screw_holes_properties(obj: fc.DocumentObject) -> None:
         "Counterbore depth for junction screw holes <br> <br> default = 1.5 mm",
     ).JunctionCounterboreDepth = defaults.junction_counterbore_depth
 
+    obj.addProperty(
+        "App::PropertyBool",
+        "ScrewStubsEnabled",
+        "GridfinityNonStandard",
+        "Enable support screw stubs at internal junctions",
+    ).ScrewStubsEnabled = defaults.screw_stubs_enabled
+
+    obj.addProperty(
+        "App::PropertyLength",
+        "ScrewStubClearance",
+        "GridfinityNonStandard",
+        "Radial clearance for support screw stubs <br> <br> default = 0.15 mm",
+    ).ScrewStubClearance = defaults.screw_stub_clearance
+
 
 def clip_cutouts_properties(obj: fc.DocumentObject) -> None:
     """Properties for clip connector cutouts on baseplate edges."""
@@ -647,50 +662,7 @@ def make_junction_screw_holes_from_params(
     *,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
-    nx, ny = geometry.size()
-
-    through_depth = top_z + 0.1 * fc.Units.Quantity("1 mm")
-
-    cutters = []
-    for ix in range(1, nx):
-        for iy in range(1, ny):
-            neighbours = geometry.junction_neighbours(ix, iy)
-            if neighbours.count_true() != 4:
-                continue
-
-            if neighbours.has_tiny():
-                continue
-
-            x = geometry.line_x(ix)
-            y = geometry.line_y(iy)
-
-            through = Part.makeCylinder(
-                junction_screws.screw_diameter / 2,
-                through_depth,
-                fc.Vector(x, y, top_z),
-                fc.Vector(0, 0, -1),
-            )
-            counterbore = Part.makeCylinder(
-                junction_screws.counterbore_diameter / 2,
-                junction_screws.counterbore_depth,
-                fc.Vector(x, y, top_z),
-                fc.Vector(0, 0, -1),
-            )
-            transition_height = (
-                junction_screws.counterbore_diameter - junction_screws.screw_diameter
-            ) / 2
-            transition = Part.makeCone(
-                junction_screws.counterbore_diameter / 2,
-                junction_screws.screw_diameter / 2,
-                transition_height,
-                fc.Vector(x, y, top_z - junction_screws.counterbore_depth),
-                fc.Vector(0, 0, -1),
-            )
-            cutters.extend([through, counterbore, transition])
-
-    if not cutters:
-        return None
-    return cutters[0].multiFuse(cutters[1:]) if len(cutters) > 1 else cutters[0]
+    return junction_screw_shapes.holes_shape(junction_screws, top_z, geometry)
 
 
 def base_values_properties(obj: fc.DocumentObject) -> None:

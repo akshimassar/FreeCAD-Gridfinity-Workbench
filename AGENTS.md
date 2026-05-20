@@ -15,3 +15,4 @@
 - Keep code brief and interfaces clean.
 - Avoid special-casing in code, prefer cleaner architectural decisions.
 - Compose internal TODO before implementing changes if there is more than 2-3 steps.
+- Avoid code copy-paste and special casing. Reuse and adapt existing code while keeping clean interface. If struggle, pause and ask user for help.

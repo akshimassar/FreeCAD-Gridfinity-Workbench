@@ -31,6 +31,8 @@ class Defaults:
     junction_screw_diameter: float = 3.3
     junction_counterbore_diameter: float = 6.0
     junction_counterbore_depth: float = 1.5
+    screw_stubs_enabled: bool = False
+    screw_stub_clearance: float = 0.15
 
     clip_cutouts_enabled: bool = True
     clip_length: float = 3.0
@@ -81,6 +83,8 @@ class Defaults:
             "JunctionCounterboreDepth",
             self.junction_counterbore_depth,
         )
+        self.screw_stubs_enabled = prefs.GetBool("ScrewStubsEnabled", self.screw_stubs_enabled)
+        self.screw_stub_clearance = prefs.GetFloat("ScrewStubClearance", self.screw_stub_clearance)
 
         self.clip_cutouts_enabled = prefs.GetBool("ClipCutoutsEnabled", self.clip_cutouts_enabled)
         self.clip_length = prefs.GetFloat("ClipLength", self.clip_length)
@@ -110,6 +114,8 @@ class Defaults:
         prefs.SetFloat("JunctionScrewDiameter", self.junction_screw_diameter)
         prefs.SetFloat("JunctionCounterboreDiameter", self.junction_counterbore_diameter)
         prefs.SetFloat("JunctionCounterboreDepth", self.junction_counterbore_depth)
+        prefs.SetBool("ScrewStubsEnabled", self.screw_stubs_enabled)
+        prefs.SetFloat("ScrewStubClearance", self.screw_stub_clearance)
 
         prefs.SetBool("ClipCutoutsEnabled", self.clip_cutouts_enabled)
         prefs.SetFloat("ClipLength", self.clip_length)

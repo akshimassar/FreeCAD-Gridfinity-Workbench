@@ -13,6 +13,7 @@ from . import baseplate_click_springs as click_springs
 from . import baseplate_corner_roundover
 from . import baseplate_cell_cache
 from . import baseplate_full_layout
+from . import junction_screws
 from . import label_shelf as label_shelf_module
 from . import magnet_hole as magnet_hole_module
 from .baseplate_params import BaseplateCoreParams, FundamentalsParams, params_from_obj
@@ -1268,6 +1269,19 @@ def make_baseplate_top_support(
     support_solid = utils.multi_fuse(slabs)
     if cutters:
         support_solid = support_solid.cut(utils.multi_fuse(cutters))
+
+    params = params_from_obj(obj)
+    if bool(getattr(obj, "JunctionScrewHoles", False)) and bool(
+        getattr(obj, "ScrewStubsEnabled", False)
+    ):
+        stub_shape = junction_screws.stubs_shape(
+            params.junction_screws,
+            params.screw_stubs,
+            0 * unitmm,  # Bottom of support
+            geometry,
+        )
+        if stub_shape is not None:
+            support_solid = support_solid.fuse(stub_shape)
 
     return baseplate_corner_roundover.apply_layout_corner_roundover(
         support_solid,

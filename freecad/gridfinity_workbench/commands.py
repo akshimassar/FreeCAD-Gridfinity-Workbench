@@ -375,8 +375,17 @@ def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dic
     support_overhang_angle.setSuffix(" deg")
     support_overhang_angle.setValue(overhang_angle)
     form.addRow("Overhang angle", support_overhang_angle)
+    screw_stubs_enabled = QCheckBox()
+    screw_stubs_enabled.setChecked(defaults.screw_stubs_enabled)
+    form.addRow("Screw stubs", screw_stubs_enabled)
+    screw_stub_clearance = _mm_spinbox(defaults.screw_stub_clearance)
+    form.addRow("Stub clearance", screw_stub_clearance)
     layout.addLayout(form)
-    return {"support_overhang_angle": support_overhang_angle}
+    return {
+        "support_overhang_angle": support_overhang_angle,
+        "screw_stubs_enabled": screw_stubs_enabled,
+        "screw_stub_clearance": screw_stub_clearance,
+    }
 
 
 def _build_stacked_section(
@@ -741,6 +750,10 @@ class CreateDrawerBaseplateTaskPanel:
             self.junction_counterbore_diameter.setValue(float(obj.JunctionCounterboreDiameter))
         if hasattr(obj, "JunctionCounterboreDepth"):
             self.junction_counterbore_depth.setValue(float(obj.JunctionCounterboreDepth))
+        if hasattr(self, "screw_stubs_enabled") and hasattr(obj, "ScrewStubsEnabled"):
+            self.screw_stubs_enabled.setChecked(bool(obj.ScrewStubsEnabled))
+        if hasattr(self, "screw_stub_clearance") and hasattr(obj, "ScrewStubClearance"):
+            self.screw_stub_clearance.setValue(float(obj.ScrewStubClearance))
         if hasattr(obj, "ClipCutoutsEnabled"):
             self.clip_cutouts_enabled.setChecked(bool(obj.ClipCutoutsEnabled))
         if hasattr(obj, "ClipLength"):
@@ -769,6 +782,16 @@ class CreateDrawerBaseplateTaskPanel:
             "junction_screw_diameter": float(self.junction_screw_diameter.value()),
             "junction_counterbore_diameter": float(self.junction_counterbore_diameter.value()),
             "junction_counterbore_depth": float(self.junction_counterbore_depth.value()),
+            "screw_stubs_enabled": (
+                self.screw_stubs_enabled.isChecked()
+                if hasattr(self, "screw_stubs_enabled")
+                else False
+            ),
+            "screw_stub_clearance": (
+                float(self.screw_stub_clearance.value())
+                if hasattr(self, "screw_stub_clearance")
+                else float(defaults.screw_stub_clearance)
+            ),
             "clip_cutouts_enabled": self.clip_cutouts_enabled.isChecked(),
             "clip_length": float(self.clip_length.value()),
             "filler_right_enabled": False,
@@ -789,6 +812,11 @@ class CreateDrawerBaseplateTaskPanel:
             "junction_screw_diameter": self.junction_screw_diameter,
             "junction_counterbore_diameter": self.junction_counterbore_diameter,
             "junction_counterbore_depth": self.junction_counterbore_depth,
+            **(
+                {"screw_stub_clearance": self.screw_stub_clearance}
+                if hasattr(self, "screw_stub_clearance")
+                else {}
+            ),
             "clip_length": self.clip_length,
         }
         for key, widget in mapping.items():
@@ -930,6 +958,12 @@ class CreateDrawerBaseplateTaskPanel:
         obj.JunctionCounterboreDepth = float(
             self.junction_counterbore_depth.value()
         ) * fc.Units.Quantity("1 mm")
+        if hasattr(self, "screw_stubs_enabled"):
+            obj.ScrewStubsEnabled = self.screw_stubs_enabled.isChecked()
+        if hasattr(self, "screw_stub_clearance"):
+            obj.ScrewStubClearance = float(self.screw_stub_clearance.value()) * fc.Units.Quantity(
+                "1 mm"
+            )
         obj.ClipCutoutsEnabled = self.clip_cutouts_enabled.isChecked()
         obj.ClipLength = float(self.clip_length.value()) * fc.Units.Quantity("1 mm")
         base_label = self._format_drawer_baseplates_label(
@@ -1103,6 +1137,10 @@ class CreateBaseplateTaskPanel:
             float(params.junction_screws.counterbore_diameter)
         )
         self.junction_counterbore_depth.setValue(float(params.junction_screws.counterbore_depth))
+        if hasattr(self, "screw_stubs_enabled"):
+            self.screw_stubs_enabled.setChecked(params.screw_stubs.enabled)
+        if hasattr(self, "screw_stub_clearance"):
+            self.screw_stub_clearance.setValue(float(params.screw_stubs.clearance))
         self.clip_cutouts_enabled.setChecked(params.clip_cutouts.enabled)
         self.clip_length.setValue(float(params.clip_cutouts.clip_length))
         self.filler_right_enabled.setChecked(params.fillers.right_enabled)
@@ -1134,6 +1172,16 @@ class CreateBaseplateTaskPanel:
             "junction_screw_diameter": float(self.junction_screw_diameter.value()),
             "junction_counterbore_diameter": float(self.junction_counterbore_diameter.value()),
             "junction_counterbore_depth": float(self.junction_counterbore_depth.value()),
+            "screw_stubs_enabled": (
+                self.screw_stubs_enabled.isChecked()
+                if hasattr(self, "screw_stubs_enabled")
+                else False
+            ),
+            "screw_stub_clearance": (
+                float(self.screw_stub_clearance.value())
+                if hasattr(self, "screw_stub_clearance")
+                else float(defaults.screw_stub_clearance)
+            ),
             "clip_cutouts_enabled": self.clip_cutouts_enabled.isChecked(),
             "clip_length": float(self.clip_length.value()),
             "filler_right_enabled": self.filler_right_enabled.isChecked(),
@@ -1198,6 +1246,8 @@ class CreateBaseplateTaskPanel:
             "junction_screw_diameter",
             "junction_counterbore_diameter",
             "junction_counterbore_depth",
+            "screw_stubs_enabled",
+            "screw_stub_clearance",
             "clip_length",
             "filler_left_width",
             "filler_right_width",
@@ -1301,6 +1351,10 @@ class CreateBaseplateTaskPanel:
             self.filler_bottom_enabled,
             self.filler_bottom_width,
         ]
+        if hasattr(self, "screw_stubs_enabled"):
+            controls.append(self.screw_stubs_enabled)
+        if hasattr(self, "screw_stub_clearance"):
+            controls.append(self.screw_stub_clearance)
         controls.extend(self._extra_preview_controls())
         for control in controls:
             if isinstance(control, (QDoubleSpinBox, QSpinBox)):
@@ -1663,6 +1717,10 @@ class GridfinitySettingsTaskPanel:
             (self.baseplate_cache_size, factory_defaults.baseplate_cache_size),
             (self.cell_cache_size, factory_defaults.cell_cache_size),
         ]
+        if hasattr(self, "screw_stub_clearance"):
+            numeric_controls.append(
+                (self.screw_stub_clearance, factory_defaults.screw_stub_clearance)
+            )
 
         for control, default_value in numeric_controls:
 
@@ -1682,6 +1740,8 @@ class GridfinitySettingsTaskPanel:
             (self.clip_cutouts_enabled, factory_defaults.clip_cutouts_enabled),
             (self.half_grid_size, factory_defaults.half_grid_size),
         ]
+        if hasattr(self, "screw_stubs_enabled"):
+            bool_controls.append((self.screw_stubs_enabled, factory_defaults.screw_stubs_enabled))
 
         for control, default_value in bool_controls:
 
@@ -1711,6 +1771,10 @@ class GridfinitySettingsTaskPanel:
         defaults.junction_screw_diameter = self.junction_screw_diameter.value()
         defaults.junction_counterbore_diameter = self.junction_counterbore_diameter.value()
         defaults.junction_counterbore_depth = self.junction_counterbore_depth.value()
+        if hasattr(self, "screw_stubs_enabled"):
+            defaults.screw_stubs_enabled = self.screw_stubs_enabled.isChecked()
+        if hasattr(self, "screw_stub_clearance"):
+            defaults.screw_stub_clearance = self.screw_stub_clearance.value()
         defaults.clip_cutouts_enabled = self.clip_cutouts_enabled.isChecked()
         defaults.clip_length = self.clip_length.value()
         defaults.baseplate_cache_size = int(self.baseplate_cache_size.value())

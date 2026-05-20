@@ -1138,6 +1138,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             try:
                 base_obj = doc.addObject("Part::FeaturePython", "StackedBaseplates")
                 features.StackedBaseplates(base_obj)
+                base_obj.xGridUnits = 2
+                base_obj.yGridUnits = 2
                 support_obj = doc.addObject("Part::FeaturePython", "StackedBaseplatesSupport")
                 features.StackedBaseplatesSupport(support_obj, base_obj)
 
@@ -1195,3 +1197,124 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         self.assertTrue(bool(data["support_valid"]))
         self.assertGreater(float(data["base_volume"]), 0.0)
         self.assertGreater(float(data["support_volume"]), 0.0)
+
+    def test_stacked_support_screw_stubs_with_fillers_and_stitching_volume_locked(self) -> None:
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import Part
+            import gridfinity_workbench.features as features
+
+            doc = fc.newDocument("StackedScrewStubsFull")
+            try:
+                base_obj = doc.addObject("Part::FeaturePython", "StackedBaseplates")
+                features.StackedBaseplates(base_obj)
+                base_obj.xGridUnits = 2
+                base_obj.yGridUnits = 2
+                base_obj.FillerRightEnabled = True
+                base_obj.FillerTopEnabled = True
+                base_obj.FillerTopWidth = 3.0
+                base_obj.CornerStitching = True
+                support_obj = doc.addObject("Part::FeaturePython", "StackedBaseplatesSupport")
+                features.StackedBaseplatesSupport(support_obj, base_obj)
+
+                base_obj.ScrewStubsEnabled = False
+                base_obj.JunctionScrewHoles = True
+                doc.recompute()
+                base_without_stubs = base_obj.Shape
+                support_without_stubs = support_obj.Shape
+
+                base_obj.ScrewStubsEnabled = True
+                base_obj.ScrewStubClearance = 0.15
+                doc.recompute()
+                base_with_stubs = base_obj.Shape
+                support_with_stubs = support_obj.Shape
+
+                # Calculate intersection volumes
+                base_base_intersection = base_without_stubs.common(base_with_stubs)
+                support_support_intersection = support_without_stubs.common(support_with_stubs)
+                
+                payload = {{
+                    "base_without_volume": float(base_without_stubs.Volume),
+                    "base_with_volume": float(base_with_stubs.Volume),
+                    "support_without_volume": float(support_without_stubs.Volume),
+                    "support_with_volume": float(support_with_stubs.Volume),
+                    "base_base_intersection_volume": float(base_base_intersection.Volume),
+                    "support_support_intersection_volume": float(support_support_intersection.Volume),
+                    "base_valid": bool(base_without_stubs.isValid()) and bool(base_with_stubs.isValid()),
+                    "support_valid": bool(support_without_stubs.isValid()) and bool(support_with_stubs.isValid()),
+                    "base_solids": int(len(base_without_stubs.Solids)) + int(len(base_with_stubs.Solids)),
+                    "support_solids": int(len(support_without_stubs.Solids)) + int(len(support_with_stubs.Solids)),
+                }}
+                print("GRIDFINITY_RESULT=" + json.dumps(payload))
+            finally:
+                fc.closeDocument(doc.Name)
+            """
+        ).format(module_root=repr(freecad_module_root))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(script)
+            script_path = tmp.name
+
+        try:
+            proc = subprocess.run(
+                [freecad_cmd, script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            Path(script_path).unlink(missing_ok=True)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        self.assertTrue(bool(data["base_valid"]))
+        self.assertTrue(bool(data["support_valid"]))
+        self.assertGreaterEqual(int(data["base_solids"]), 2)  # At least 2 baseplates
+        self.assertGreaterEqual(int(data["support_solids"]), 2)  # At least 2 support parts
+
+        # Support volume should increase with stubs
+        self.assertGreater(
+            float(data["support_with_volume"]), float(data["support_without_volume"])
+        )
+
+        # Baseplate volume should be unchanged
+        self.assertAlmostEqual(
+            float(data["base_with_volume"]), float(data["base_without_volume"]), places=6
+        )
+
+        # Base-base and support-support should have same core volume (intersection should be nearly full volume)
+        # Allow small tolerance for floating point differences
+        base_vol_without = float(data["base_without_volume"])
+        base_vol_with = float(data["base_with_volume"])
+        base_intersection = float(data["base_base_intersection_volume"])
+        self.assertGreaterEqual(base_intersection, min(base_vol_without, base_vol_with) * 0.999)
+
+        support_vol_without = float(data["support_without_volume"])
+        support_vol_with = float(data["support_with_volume"])
+        support_intersection = float(data["support_support_intersection_volume"])
+        self.assertGreaterEqual(
+            support_intersection, min(support_vol_without, support_vol_with) * 0.999
+        )
