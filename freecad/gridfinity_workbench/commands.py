@@ -32,6 +32,10 @@ from .drawer_split import split_axis_into_printable_chunks
 from .baseplate_params import (
     BaseplateParams,
     apply_params_to_obj,
+    connecting_clip_params_from_obj,
+    apply_connecting_clip_params_to_obj,
+    ConnectingClipParams,
+    validate_connecting_clip_params,
     params_from_dialog,
     params_from_obj,
 )
@@ -108,6 +112,9 @@ class ViewProviderGridfinity:
             return True
         if isinstance(proxy, features.Baseplate):
             fcg.Control.showDialog(CreateBaseplateTaskPanel(self.icon_path, target_obj=obj))
+            return True
+        if isinstance(proxy, features.ConnectingClip):
+            fcg.Control.showDialog(CreateConnectingClipTaskPanel(self.icon_path, target_obj=obj))
             return True
         return False
 
@@ -1643,6 +1650,247 @@ class CreateScrewTogetherBaseplate(CreateCommand):
         )
 
 
+class CreateConnectingClipTaskPanel:
+    """Task panel for creating a connecting clip with custom parameters."""
+
+    def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
+        self._pixmap = pixmap
+        self._edit_obj = target_obj
+        self._target_obj: fc.DocumentObject | None = None
+        self._created_preview_obj = False
+        self._original_view: dict[str, Any] | None = None
+        self._preview_applied = False
+        self.form = QWidget()
+        self.form.setWindowTitle(
+            "Edit Connecting Clip" if target_obj is not None else "Create Connecting Clip"
+        )
+        layout = QVBoxLayout(self.form)
+
+        # Build fundamentals section first
+        controls: dict[str, QWidget] = {}
+        controls.update(_build_fundamentals_section(layout, show_note=True))
+
+        # Add connecting clip specific parameters
+        layout.addWidget(_section_label("Connecting Clip"))
+        clip_form = QFormLayout()
+        clip_form.setContentsMargins(20, 0, 0, 0)
+
+        self.clip_tolerance = _mm_spinbox(0.15, minimum=0.0, maximum=10.0)
+        clip_form.addRow("Tolerance", self.clip_tolerance)
+
+        self.clip_length = _mm_spinbox(3.0, minimum=0.1, maximum=100.0)
+        clip_form.addRow("Clip length", self.clip_length)
+
+        layout.addLayout(clip_form)
+
+        # Assign controls to instance variables
+        for key, widget in controls.items():
+            setattr(self, key, widget)
+
+        # Create preview object
+        self._target_obj = utils.new_object("ConnectingClip")
+        self._created_preview_obj = True
+        if fc.GuiUp:
+            view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
+            ViewProviderGridfinity(view_object, str(self._pixmap))
+            if hasattr(view_object, "ShowInTree"):
+                try:
+                    view_object.ShowInTree = False
+                except Exception:
+                    pass
+        features.ConnectingClip(self._target_obj)
+
+        if self._edit_obj is not None:
+            # Load values from existing object
+            self._load_from_object(self._edit_obj)
+
+        # Connect signals for preview updates
+        self.clip_tolerance.valueChanged.connect(self._update_preview)
+        self.clip_length.valueChanged.connect(self._update_preview)
+
+        # Connect fundamentals controls for preview updates
+        self.grid_size.valueChanged.connect(self._update_preview)
+        self.base_profile_main_half_width.valueChanged.connect(self._update_preview)
+        self.base_profile_main_height.valueChanged.connect(self._update_preview)
+        self.bin_outer_radius.valueChanged.connect(self._update_preview)
+
+        # Initial preview update
+        self._capture_and_set_preview_visuals()
+        self._update_preview()
+
+    def _load_from_object(self, obj: fc.DocumentObject) -> None:
+        """Load values from an existing connecting clip object."""
+        # Load clip-specific parameters
+        if hasattr(obj, "Tolerance"):
+            self.clip_tolerance.setValue(float(obj.Tolerance))
+        if hasattr(obj, "ClipLength"):
+            self.clip_length.setValue(float(obj.ClipLength))
+
+        # Load fundamentals parameters
+        if hasattr(obj, "HalfWidth"):
+            self.base_profile_main_half_width.setValue(float(obj.HalfWidth))
+        if hasattr(obj, "Height"):
+            self.base_profile_main_height.setValue(float(obj.Height))
+        if hasattr(obj, "BinOuterRadius"):
+            self.bin_outer_radius.setValue(float(obj.BinOuterRadius))
+        if hasattr(obj, "xGridSize"):
+            self.grid_size.setValue(float(obj.xGridSize))
+
+    def getStandardButtons(self) -> int:  # noqa: N802
+        return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+
+    def _update_preview(self) -> None:
+        """Update the preview object with current values."""
+        if self._target_obj is None:
+            return
+
+        # Apply values to the preview object using the param system
+        from .baseplate_params import ConnectingClipParams, FundamentalsParams, ClipParams
+
+        unitmm = fc.Units.Quantity("1 mm")
+
+        # Create param objects using fundamentals from controls
+        fundamentals = FundamentalsParams(
+            x_grid_size=self.grid_size.value() * unitmm,
+            y_grid_size=self.grid_size.value() * unitmm,  # Assuming square grid
+            bin_outer_radius=self.bin_outer_radius.value() * unitmm,
+            base_profile_main_half_width=self.base_profile_main_half_width.value() * unitmm,
+            base_profile_main_height=self.base_profile_main_height.value() * unitmm,
+        )
+        clip_specific = ClipParams(
+            enabled=True,  # Always enabled for connecting clips
+            clip_length=self.clip_length.value() * unitmm,
+            clip_tolerance=self.clip_tolerance.value() * unitmm,
+        )
+        params = ConnectingClipParams(
+            fundamentals=fundamentals,
+            clip_specific=clip_specific,
+        )
+
+        # Apply params to object
+        apply_connecting_clip_params_to_obj(self._target_obj, params)
+
+        # Recompute the object to update the shape
+        try:
+            fc.ActiveDocument.recompute()
+            self._preview_applied = True
+        except Exception:
+            pass  # Ignore errors during preview
+
+    def _preview_style(self) -> tuple[tuple[float, float, float], int]:
+        return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
+
+    def _capture_and_set_preview_visuals(self) -> None:
+        if not fc.GuiUp or self._target_obj is None:
+            return
+        view = self._target_obj.ViewObject
+        self._original_view = {
+            "ShapeColor": tuple(view.ShapeColor),
+            "Transparency": int(view.Transparency),
+            "LineColor": tuple(view.LineColor) if hasattr(view, "LineColor") else None,
+        }
+        color, transparency = self._preview_style()
+        view.ShapeColor = color
+        if hasattr(view, "LineColor"):
+            view.LineColor = color
+        view.Transparency = transparency
+
+    def _restore_preview_visuals(self) -> None:
+        if not fc.GuiUp or self._target_obj is None or self._original_view is None:
+            return
+        view = self._target_obj.ViewObject
+        view.ShapeColor = self._original_view["ShapeColor"]
+        if hasattr(view, "LineColor") and self._original_view.get("LineColor") is not None:
+            view.LineColor = self._original_view["LineColor"]
+        view.Transparency = self._original_view["Transparency"]
+
+    def _set_show_in_tree(self, obj: fc.DocumentObject, visible: bool) -> None:
+        if not fc.GuiUp:
+            return
+        try:
+            view = obj.ViewObject
+        except ReferenceError:
+            return
+        if hasattr(view, "ShowInTree"):
+            try:
+                view.ShowInTree = visible
+            except Exception:
+                pass
+
+    def accept(self) -> bool:
+        """Accept the dialog and create the final object."""
+        if self._target_obj is None:
+            return False
+
+        # Apply final values to the target object using the param system
+        from .baseplate_params import ConnectingClipParams, FundamentalsParams, ClipParams
+
+        unitmm = fc.Units.Quantity("1 mm")
+
+        # Create param objects using fundamentals from controls
+        fundamentals = FundamentalsParams(
+            x_grid_size=self.grid_size.value() * unitmm,
+            y_grid_size=self.grid_size.value() * unitmm,  # Assuming square grid
+            bin_outer_radius=self.bin_outer_radius.value() * unitmm,
+            base_profile_main_half_width=self.base_profile_main_half_width.value() * unitmm,
+            base_profile_main_height=self.base_profile_main_height.value() * unitmm,
+        )
+        clip_specific = ClipParams(
+            enabled=True,  # Always enabled for connecting clips
+            clip_length=self.clip_length.value() * unitmm,
+            clip_tolerance=self.clip_tolerance.value() * unitmm,
+        )
+        params = ConnectingClipParams(
+            fundamentals=fundamentals,
+            clip_specific=clip_specific,
+        )
+
+        # Validate the parameters
+        validation_errors = validate_connecting_clip_params(params)
+        if validation_errors:
+            # Display validation errors to user
+            error_msg = "Validation errors:\n" + "\n".join(
+                [f"- {msg}" for msg in validation_errors.values()]
+            )
+            try:
+                from PySide.QtWidgets import QMessageBox
+
+                QMessageBox.warning(None, "Validation Error", error_msg)
+            except Exception:
+                # Fallback to console if GUI not available
+                print(f"Validation errors: {validation_errors}")
+            return False
+
+        # Apply params to object
+        apply_connecting_clip_params_to_obj(self._target_obj, params)
+
+        output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
+        # Use a clean name without dimensions
+        output_obj.Label = "ConnectingClip"
+
+        if self._edit_obj is not None and self._created_preview_obj:
+            fc.ActiveDocument.removeObject(self._target_obj.Name)
+        else:
+            self._restore_preview_visuals()
+            self._set_show_in_tree(output_obj, True)
+
+        # Recompute to finalize the shape
+        fc.ActiveDocument.recompute()
+        fcg.SendMsgToActiveView("ViewFit")
+        fcg.Control.closeDialog()
+        return True
+
+    def reject(self) -> bool:
+        """Reject the dialog and cleanup preview object."""
+        if self._target_obj is not None:
+            if self._created_preview_obj:
+                fc.ActiveDocument.removeObject(self._target_obj.Name)
+            else:
+                self._restore_preview_visuals()
+        fcg.Control.closeDialog()
+        return True
+
+
 class CreateConnectingClip(CreateCommand):
     def __init__(self) -> None:
         super().__init__(
@@ -1650,6 +1898,9 @@ class CreateConnectingClip(CreateCommand):
             gridfinity_function=features.ConnectingClip,
             pixmap=ICONDIR / "connecting-clip.svg",
         )
+
+    def Activated(self) -> None:
+        fcg.Control.showDialog(CreateConnectingClipTaskPanel(self.pixmap))
 
 
 class GridfinitySettingsTaskPanel:

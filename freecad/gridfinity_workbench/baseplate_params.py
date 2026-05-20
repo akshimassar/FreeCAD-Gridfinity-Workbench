@@ -475,16 +475,17 @@ def connecting_clip_params_from_obj(obj: fc.DocumentObject) -> ConnectingClipPar
     fundamentals = FundamentalsParams(
         x_grid_size=x_grid_size,
         y_grid_size=y_grid_size,
-        bin_outer_radius=obj.HalfWidth
-        * 2,  # Convert HalfWidth to equivalent BinOuterRadius for compatibility
+        bin_outer_radius=getattr(
+            obj, "BinOuterRadius", obj.HalfWidth * 2
+        ),  # Convert HalfWidth to equivalent BinOuterRadius for compatibility
         base_profile_main_half_width=obj.HalfWidth,
         base_profile_main_height=obj.Height,
     )
 
     clip_specific = ClipParams(
         enabled=True,  # Always enabled for connecting clips
-        clip_length=obj.ClipLength,
-        clip_tolerance=obj.Tolerance,
+        clip_length=getattr(obj, "ClipLength", 3.0 * unitmm),
+        clip_tolerance=getattr(obj, "Tolerance", 0.15 * unitmm),
     )
 
     return ConnectingClipParams(
@@ -497,6 +498,14 @@ def apply_connecting_clip_params_to_obj(
     obj: fc.DocumentObject, params: ConnectingClipParams
 ) -> None:
     """Apply connecting clip parameters to object properties."""
+    # Set fundamental properties
+    obj.xGridSize = params.fundamentals.x_grid_size
+    obj.yGridSize = params.fundamentals.y_grid_size
+    obj.BinOuterRadius = params.fundamentals.bin_outer_radius
+    obj.BaseProfileMainHalfWidth = params.fundamentals.base_profile_main_half_width
+    obj.BaseProfileMainHeight = params.fundamentals.base_profile_main_height
+
+    # Set clip-specific properties
     obj.HalfWidth = params.fundamentals.base_profile_main_half_width
     obj.Height = params.fundamentals.base_profile_main_height
     obj.Tolerance = params.clip_specific.clip_tolerance

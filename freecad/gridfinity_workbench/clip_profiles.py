@@ -24,27 +24,23 @@ def build_clip_profile_wire(
     tolerance: fc.Units.Quantity,
 ) -> Part.Wire:
     """Build the arc-based connecting clip profile in YZ plane."""
-    # Keep clip/cutout on shared scale_z (height/2.5). These factors preserve the
-    # legacy clip world geometry that originally used scale_z = height/4.
-    z_legacy_factor = 0.625  # (2.5 / 4.0)
-
     scale_y, scale_z = _profile_scales(half_width, height)
     t_world = tolerance / fc.Units.Quantity("1 mm")
     t_ref_y = (t_world / scale_y).Value
     t_ref_z = (t_world / scale_z).Value
 
-    a = _scale_profile_yz(-0.7 - t_ref_y, 2.5 * z_legacy_factor, scale_y, scale_z)
-    b = _scale_profile_yz(0.7 + t_ref_y, 2.5 * z_legacy_factor, scale_y, scale_z)
+    a = _scale_profile_yz(-0.7 - t_ref_y, 2.5, scale_y, scale_z)
+    b = _scale_profile_yz(0.7 + t_ref_y, 2.5, scale_y, scale_z)
     d = _scale_profile_yz(0.6 + t_ref_y, 0.0 + t_ref_z, scale_y, scale_z)
     e = _scale_profile_yz(1.9 - t_ref_y, 0.0 + t_ref_z, scale_y, scale_z)
-    f = _scale_profile_yz(1.9 - t_ref_y, 2.5 * z_legacy_factor, scale_y, scale_z)
-    g = _scale_profile_yz(-1.9 + t_ref_y, 2.5 * z_legacy_factor, scale_y, scale_z)
+    f = _scale_profile_yz(1.9 - t_ref_y, 2.5, scale_y, scale_z)
+    g = _scale_profile_yz(-1.9 + t_ref_y, 2.5, scale_y, scale_z)
     h = _scale_profile_yz(-1.9 + t_ref_y, 0.0 + t_ref_z, scale_y, scale_z)
     i = _scale_profile_yz(-0.6 - t_ref_y, 0.0 + t_ref_z, scale_y, scale_z)
 
     arc1 = Part.Arc(
         a,
-        _scale_profile_yz(0.0, (2.5 + 0.7) * z_legacy_factor + t_ref_z, scale_y, scale_z),
+        _scale_profile_yz(0.0, (2.5 + 0.7) + t_ref_z, scale_y, scale_z),
         b,
     ).toShape()
     line1 = Part.LineSegment(b, d).toShape()
@@ -52,7 +48,7 @@ def build_clip_profile_wire(
     line3 = Part.LineSegment(e, f).toShape()
     arc2 = Part.Arc(
         f,
-        _scale_profile_yz(0.0, (2.5 + 1.9) * z_legacy_factor - t_ref_z, scale_y, scale_z),
+        _scale_profile_yz(0.0, (2.5 + 1.9) - t_ref_z, scale_y, scale_z),
         g,
     ).toShape()
     line4 = Part.LineSegment(g, h).toShape()

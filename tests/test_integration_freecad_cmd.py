@@ -311,7 +311,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 obj = doc.addObject("Part::FeaturePython", "ConnectingClip")
                 features.ConnectingClip(obj)
                 obj.HalfWidth = 2.15
-                obj.Height = 4.0
+                obj.Height = 2.5
                 obj.Tolerance = 0.15
                 obj.ClipLength = 3.0
                 doc.recompute()
