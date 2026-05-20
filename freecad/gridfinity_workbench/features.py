@@ -1500,8 +1500,18 @@ class ConnectingClip(FoundationGridfinity):
         ).ClipLength = 3.0
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        wire = clip_profiles.build_clip_profile_wire(obj.HalfWidth, obj.Height, obj.Tolerance)
-        length = obj.ClipLength - 2 * obj.Tolerance
+        from .baseplate_params import connecting_clip_params_from_obj
+
+        params = connecting_clip_params_from_obj(obj)
+
+        wire = clip_profiles.build_clip_profile_wire(
+            params.fundamentals.base_profile_main_half_width,
+            params.fundamentals.base_profile_main_height,
+            params.clip_specific.clip_tolerance,
+        )
+        length = params.clip_specific.clip_length - 2 * params.clip_specific.clip_tolerance
         return (
-            Part.Face(wire).extrude(fc.Vector(length, 0, 0)).translate(fc.Vector(-length / 2, 0, 0))
+            Part.Face(wire)
+            .extrude(fc.Vector(float(length), 0, 0))
+            .translate(fc.Vector(-float(length) / 2, 0, 0))
         )

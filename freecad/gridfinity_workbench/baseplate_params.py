@@ -64,9 +64,10 @@ class ScrewStubParams:
 
 
 @dataclass(frozen=True)
-class ClipCutoutParams:
+class ClipParams:
     enabled: bool
     clip_length: fc.Units.Quantity
+    clip_tolerance: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
@@ -148,9 +149,10 @@ def _params_from_controls(data: dict[str, Any], *, preview_mode: bool) -> Basepl
             enabled=bool(data.get("screw_stubs_enabled", False)) and not preview_mode,
             clearance=_q_mm(float(data.get("screw_stub_clearance", 0.15))),
         ),
-        clip_cutouts=ClipCutoutParams(
+        clip_cutouts=ClipParams(
             enabled=clip_enabled,
             clip_length=_q_mm(float(data["clip_length"])),
+            clip_tolerance=_q_mm(0.15),  # Default tolerance for clips
         ),
     )
 
@@ -226,6 +228,7 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
 
     if params.clip_cutouts.enabled:
         clip_length = float(params.clip_cutouts.clip_length)
+        clip_tolerance = float(params.clip_cutouts.clip_tolerance)
         max_clip = 2 * float(params.fundamentals.base_profile_main_half_width)
         if not clip_length > 0:
             add_error("clip_length", f"ClipLength must be greater than {_fmt_mm(0)}")
@@ -233,6 +236,10 @@ def params_from_dialog(data: dict[str, Any], *, preview_mode: bool) -> DialogVal
             add_error(
                 "clip_length",
                 f"ClipLength must be less than 2*BaseProfileMainHalfWidth ({_fmt_mm(max_clip)})",
+            )
+        if not clip_tolerance >= 0:
+            add_error(
+                "clip_tolerance", f"ClipTolerance must be greater than or equal to {_fmt_mm(0)}"
             )
 
     if params.screw_stubs.enabled:
@@ -405,9 +412,10 @@ def params_from_obj(obj: fc.DocumentObject) -> BaseplateParams:
             enabled=bool(getattr(obj, "ScrewStubsEnabled", False)),
             clearance=getattr(obj, "ScrewStubClearance", zero_x),
         ),
-        clip_cutouts=ClipCutoutParams(
+        clip_cutouts=ClipParams(
             enabled=bool(getattr(obj, "ClipCutoutsEnabled", False)),
             clip_length=getattr(obj, "ClipLength", zero_x),
+            clip_tolerance=getattr(obj, "ClipTolerance", zero_x),  # Default to zero if not present
         ),
     )
 
@@ -439,6 +447,7 @@ def apply_params_to_obj(obj: fc.DocumentObject, params: BaseplateParams) -> None
 
     obj.ClipCutoutsEnabled = params.clip_cutouts.enabled
     obj.ClipLength = params.clip_cutouts.clip_length
+    obj.ClipTolerance = params.clip_cutouts.clip_tolerance
 
     obj.FillerRightEnabled = params.fillers.right_enabled
     obj.FillerRightWidth = params.fillers.right_width
@@ -448,3 +457,70 @@ def apply_params_to_obj(obj: fc.DocumentObject, params: BaseplateParams) -> None
     obj.FillerTopWidth = params.fillers.top_width
     obj.FillerBottomEnabled = params.fillers.bottom_enabled
     obj.FillerBottomWidth = params.fillers.bottom_width
+
+
+@dataclass(frozen=True)
+class ConnectingClipParams:
+    """Parameters for connecting clip generation."""
+
+    fundamentals: FundamentalsParams
+    clip_specific: ClipParams
+
+
+def connecting_clip_params_from_obj(obj: fc.DocumentObject) -> ConnectingClipParams:
+    """Extract connecting clip parameters from object properties."""
+    x_grid_size = getattr(obj, "xGridSize", 42.0 * unitmm)  # Default grid size
+    y_grid_size = getattr(obj, "yGridSize", 42.0 * unitmm)  # Default grid size
+
+    fundamentals = FundamentalsParams(
+        x_grid_size=x_grid_size,
+        y_grid_size=y_grid_size,
+        bin_outer_radius=obj.HalfWidth
+        * 2,  # Convert HalfWidth to equivalent BinOuterRadius for compatibility
+        base_profile_main_half_width=obj.HalfWidth,
+        base_profile_main_height=obj.Height,
+    )
+
+    clip_specific = ClipParams(
+        enabled=True,  # Always enabled for connecting clips
+        clip_length=obj.ClipLength,
+        clip_tolerance=obj.Tolerance,
+    )
+
+    return ConnectingClipParams(
+        fundamentals=fundamentals,
+        clip_specific=clip_specific,
+    )
+
+
+def apply_connecting_clip_params_to_obj(
+    obj: fc.DocumentObject, params: ConnectingClipParams
+) -> None:
+    """Apply connecting clip parameters to object properties."""
+    obj.HalfWidth = params.fundamentals.base_profile_main_half_width
+    obj.Height = params.fundamentals.base_profile_main_height
+    obj.Tolerance = params.clip_specific.clip_tolerance
+    obj.ClipLength = params.clip_specific.clip_length
+
+
+def validate_connecting_clip_params(params: ConnectingClipParams) -> dict[str, str]:
+    """Validate connecting clip parameters."""
+    errors: dict[str, str] = {}
+
+    half_width = float(params.fundamentals.base_profile_main_half_width)
+    height = float(params.fundamentals.base_profile_main_height)
+    tolerance = float(params.clip_specific.clip_tolerance)
+    clip_length = float(params.clip_specific.clip_length)
+
+    if half_width <= 0:
+        errors["half_width"] = f"HalfWidth must be greater than 0"
+    if height <= 0:
+        errors["height"] = f"Height must be greater than 0"
+    if tolerance < 0:
+        errors["tolerance"] = f"Tolerance must be greater than or equal to 0"
+    if clip_length <= 0:
+        errors["clip_length"] = f"ClipLength must be greater than 0"
+    if clip_length <= 2 * tolerance:
+        errors["clip_length"] = f"ClipLength must be greater than 2 * Tolerance ({2 * tolerance})"
+
+    return errors

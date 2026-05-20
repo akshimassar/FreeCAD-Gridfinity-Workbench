@@ -13,7 +13,7 @@ from . import junction_screws as junction_screw_shapes
 from . import const, utils
 from . import magnet_hole as magnet_hole_module
 from .baseplate_params import (
-    ClipCutoutParams,
+    ClipParams,
     FundamentalsParams,
     JunctionScrewParams,
 )
@@ -529,7 +529,7 @@ def make_clip_cutouts(
 
 def make_clip_cutouts_from_params(
     fundamentals: FundamentalsParams,
-    clip_cutouts: ClipCutoutParams,
+    clip_cutouts: ClipParams,
     *,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
