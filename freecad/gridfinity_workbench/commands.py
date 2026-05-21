@@ -32,10 +32,6 @@ from .drawer_split import split_axis_into_printable_chunks
 from .baseplate_params import (
     BaseplateParams,
     apply_params_to_obj,
-    connecting_clip_params_from_obj,
-    apply_connecting_clip_params_to_obj,
-    ConnectingClipParams,
-    validate_connecting_clip_params,
     params_from_dialog,
     params_from_obj,
 )
@@ -1660,32 +1656,17 @@ class CreateConnectingClipTaskPanel:
         self._created_preview_obj = False
         self._original_view: dict[str, Any] | None = None
         self._preview_applied = False
+        self._controls_by_key: dict[str, QWidget] = {}
         self.form = QWidget()
         self.form.setWindowTitle(
             "Edit Connecting Clip" if target_obj is not None else "Create Connecting Clip"
         )
         layout = QVBoxLayout(self.form)
 
-        # Build fundamentals section first
-        controls: dict[str, QWidget] = {}
-        controls.update(_build_fundamentals_section(layout, show_note=True))
+        from .param_system import ConnectingClipParams
 
-        # Add connecting clip specific parameters
-        layout.addWidget(_section_label("Connecting Clip"))
-        clip_form = QFormLayout()
-        clip_form.setContentsMargins(20, 0, 0, 0)
-
-        self.clip_tolerance = _mm_spinbox(0.15, minimum=0.0, maximum=10.0)
-        clip_form.addRow("Tolerance", self.clip_tolerance)
-
-        self.clip_length = _mm_spinbox(3.0, minimum=0.1, maximum=100.0)
-        clip_form.addRow("Clip length", self.clip_length)
-
-        layout.addLayout(clip_form)
-
-        # Assign controls to instance variables
-        for key, widget in controls.items():
-            setattr(self, key, widget)
+        params = ConnectingClipParams()
+        self._controls_by_key = self._build_connecting_clip_controls(layout, params)
 
         # Create preview object
         self._target_obj = utils.new_object("ConnectingClip")
@@ -1698,21 +1679,18 @@ class CreateConnectingClipTaskPanel:
                     view_object.ShowInTree = False
                 except Exception:
                     pass
-        features.ConnectingClip(self._target_obj)
+
+        features.ConnectingClip(self._target_obj, params)
 
         if self._edit_obj is not None:
             # Load values from existing object
             self._load_from_object(self._edit_obj)
 
-        # Connect signals for preview updates
-        self.clip_tolerance.valueChanged.connect(self._update_preview)
-        self.clip_length.valueChanged.connect(self._update_preview)
-
-        # Connect fundamentals controls for preview updates
-        self.grid_size.valueChanged.connect(self._update_preview)
-        self.base_profile_main_half_width.valueChanged.connect(self._update_preview)
-        self.base_profile_main_height.valueChanged.connect(self._update_preview)
-        self.bin_outer_radius.valueChanged.connect(self._update_preview)
+        for control in self._controls_by_key.values():
+            if hasattr(control, "valueChanged"):
+                control.valueChanged.connect(self._update_preview)
+            if hasattr(control, "stateChanged"):
+                control.stateChanged.connect(self._update_preview)
 
         # Initial preview update
         self._capture_and_set_preview_visuals()
@@ -1720,21 +1698,62 @@ class CreateConnectingClipTaskPanel:
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         """Load values from an existing connecting clip object."""
-        # Load clip-specific parameters
-        if hasattr(obj, "Tolerance"):
-            self.clip_tolerance.setValue(float(obj.Tolerance))
-        if hasattr(obj, "ClipLength"):
-            self.clip_length.setValue(float(obj.ClipLength))
+        from .param_system import ConnectingClipParams
 
-        # Load fundamentals parameters
-        if hasattr(obj, "HalfWidth"):
-            self.base_profile_main_half_width.setValue(float(obj.HalfWidth))
-        if hasattr(obj, "Height"):
-            self.base_profile_main_height.setValue(float(obj.Height))
-        if hasattr(obj, "BinOuterRadius"):
-            self.bin_outer_radius.setValue(float(obj.BinOuterRadius))
-        if hasattr(obj, "xGridSize"):
-            self.grid_size.setValue(float(obj.xGridSize))
+        params = ConnectingClipParams().from_obj(obj)
+        params.apply_to_ui_owner(self)
+
+    def _build_connecting_clip_controls(
+        self, layout: QVBoxLayout, params: Any
+    ) -> dict[str, QWidget]:
+        from .param_system import BooleanParam, NumberParam
+
+        controls: dict[str, QWidget] = {}
+        sections = (("fundamentals", "Fundamentals"), ("clip_specific", "Connecting Clip"))
+
+        for group_name, title in sections:
+            group = getattr(params, group_name)
+            layout.addWidget(_section_label(title))
+            if group_name == "fundamentals":
+                compatibility_note = QLabel(
+                    "Changing these values affects Gridfinity compatibility with other objects."
+                )
+                compatibility_note.setWordWrap(True)
+                compatibility_note.setAlignment(Qt.AlignLeft)
+                layout.addWidget(compatibility_note)
+
+            form = QFormLayout()
+            form.setContentsMargins(20, 0, 0, 0)
+
+            for param_name, param in group._parameters.items():
+                key = f"{group_name}__{param_name}"
+                label = param.display_name
+                if isinstance(param, BooleanParam):
+                    control = QCheckBox()
+                    control.setChecked(bool(group.get_value(param_name)))
+                elif isinstance(param, NumberParam):
+                    control = QDoubleSpinBox()
+                    control.setDecimals(2)
+                    if param.min_value is not None:
+                        control.setMinimum(float(param.min_value))
+                    else:
+                        control.setMinimum(0.0)
+                    if param.max_value is not None:
+                        control.setMaximum(float(param.max_value))
+                    else:
+                        control.setMaximum(1000.0)
+                    control.setSuffix(" mm")
+                    control.setValue(float(group.get_value(param_name)))
+                else:
+                    continue
+
+                form.addRow(label, control)
+                controls[key] = control
+                setattr(self, key, control)
+
+            layout.addLayout(form)
+
+        return controls
 
     def getStandardButtons(self) -> int:  # noqa: N802
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1744,31 +1763,16 @@ class CreateConnectingClipTaskPanel:
         if self._target_obj is None:
             return
 
-        # Apply values to the preview object using the param system
-        from .baseplate_params import ConnectingClipParams, FundamentalsParams, ClipParams
+        # Apply values to the preview object using the new param system
+        from .param_system import ConnectingClipParams
 
-        unitmm = fc.Units.Quantity("1 mm")
+        # Create param object using values from controls
+        params = ConnectingClipParams()
 
-        # Create param objects using fundamentals from controls
-        fundamentals = FundamentalsParams(
-            x_grid_size=self.grid_size.value() * unitmm,
-            y_grid_size=self.grid_size.value() * unitmm,  # Assuming square grid
-            bin_outer_radius=self.bin_outer_radius.value() * unitmm,
-            base_profile_main_half_width=self.base_profile_main_half_width.value() * unitmm,
-            base_profile_main_height=self.base_profile_main_height.value() * unitmm,
-        )
-        clip_specific = ClipParams(
-            enabled=True,  # Always enabled for connecting clips
-            clip_length=self.clip_length.value() * unitmm,
-            clip_tolerance=self.clip_tolerance.value() * unitmm,
-        )
-        params = ConnectingClipParams(
-            fundamentals=fundamentals,
-            clip_specific=clip_specific,
-        )
+        params.update_from_ui_owner(self)
 
         # Apply params to object
-        apply_connecting_clip_params_to_obj(self._target_obj, params)
+        params.apply_to_obj(self._target_obj)
 
         # Recompute the object to update the shape
         try:
@@ -1822,31 +1826,16 @@ class CreateConnectingClipTaskPanel:
         if self._target_obj is None:
             return False
 
-        # Apply final values to the target object using the param system
-        from .baseplate_params import ConnectingClipParams, FundamentalsParams, ClipParams
+        # Apply final values to the target object using the new param system
+        from .param_system import ConnectingClipParams
 
-        unitmm = fc.Units.Quantity("1 mm")
+        # Create param object using values from controls
+        params = ConnectingClipParams()
 
-        # Create param objects using fundamentals from controls
-        fundamentals = FundamentalsParams(
-            x_grid_size=self.grid_size.value() * unitmm,
-            y_grid_size=self.grid_size.value() * unitmm,  # Assuming square grid
-            bin_outer_radius=self.bin_outer_radius.value() * unitmm,
-            base_profile_main_half_width=self.base_profile_main_half_width.value() * unitmm,
-            base_profile_main_height=self.base_profile_main_height.value() * unitmm,
-        )
-        clip_specific = ClipParams(
-            enabled=True,  # Always enabled for connecting clips
-            clip_length=self.clip_length.value() * unitmm,
-            clip_tolerance=self.clip_tolerance.value() * unitmm,
-        )
-        params = ConnectingClipParams(
-            fundamentals=fundamentals,
-            clip_specific=clip_specific,
-        )
+        params.update_from_ui_owner(self)
 
-        # Validate the parameters
-        validation_errors = validate_connecting_clip_params(params)
+        # Validate the parameters using the new system
+        validation_errors = params.validate()
         if validation_errors:
             # Display validation errors to user
             error_msg = "Validation errors:\n" + "\n".join(
@@ -1861,8 +1850,8 @@ class CreateConnectingClipTaskPanel:
                 print(f"Validation errors: {validation_errors}")
             return False
 
-        # Apply params to object
-        apply_connecting_clip_params_to_obj(self._target_obj, params)
+        # Apply params to object using the new system
+        params.apply_to_obj(self._target_obj)
 
         output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
         # Use a clean name without dimensions

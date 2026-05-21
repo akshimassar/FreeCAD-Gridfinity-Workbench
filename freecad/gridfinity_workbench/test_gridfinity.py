@@ -22,6 +22,7 @@ SIMPLE_COMMANDS = [
     "CreateDrawerBaseplate",
     "CreateMagnetBaseplate",
     "CreateScrewTogetherBaseplate",
+    "CreateConnectingClip",
 ]
 
 CUSTOM_BIN_COMMANDS = [

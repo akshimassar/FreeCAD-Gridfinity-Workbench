@@ -1468,48 +1468,34 @@ class StandaloneLabelShelf:
 
 
 class ConnectingClip(FoundationGridfinity):
-    def __init__(self, obj: fc.DocumentObject) -> None:
+    def __init__(self, obj: fc.DocumentObject, params: "ConnectingClipParams") -> None:
         super().__init__(obj)
 
-        obj.addProperty(
-            "App::PropertyLength",
-            "HalfWidth",
-            "Gridfinity",
-            "Half width of clip profile <br> <br> default = 2.15 mm",
-        ).HalfWidth = 2.15
-
-        obj.addProperty(
-            "App::PropertyLength",
-            "Height",
-            "Gridfinity",
-            "Height of clip profile <br> <br> default = 4.0 mm",
-        ).Height = 4.0
-
-        obj.addProperty(
-            "App::PropertyLength",
-            "Tolerance",
-            "Gridfinity",
-            "Clip tolerance <br> <br> default = 0.15 mm",
-        ).Tolerance = 0.15
-
-        obj.addProperty(
-            "App::PropertyLength",
-            "ClipLength",
-            "Gridfinity",
-            "Clip length <br> <br> default = 3.0 mm",
-        ).ClipLength = 3.0
+        # Use the generic parameter-driven property addition
+        params.add_all_properties_to_object(obj)
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        from .baseplate_params import connecting_clip_params_from_obj
+        from .param_system import ConnectingClipParams
 
-        params = connecting_clip_params_from_obj(obj)
+        # Create param group and extract values from object
+        params = ConnectingClipParams().from_obj(obj)
+
+        # Get frozen data object with all parameter values
+        data = params.data()
+
+        # Use the data object for geometry creation
+        # Use the fundamentals for profile dimensions and clip-specific for geometry parameters
+        half_width_value = data.fundamentals.base_profile_main_half_width
+        height_value = data.fundamentals.base_profile_main_height
+        tolerance_value = data.clip_specific.tolerance
+        clip_length_value = data.clip_specific.clip_length
 
         wire = clip_profiles.build_clip_profile_wire(
-            params.fundamentals.base_profile_main_half_width,
-            params.fundamentals.base_profile_main_height,
-            params.clip_specific.clip_tolerance,
+            half_width_value,
+            height_value,
+            tolerance_value,
         )
-        length = params.clip_specific.clip_length - 2 * params.clip_specific.clip_tolerance
+        length = clip_length_value - 2 * tolerance_value
         return (
             Part.Face(wire)
             .extrude(fc.Vector(float(length), 0, 0))
