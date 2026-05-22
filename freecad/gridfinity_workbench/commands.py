@@ -28,7 +28,8 @@ from PySide.QtWidgets import (
 )
 
 from . import custom_shape, features, utils
-from .param import CombinedBaseplateParams
+from .param import BaseplateSizeParams, CombinedBaseplateParams
+from .param_system import IntParam
 from .drawer_split import split_axis_into_printable_chunks
 from .settings import defaults, factory_defaults
 
@@ -171,19 +172,26 @@ def _build_size_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     form = QFormLayout()
     form.setContentsMargins(20, 0, 0, 0)
 
-    x_grid_units = QSpinBox()
-    x_grid_units.setMinimum(0)
-    x_grid_units.setMaximum(200)
-    x_grid_units.setValue(2)
-    form.addRow("X grid units", x_grid_units)
+    params = BaseplateSizeParams()
+    controls: dict[str, QWidget] = {}
+    for param_name, param in params._parameters.items():
+        if not isinstance(param, IntParam):
+            continue
+        control = QSpinBox()
+        if param.min_value is not None:
+            control.setMinimum(int(param.min_value))
+        else:
+            control.setMinimum(0)
+        if param.max_value is not None:
+            control.setMaximum(int(param.max_value))
+        else:
+            control.setMaximum(200)
+        control.setValue(int(params.get_value(param_name)))
+        form.addRow(param.display_name, control)
+        controls[f"size__{param_name}"] = control
 
-    y_grid_units = QSpinBox()
-    y_grid_units.setMinimum(0)
-    y_grid_units.setMaximum(200)
-    y_grid_units.setValue(2)
-    form.addRow("Y grid units", y_grid_units)
     layout.addLayout(form)
-    return {"x_grid_units": x_grid_units, "y_grid_units": y_grid_units}
+    return controls
 
 
 def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict[str, QWidget]:
@@ -213,10 +221,10 @@ def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict
 
     layout.addLayout(form)
     return {
-        "grid_size": grid_size,
-        "base_profile_main_half_width": base_profile_main_half_width,
-        "base_profile_main_height": base_profile_main_height,
-        "bin_outer_radius": bin_outer_radius,
+        "fundamentals__grid_size": grid_size,
+        "fundamentals__main_half_width": base_profile_main_half_width,
+        "fundamentals__main_height": base_profile_main_height,
+        "fundamentals__outer_radius": bin_outer_radius,
     }
 
 
@@ -238,14 +246,14 @@ def _build_baseplate_section(
     form.addRow("Top crop", top_crop)
 
     controls: dict[str, QWidget] = {
-        "enable_lower_chamfer": enable_lower_chamfer,
-        "base_profile_lower_chamfer_size": base_profile_lower_chamfer_size,
-        "top_crop": top_crop,
+        "core__lower_chamfer_enabled": enable_lower_chamfer,
+        "core__lower_chamfer_size": base_profile_lower_chamfer_size,
+        "core__top_crop": top_crop,
     }
     if include_clearance:
         clearance = _mm_spinbox(defaults.clearance)
         form.addRow("Clearance", clearance)
-        controls["clearance"] = clearance
+        controls["core__clearance"] = clearance
 
     layout.addLayout(form)
 
@@ -264,10 +272,10 @@ def _build_baseplate_section(
     layout.addLayout(click_form)
     controls.update(
         {
-            "click_springs_enabled": click_springs_enabled,
-            "click_thickness": click_thickness,
-            "click_length": click_length,
-            "click_offset": click_offset,
+            "click_springs__enabled": click_springs_enabled,
+            "click_springs__click_thickness": click_thickness,
+            "click_springs__click_length": click_length,
+            "click_springs__click_offset": click_offset,
         }
     )
 
@@ -286,10 +294,10 @@ def _build_baseplate_section(
     layout.addLayout(junction_form)
     controls.update(
         {
-            "junction_screw_holes": junction_screw_holes,
-            "junction_screw_diameter": junction_screw_diameter,
-            "junction_counterbore_diameter": junction_counterbore_diameter,
-            "junction_counterbore_depth": junction_counterbore_depth,
+            "junction_screws__enabled": junction_screw_holes,
+            "junction_screws__screw_diameter": junction_screw_diameter,
+            "junction_screws__counterbore_diameter": junction_counterbore_diameter,
+            "junction_screws__counterbore_depth": junction_counterbore_depth,
         }
     )
 
@@ -302,7 +310,12 @@ def _build_baseplate_section(
     clip_length = _mm_spinbox(defaults.clip_length)
     clip_form.addRow("Clip length", clip_length)
     layout.addLayout(clip_form)
-    controls.update({"clip_cutouts_enabled": clip_cutouts_enabled, "clip_length": clip_length})
+    controls.update(
+        {
+            "clip_cutouts__enabled": clip_cutouts_enabled,
+            "clip_cutouts__clip_length": clip_length,
+        }
+    )
 
     if include_filler:
         layout.addWidget(_section_label("Filler strips", indent_px=20))
@@ -336,14 +349,14 @@ def _build_baseplate_section(
         layout.addLayout(filler_form)
         controls.update(
             {
-                "filler_right_enabled": filler_right_enabled,
-                "filler_right_width": filler_right_width,
-                "filler_left_enabled": filler_left_enabled,
-                "filler_left_width": filler_left_width,
-                "filler_top_enabled": filler_top_enabled,
-                "filler_top_width": filler_top_width,
-                "filler_bottom_enabled": filler_bottom_enabled,
-                "filler_bottom_width": filler_bottom_width,
+                "size__filler_right_enabled": filler_right_enabled,
+                "size__filler_right_width": filler_right_width,
+                "size__filler_left_enabled": filler_left_enabled,
+                "size__filler_left_width": filler_left_width,
+                "size__filler_top_enabled": filler_top_enabled,
+                "size__filler_top_width": filler_top_width,
+                "size__filler_bottom_enabled": filler_bottom_enabled,
+                "size__filler_bottom_width": filler_bottom_width,
             }
         )
     return controls
@@ -704,52 +717,25 @@ class CreateDrawerBaseplateTaskPanel:
             self.bed_depth.setValue(float(obj.PrinterBedDepth))
 
         params = CombinedBaseplateParams().from_obj(obj)
-        self.grid_size.setValue(float(params.fundamentals.get_value("x_grid_size")))
-        self.base_profile_main_half_width.setValue(
-            float(params.fundamentals.get_value("base_profile_main_half_width"))
-        )
-        self.base_profile_main_height.setValue(
-            float(params.fundamentals.get_value("base_profile_main_height"))
-        )
-        self.bin_outer_radius.setValue(float(params.fundamentals.get_value("bin_outer_radius")))
-        self.enable_lower_chamfer.setChecked(bool(params.core.get_value("lower_chamfer_enabled")))
-        self.base_profile_lower_chamfer_size.setValue(float(params.core.get_value("lower_chamfer_size")))
-        self.top_crop.setValue(float(params.core.get_value("top_crop")))
-        self.clearance.setValue(float(params.core.get_value("clearance")))
-        self.click_springs_enabled.setChecked(bool(params.click_springs.get_value("enabled")))
-        self.click_thickness.setValue(float(params.click_springs.get_value("click_thickness")))
-        self.click_length.setValue(float(params.click_springs.get_value("click_length")))
-        self.click_offset.setValue(float(params.click_springs.get_value("click_offset")))
-        self.junction_screw_holes.setChecked(bool(params.junction_screws.get_value("enabled")))
-        self.junction_screw_diameter.setValue(float(params.junction_screws.get_value("screw_diameter")))
-        self.junction_counterbore_diameter.setValue(
-            float(params.junction_screws.get_value("counterbore_diameter"))
-        )
-        self.junction_counterbore_depth.setValue(float(params.junction_screws.get_value("counterbore_depth")))
-        if hasattr(self, "screw_stubs_enabled"):
-            self.screw_stubs_enabled.setChecked(bool(params.screw_stubs.get_value("enabled")))
-        if hasattr(self, "screw_stub_clearance"):
-            self.screw_stub_clearance.setValue(float(params.screw_stubs.get_value("clearance")))
-        self.clip_cutouts_enabled.setChecked(bool(params.clip_cutouts.get_value("enabled")))
-        self.clip_length.setValue(float(params.clip_cutouts.get_value("clip_length")))
+        params.apply_to_ui_owner(self)
 
     def getStandardButtons(self) -> int:  # noqa: N802
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 
     def _set_validation_visuals(self, errors: dict[str, str]) -> None:
         mapping = {
-            "top_crop": self.top_crop,
-            "click_thickness": self.click_thickness,
-            "click_length": self.click_length,
-            "junction_screw_diameter": self.junction_screw_diameter,
-            "junction_counterbore_diameter": self.junction_counterbore_diameter,
-            "junction_counterbore_depth": self.junction_counterbore_depth,
+            "top_crop": self.core__top_crop,
+            "click_thickness": self.click_springs__click_thickness,
+            "click_length": self.click_springs__click_length,
+            "junction_screw_diameter": self.junction_screws__screw_diameter,
+            "junction_counterbore_diameter": self.junction_screws__counterbore_diameter,
+            "junction_counterbore_depth": self.junction_screws__counterbore_depth,
             **(
-                {"screw_stub_clearance": self.screw_stub_clearance}
-                if hasattr(self, "screw_stub_clearance")
+                {"screw_stub_clearance": self.screw_stubs__clearance}
+                if hasattr(self, "screw_stubs__clearance")
                 else {}
             ),
-            "clip_length": self.clip_length,
+            "clip_length": self.clip_cutouts__clip_length,
         }
         for key, widget in mapping.items():
             if key in errors:
@@ -773,7 +759,7 @@ class CreateDrawerBaseplateTaskPanel:
         return ", ".join(encoded_chunks)
 
     def _refresh_summary(self) -> None:
-        validation = self._validate_baseplate_controls(preview_mode=False)
+        validation = self._baseplate_params_from_ui(preview_mode=False)
         errors = validation.validate()
         self._set_validation_visuals(errors)
         if errors:
@@ -781,7 +767,7 @@ class CreateDrawerBaseplateTaskPanel:
             self.summary.setText(f"Validation errors:\n{msg}")
             return
         try:
-            grid_mm = float(self.grid_size.value())
+            grid_mm = float(self.fundamentals__grid_size.value())
             if float(self.drawer_width.value()) <= 0 or float(self.drawer_depth.value()) <= 0:
                 raise ValueError("Drawer dimensions must be > 0")
             if float(self.bed_width.value()) <= 0 or float(self.bed_depth.value()) <= 0:
@@ -831,7 +817,7 @@ class CreateDrawerBaseplateTaskPanel:
             self.drawer_depth,
             self.bed_width,
             self.bed_depth,
-            self.grid_size,
+            self.fundamentals__grid_size,
             self.width_alignment,
             self.depth_alignment,
             self.split_algorithm,
@@ -846,65 +832,14 @@ class CreateDrawerBaseplateTaskPanel:
         self._refresh_summary()
         self._preview_timer.start()
 
-    def _validate_baseplate_controls(self, *, preview_mode: bool) -> CombinedBaseplateParams:
+    def _baseplate_params_from_ui(self, *, preview_mode: bool) -> CombinedBaseplateParams:
         params = CombinedBaseplateParams()
-        params.from_ui_payload(
-            {
-                "fundamentals": {
-                    "x_grid_size": float(self.grid_size.value()),
-                    "y_grid_size": float(self.grid_size.value()),
-                    "base_profile_main_half_width": float(self.base_profile_main_half_width.value()),
-                    "base_profile_main_height": float(self.base_profile_main_height.value()),
-                    "bin_outer_radius": float(self.bin_outer_radius.value()),
-                },
-                "size": {
-                    "x_grid_count": 1,
-                    "y_grid_count": 1,
-                    "filler_left_enabled": False,
-                    "filler_left_width": 0.0,
-                    "filler_right_enabled": False,
-                    "filler_right_width": 0.0,
-                    "filler_top_enabled": False,
-                    "filler_top_width": 0.0,
-                    "filler_bottom_enabled": False,
-                    "filler_bottom_width": 0.0,
-                },
-                "core": {
-                    "lower_chamfer_enabled": self.enable_lower_chamfer.isChecked(),
-                    "lower_chamfer_size": float(self.base_profile_lower_chamfer_size.value()),
-                    "top_crop": float(self.top_crop.value()),
-                    "clearance": float(self.clearance.value()),
-                },
-                "click_springs": {
-                    "enabled": self.click_springs_enabled.isChecked() and not preview_mode,
-                    "click_thickness": float(self.click_thickness.value()),
-                    "click_length": float(self.click_length.value()),
-                    "click_offset": float(self.click_offset.value()),
-                },
-                "junction_screws": {
-                    "enabled": self.junction_screw_holes.isChecked() and not preview_mode,
-                    "screw_diameter": float(self.junction_screw_diameter.value()),
-                    "counterbore_diameter": float(self.junction_counterbore_diameter.value()),
-                    "counterbore_depth": float(self.junction_counterbore_depth.value()),
-                },
-                "screw_stubs": {
-                    "enabled": (
-                        self.screw_stubs_enabled.isChecked() and not preview_mode
-                        if hasattr(self, "screw_stubs_enabled")
-                        else False
-                    ),
-                    "clearance": (
-                        float(self.screw_stub_clearance.value())
-                        if hasattr(self, "screw_stub_clearance")
-                        else float(defaults.screw_stub_clearance)
-                    ),
-                },
-                "clip_cutouts": {
-                    "enabled": self.clip_cutouts_enabled.isChecked() and not preview_mode,
-                    "clip_length": float(self.clip_length.value()),
-                },
-            }
-        )
+        params.update_from_ui_owner(self)
+        if preview_mode:
+            params.click_springs.set_value("enabled", False)
+            params.junction_screws.set_value("enabled", False)
+            params.screw_stubs.set_value("enabled", False)
+            params.clip_cutouts.set_value("enabled", False)
         return params
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
@@ -914,7 +849,7 @@ class CreateDrawerBaseplateTaskPanel:
         ):
             return False
 
-        params = self._validate_baseplate_controls(preview_mode=preview_mode)
+        params = self._baseplate_params_from_ui(preview_mode=preview_mode)
         errors = params.validate()
         if errors:
             return False
@@ -1076,144 +1011,16 @@ class CreateBaseplateTaskPanel:
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         params = CombinedBaseplateParams().from_obj(obj)
-        self.x_grid_units.setValue(int(params.size.get_value("x_grid_count")))
-        self.y_grid_units.setValue(int(params.size.get_value("y_grid_count")))
-        self.grid_size.setValue(float(params.fundamentals.get_value("grid_size")))
-        self.base_profile_main_half_width.setValue(
-            float(params.fundamentals.get_value("main_half_width"))
-        )
-        self.base_profile_main_height.setValue(float(params.fundamentals.get_value("main_height")))
-        self.bin_outer_radius.setValue(float(params.fundamentals.get_value("outer_radius")))
-        self.enable_lower_chamfer.setChecked(bool(params.core.get_value("lower_chamfer_enabled")))
-        self.base_profile_lower_chamfer_size.setValue(float(params.core.get_value("lower_chamfer_size")))
-        self.top_crop.setValue(float(params.core.get_value("top_crop")))
-        self.clearance.setValue(float(params.core.get_value("clearance")))
-        self.click_springs_enabled.setChecked(bool(params.click_springs.get_value("enabled")))
-        self.click_thickness.setValue(float(params.click_springs.get_value("click_thickness")))
-        self.click_length.setValue(float(params.click_springs.get_value("click_length")))
-        self.click_offset.setValue(float(params.click_springs.get_value("click_offset")))
-        self.junction_screw_holes.setChecked(bool(params.junction_screws.get_value("enabled")))
-        self.junction_screw_diameter.setValue(float(params.junction_screws.get_value("screw_diameter")))
-        self.junction_counterbore_diameter.setValue(
-            float(params.junction_screws.get_value("counterbore_diameter"))
-        )
-        self.junction_counterbore_depth.setValue(float(params.junction_screws.get_value("counterbore_depth")))
-        if hasattr(self, "screw_stubs_enabled"):
-            self.screw_stubs_enabled.setChecked(bool(params.screw_stubs.get_value("enabled")))
-        if hasattr(self, "screw_stub_clearance"):
-            self.screw_stub_clearance.setValue(float(params.screw_stubs.get_value("clearance")))
-        self.clip_cutouts_enabled.setChecked(bool(params.clip_cutouts.get_value("enabled")))
-        self.clip_length.setValue(float(params.clip_cutouts.get_value("clip_length")))
-        self.filler_right_enabled.setChecked(bool(params.size.get_value("filler_right_enabled")))
-        self.filler_right_width.setValue(float(params.size.get_value("filler_right_width")))
-        self.filler_left_enabled.setChecked(bool(params.size.get_value("filler_left_enabled")))
-        self.filler_left_width.setValue(float(params.size.get_value("filler_left_width")))
-        self.filler_top_enabled.setChecked(bool(params.size.get_value("filler_top_enabled")))
-        self.filler_top_width.setValue(float(params.size.get_value("filler_top_width")))
-        self.filler_bottom_enabled.setChecked(bool(params.size.get_value("filler_bottom_enabled")))
-        self.filler_bottom_width.setValue(float(params.size.get_value("filler_bottom_width")))
-
-    def _control_values(self) -> dict[str, Any]:
-        return {
-            "x_grid_units": int(self.x_grid_units.value()),
-            "y_grid_units": int(self.y_grid_units.value()),
-            "grid_size": float(self.grid_size.value()),
-            "base_profile_main_half_width": float(self.base_profile_main_half_width.value()),
-            "base_profile_main_height": float(self.base_profile_main_height.value()),
-            "bin_outer_radius": float(self.bin_outer_radius.value()),
-            "enable_lower_chamfer": self.enable_lower_chamfer.isChecked(),
-            "base_profile_lower_chamfer_size": float(self.base_profile_lower_chamfer_size.value()),
-            "top_crop": float(self.top_crop.value()),
-            "clearance": float(self.clearance.value()),
-            "click_springs_enabled": self.click_springs_enabled.isChecked(),
-            "click_thickness": float(self.click_thickness.value()),
-            "click_length": float(self.click_length.value()),
-            "click_offset": float(self.click_offset.value()),
-            "junction_screw_holes": self.junction_screw_holes.isChecked(),
-            "junction_screw_diameter": float(self.junction_screw_diameter.value()),
-            "junction_counterbore_diameter": float(self.junction_counterbore_diameter.value()),
-            "junction_counterbore_depth": float(self.junction_counterbore_depth.value()),
-            "screw_stubs_enabled": (
-                self.screw_stubs_enabled.isChecked()
-                if hasattr(self, "screw_stubs_enabled")
-                else False
-            ),
-            "screw_stub_clearance": (
-                float(self.screw_stub_clearance.value())
-                if hasattr(self, "screw_stub_clearance")
-                else float(defaults.screw_stub_clearance)
-            ),
-            "clip_cutouts_enabled": self.clip_cutouts_enabled.isChecked(),
-            "clip_length": float(self.clip_length.value()),
-            "filler_right_enabled": self.filler_right_enabled.isChecked(),
-            "filler_right_width": float(self.filler_right_width.value()),
-            "filler_left_enabled": self.filler_left_enabled.isChecked(),
-            "filler_left_width": float(self.filler_left_width.value()),
-            "filler_top_enabled": self.filler_top_enabled.isChecked(),
-            "filler_top_width": float(self.filler_top_width.value()),
-            "filler_bottom_enabled": self.filler_bottom_enabled.isChecked(),
-            "filler_bottom_width": float(self.filler_bottom_width.value()),
-        }
+        params.apply_to_ui_owner(self)
 
     def _validate_controls(self, *, preview_mode: bool) -> CombinedBaseplateParams | None:
         params = CombinedBaseplateParams()
-        params.from_ui_payload(
-            {
-                "fundamentals": {
-                    "x_grid_size": float(self.grid_size.value()),
-                    "y_grid_size": float(self.grid_size.value()),
-                    "base_profile_main_half_width": float(self.base_profile_main_half_width.value()),
-                    "base_profile_main_height": float(self.base_profile_main_height.value()),
-                    "bin_outer_radius": float(self.bin_outer_radius.value()),
-                },
-                "size": {
-                    "x_grid_count": int(self.x_grid_units.value()),
-                    "y_grid_count": int(self.y_grid_units.value()),
-                    "filler_right_enabled": self.filler_right_enabled.isChecked(),
-                    "filler_right_width": float(self.filler_right_width.value()),
-                    "filler_left_enabled": self.filler_left_enabled.isChecked(),
-                    "filler_left_width": float(self.filler_left_width.value()),
-                    "filler_top_enabled": self.filler_top_enabled.isChecked(),
-                    "filler_top_width": float(self.filler_top_width.value()),
-                    "filler_bottom_enabled": self.filler_bottom_enabled.isChecked(),
-                    "filler_bottom_width": float(self.filler_bottom_width.value()),
-                },
-                "core": {
-                    "lower_chamfer_enabled": self.enable_lower_chamfer.isChecked(),
-                    "lower_chamfer_size": float(self.base_profile_lower_chamfer_size.value()),
-                    "top_crop": float(self.top_crop.value()),
-                    "clearance": float(self.clearance.value()),
-                },
-                "click_springs": {
-                    "enabled": self.click_springs_enabled.isChecked() and not preview_mode,
-                    "click_thickness": float(self.click_thickness.value()),
-                    "click_length": float(self.click_length.value()),
-                    "click_offset": float(self.click_offset.value()),
-                },
-                "junction_screws": {
-                    "enabled": self.junction_screw_holes.isChecked() and not preview_mode,
-                    "screw_diameter": float(self.junction_screw_diameter.value()),
-                    "counterbore_diameter": float(self.junction_counterbore_diameter.value()),
-                    "counterbore_depth": float(self.junction_counterbore_depth.value()),
-                },
-                "screw_stubs": {
-                    "enabled": (
-                        self.screw_stubs_enabled.isChecked() and not preview_mode
-                        if hasattr(self, "screw_stubs_enabled")
-                        else False
-                    ),
-                    "clearance": (
-                        float(self.screw_stub_clearance.value())
-                        if hasattr(self, "screw_stub_clearance")
-                        else float(defaults.screw_stub_clearance)
-                    ),
-                },
-                "clip_cutouts": {
-                    "enabled": self.clip_cutouts_enabled.isChecked() and not preview_mode,
-                    "clip_length": float(self.clip_length.value()),
-                },
-            }
-        )
+        params.update_from_ui_owner(self)
+        if preview_mode:
+            params.click_springs.set_value("enabled", False)
+            params.junction_screws.set_value("enabled", False)
+            params.screw_stubs.set_value("enabled", False)
+            params.clip_cutouts.set_value("enabled", False)
         errors = dict(params.validate())
         self._render_validation_errors(errors)
         self._last_valid_params = params
@@ -1252,29 +1059,11 @@ class CreateBaseplateTaskPanel:
         return visit(root)
 
     def _install_inline_error_rows(self) -> None:
-        field_keys = [
-            "x_grid_units",
-            "y_grid_units",
-            "bin_outer_radius",
-            "top_crop",
-            "click_thickness",
-            "click_length",
-            "junction_screw_diameter",
-            "junction_counterbore_diameter",
-            "junction_counterbore_depth",
-            "screw_stubs_enabled",
-            "screw_stub_clearance",
-            "clip_length",
-            "filler_left_width",
-            "filler_right_width",
-            "filler_top_width",
-            "filler_bottom_width",
-            "stitching_thickness",
-        ]
-        for key in field_keys:
-            if not hasattr(self, key):
+        for key, widget in vars(self).items():
+            if not isinstance(widget, QWidget):
                 continue
-            widget = getattr(self, key)
+            if "__" not in key and key not in {"stitching_thickness"}:
+                continue
             layout = self._find_form_layout_for_widget(widget)
             if layout is None:
                 continue
@@ -1295,11 +1084,14 @@ class CreateBaseplateTaskPanel:
             self._error_containers[key] = container
 
     def _render_validation_errors(self, errors: dict[str, str]) -> None:
+        normalized_errors = {
+            key.replace(".", "__"): message for key, message in errors.items()
+        }
         for key, label in self._error_labels.items():
             control = getattr(self, key)
-            if key in errors:
+            if key in normalized_errors:
                 control.setStyleSheet("border: 1px solid #cc3d3d;")
-                label.setText(errors[key])
+                label.setText(normalized_errors[key])
                 label.show()
             else:
                 control.setStyleSheet("")
@@ -1334,40 +1126,12 @@ class CreateBaseplateTaskPanel:
         view.Transparency = self._original_view["Transparency"]
 
     def _connect_preview_signals(self) -> None:
-        controls = [
-            self.x_grid_units,
-            self.y_grid_units,
-            self.grid_size,
-            self.base_profile_main_half_width,
-            self.base_profile_main_height,
-            self.bin_outer_radius,
-            self.enable_lower_chamfer,
-            self.base_profile_lower_chamfer_size,
-            self.top_crop,
-            self.clearance,
-            self.click_springs_enabled,
-            self.click_thickness,
-            self.click_length,
-            self.click_offset,
-            self.junction_screw_holes,
-            self.junction_screw_diameter,
-            self.junction_counterbore_diameter,
-            self.junction_counterbore_depth,
-            self.clip_cutouts_enabled,
-            self.clip_length,
-            self.filler_right_enabled,
-            self.filler_right_width,
-            self.filler_left_enabled,
-            self.filler_left_width,
-            self.filler_top_enabled,
-            self.filler_top_width,
-            self.filler_bottom_enabled,
-            self.filler_bottom_width,
-        ]
-        if hasattr(self, "screw_stubs_enabled"):
-            controls.append(self.screw_stubs_enabled)
-        if hasattr(self, "screw_stub_clearance"):
-            controls.append(self.screw_stub_clearance)
+        controls: list[QWidget] = []
+        for key, widget in vars(self).items():
+            if not isinstance(widget, QWidget):
+                continue
+            if "__" in key:
+                controls.append(widget)
         controls.extend(self._extra_preview_controls())
         for control in controls:
             if isinstance(control, (QDoubleSpinBox, QSpinBox)):
@@ -1385,8 +1149,8 @@ class CreateBaseplateTaskPanel:
         if not applied:
             return
         base_label = self._format_simple_baseplate_label(
-            int(self.x_grid_units.value()),
-            int(self.y_grid_units.value()),
+            int(self.size__x_grid_count.value()),
+            int(self.size__y_grid_count.value()),
         )
         self._target_obj.Label = self._format_preview_label(base_label)
         status_bar = None
@@ -1951,29 +1715,29 @@ class GridfinitySettingsTaskPanel:
 
     def _wire_default_warning_colors(self) -> None:
         numeric_controls = [
-            (self.grid_size, factory_defaults.grid_size),
-            (self.base_profile_main_half_width, factory_defaults.base_profile_main_half_width),
-            (self.base_profile_main_height, factory_defaults.base_profile_main_height),
-            (self.bin_outer_radius, factory_defaults.bin_outer_radius),
+            (self.fundamentals__grid_size, factory_defaults.grid_size),
+            (self.fundamentals__main_half_width, factory_defaults.base_profile_main_half_width),
+            (self.fundamentals__main_height, factory_defaults.base_profile_main_height),
+            (self.fundamentals__outer_radius, factory_defaults.bin_outer_radius),
             (
-                self.base_profile_lower_chamfer_size,
+                self.core__lower_chamfer_size,
                 factory_defaults.base_profile_lower_chamfer_size,
             ),
-            (self.top_crop, factory_defaults.baseplate_top_crop),
-            (self.click_thickness, factory_defaults.click_thickness),
-            (self.click_length, factory_defaults.click_length),
-            (self.click_offset, factory_defaults.click_offset),
-            (self.junction_screw_diameter, factory_defaults.junction_screw_diameter),
-            (self.junction_counterbore_diameter, factory_defaults.junction_counterbore_diameter),
-            (self.junction_counterbore_depth, factory_defaults.junction_counterbore_depth),
-            (self.clip_length, factory_defaults.clip_length),
-            (self.clearance, factory_defaults.clearance),
+            (self.core__top_crop, factory_defaults.baseplate_top_crop),
+            (self.click_springs__click_thickness, factory_defaults.click_thickness),
+            (self.click_springs__click_length, factory_defaults.click_length),
+            (self.click_springs__click_offset, factory_defaults.click_offset),
+            (self.junction_screws__screw_diameter, factory_defaults.junction_screw_diameter),
+            (self.junction_screws__counterbore_diameter, factory_defaults.junction_counterbore_diameter),
+            (self.junction_screws__counterbore_depth, factory_defaults.junction_counterbore_depth),
+            (self.clip_cutouts__clip_length, factory_defaults.clip_length),
+            (self.core__clearance, factory_defaults.clearance),
             (self.baseplate_cache_size, factory_defaults.baseplate_cache_size),
             (self.cell_cache_size, factory_defaults.cell_cache_size),
         ]
-        if hasattr(self, "screw_stub_clearance"):
+        if hasattr(self, "screw_stubs__clearance"):
             numeric_controls.append(
-                (self.screw_stub_clearance, factory_defaults.screw_stub_clearance)
+                (self.screw_stubs__clearance, factory_defaults.screw_stub_clearance)
             )
 
         for control, default_value in numeric_controls:
@@ -1988,14 +1752,14 @@ class GridfinitySettingsTaskPanel:
             updater(control.value())
 
         bool_controls = [
-            (self.enable_lower_chamfer, factory_defaults.baseplate_lower_chamfer_enabled),
-            (self.click_springs_enabled, factory_defaults.click_springs_enabled),
-            (self.junction_screw_holes, factory_defaults.junction_screw_holes),
-            (self.clip_cutouts_enabled, factory_defaults.clip_cutouts_enabled),
+            (self.core__lower_chamfer_enabled, factory_defaults.baseplate_lower_chamfer_enabled),
+            (self.click_springs__enabled, factory_defaults.click_springs_enabled),
+            (self.junction_screws__enabled, factory_defaults.junction_screw_holes),
+            (self.clip_cutouts__enabled, factory_defaults.clip_cutouts_enabled),
             (self.half_grid_size, factory_defaults.half_grid_size),
         ]
-        if hasattr(self, "screw_stubs_enabled"):
-            bool_controls.append((self.screw_stubs_enabled, factory_defaults.screw_stubs_enabled))
+        if hasattr(self, "screw_stubs__enabled"):
+            bool_controls.append((self.screw_stubs__enabled, factory_defaults.screw_stubs_enabled))
 
         for control, default_value in bool_controls:
 
@@ -2006,31 +1770,31 @@ class GridfinitySettingsTaskPanel:
             updater(0)
 
     def accept(self) -> bool:
-        defaults.grid_size = self.grid_size.value()
-        defaults.base_profile_main_half_width = self.base_profile_main_half_width.value()
-        defaults.base_profile_main_height = self.base_profile_main_height.value()
-        defaults.base_profile_lower_chamfer_size = self.base_profile_lower_chamfer_size.value()
-        defaults.baseplate_lower_chamfer_enabled = self.enable_lower_chamfer.isChecked()
-        defaults.baseplate_top_crop = self.top_crop.value()
-        defaults.bin_outer_radius = self.bin_outer_radius.value()
-        defaults.clearance = self.clearance.value()
+        defaults.grid_size = self.fundamentals__grid_size.value()
+        defaults.base_profile_main_half_width = self.fundamentals__main_half_width.value()
+        defaults.base_profile_main_height = self.fundamentals__main_height.value()
+        defaults.base_profile_lower_chamfer_size = self.core__lower_chamfer_size.value()
+        defaults.baseplate_lower_chamfer_enabled = self.core__lower_chamfer_enabled.isChecked()
+        defaults.baseplate_top_crop = self.core__top_crop.value()
+        defaults.bin_outer_radius = self.fundamentals__outer_radius.value()
+        defaults.clearance = self.core__clearance.value()
         defaults.half_grid_size = self.half_grid_size.isChecked()
 
-        defaults.click_springs_enabled = self.click_springs_enabled.isChecked()
-        defaults.click_thickness = self.click_thickness.value()
-        defaults.click_length = self.click_length.value()
-        defaults.click_offset = self.click_offset.value()
+        defaults.click_springs_enabled = self.click_springs__enabled.isChecked()
+        defaults.click_thickness = self.click_springs__click_thickness.value()
+        defaults.click_length = self.click_springs__click_length.value()
+        defaults.click_offset = self.click_springs__click_offset.value()
 
-        defaults.junction_screw_holes = self.junction_screw_holes.isChecked()
-        defaults.junction_screw_diameter = self.junction_screw_diameter.value()
-        defaults.junction_counterbore_diameter = self.junction_counterbore_diameter.value()
-        defaults.junction_counterbore_depth = self.junction_counterbore_depth.value()
-        if hasattr(self, "screw_stubs_enabled"):
-            defaults.screw_stubs_enabled = self.screw_stubs_enabled.isChecked()
-        if hasattr(self, "screw_stub_clearance"):
-            defaults.screw_stub_clearance = self.screw_stub_clearance.value()
-        defaults.clip_cutouts_enabled = self.clip_cutouts_enabled.isChecked()
-        defaults.clip_length = self.clip_length.value()
+        defaults.junction_screw_holes = self.junction_screws__enabled.isChecked()
+        defaults.junction_screw_diameter = self.junction_screws__screw_diameter.value()
+        defaults.junction_counterbore_diameter = self.junction_screws__counterbore_diameter.value()
+        defaults.junction_counterbore_depth = self.junction_screws__counterbore_depth.value()
+        if hasattr(self, "screw_stubs__enabled"):
+            defaults.screw_stubs_enabled = self.screw_stubs__enabled.isChecked()
+        if hasattr(self, "screw_stubs__clearance"):
+            defaults.screw_stub_clearance = self.screw_stubs__clearance.value()
+        defaults.clip_cutouts_enabled = self.clip_cutouts__enabled.isChecked()
+        defaults.clip_length = self.clip_cutouts__clip_length.value()
         defaults.baseplate_cache_size = int(self.baseplate_cache_size.value())
         defaults.cell_cache_size = int(self.cell_cache_size.value())
         defaults.save()

@@ -184,34 +184,6 @@ class FundamentalsParams(ParameterGroup):
             base_profile_main_height=self.get_value("main_height"),
         )
 
-    def from_obj(self, obj: fc.DocumentObject) -> "FundamentalsParams":
-        values = {}
-        if hasattr(obj, "xGridSize"):
-            values["grid_size"] = getattr(obj, "xGridSize")
-        if hasattr(obj, "BinOuterRadius"):
-            values["outer_radius"] = getattr(obj, "BinOuterRadius")
-        if hasattr(obj, "BaseProfileMainHalfWidth"):
-            values["main_half_width"] = getattr(obj, "BaseProfileMainHalfWidth")
-        if hasattr(obj, "BaseProfileMainHeight"):
-            values["main_height"] = getattr(obj, "BaseProfileMainHeight")
-        new_group = self.__class__()
-        new_group.set_all_values(values)
-        return new_group
-
-    def apply_to_obj(self, obj: fc.DocumentObject):
-        value = self.get_value("grid_size")
-        if hasattr(obj, "xGridSize"):
-            obj.xGridSize = value
-        if hasattr(obj, "yGridSize"):
-            obj.yGridSize = value
-        if hasattr(obj, "BinOuterRadius"):
-            obj.BinOuterRadius = self.get_value("outer_radius")
-        if hasattr(obj, "BaseProfileMainHalfWidth"):
-            obj.BaseProfileMainHalfWidth = self.get_value("main_half_width")
-        if hasattr(obj, "BaseProfileMainHeight"):
-            obj.BaseProfileMainHeight = self.get_value("main_height")
-
-
 class ClipParams(ParameterGroup):
     _category = "Gridfinity_Clip"
 
