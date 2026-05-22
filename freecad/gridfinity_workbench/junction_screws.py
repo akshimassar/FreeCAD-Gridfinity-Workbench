@@ -6,7 +6,7 @@ import FreeCAD as fc  # noqa: N813
 import Part
 
 from .baseplate_full_layout import GridfinityLayoutGeometry
-from .baseplate_params import JunctionScrewParams, ScrewStubParams
+from .param import JunctionScrewParamsData, ScrewStubParamsData
 
 
 def iter_supported_junctions(geometry: GridfinityLayoutGeometry) -> list[tuple[float, float]]:
@@ -24,7 +24,7 @@ def iter_supported_junctions(geometry: GridfinityLayoutGeometry) -> list[tuple[f
 
 
 def holes_shape(
-    junction_screws: JunctionScrewParams,
+    junction_screws: JunctionScrewParamsData,
     top_z: fc.Units.Quantity,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
@@ -60,8 +60,8 @@ def holes_shape(
 
 
 def stubs_shape(
-    junction_screws: JunctionScrewParams,
-    screw_stubs: ScrewStubParams,
+    junction_screws: JunctionScrewParamsData,
+    screw_stubs: ScrewStubParamsData,
     bottom_z: fc.Units.Quantity,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:

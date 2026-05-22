@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import Part
 import FreeCAD as fc  # noqa: N813
 
-from .baseplate_params import BaseplateParams
+from .param import CombinedBaseplateParamsData
 
 if TYPE_CHECKING:
     from . import baseplate_click_springs as click_springs
@@ -225,7 +225,7 @@ class FullCellNeighbours2x2:
 
 
 def build_full_layout(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     layout: GridfinityLayout,
     *,
     include_spring_masks: bool,
@@ -309,7 +309,7 @@ def _build_cells(
     x_sizes: list[float],
     y_sizes: list[float],
     include_spring_masks: bool,
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
 ) -> list[list[FullLayoutCell]]:
     from . import baseplate_click_springs as click_springs
 
@@ -375,7 +375,7 @@ def _build_cells(
 
 
 def _filler_spring_mask(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     *,
     leftmost: bool,
     rightmost: bool,
@@ -409,7 +409,7 @@ def _filler_spring_mask(
 
 
 def _alignment_shift(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     *,
     leftmost: bool,
     rightmost: bool,

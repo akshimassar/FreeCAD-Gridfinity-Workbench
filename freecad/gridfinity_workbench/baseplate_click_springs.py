@@ -9,7 +9,7 @@ import Part
 
 from . import utils
 from .baseplate_full_layout import BoolMatrix2x2, ShapeMatrix2x2, expand_seed_to_shape_matrix
-from .baseplate_params import BaseplateCoreParams, ClickSpringParams, FundamentalsParams
+from .param import BaseplateCoreParamsData, ClickSpringParamsData, FundamentalsParamsData
 
 unitmm = fc.Units.Quantity("1 mm")
 
@@ -104,8 +104,8 @@ class SpringShapeSlots:
 
 
 def make_click_spring_seed_positive(
-    fundamentals: FundamentalsParams,
-    click_springs: ClickSpringParams,
+    fundamentals: FundamentalsParamsData,
+    click_springs: ClickSpringParamsData,
 ) -> Part.Shape:
     x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
     click_length = click_springs.click_length
@@ -146,8 +146,8 @@ def make_click_spring_seed_positive(
 
 
 def make_click_spring_seed_negative(
-    fundamentals: FundamentalsParams,
-    click_springs: ClickSpringParams,
+    fundamentals: FundamentalsParamsData,
+    click_springs: ClickSpringParamsData,
 ) -> Part.Shape:
     total_height = fundamentals.base_profile_main_height + fundamentals.base_profile_main_half_width
     x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
@@ -193,8 +193,8 @@ def make_click_spring_prototypes_from_seed(seed: Part.Shape) -> SpringShapeSlots
 
 
 def _validate_click_spring_geometry(
-    fundamentals: FundamentalsParams,
-    click_springs: ClickSpringParams,
+    fundamentals: FundamentalsParamsData,
+    click_springs: ClickSpringParamsData,
 ) -> None:
     if click_springs.click_thickness >= fundamentals.base_profile_main_half_width:
         raise ValueError(
@@ -215,8 +215,8 @@ def _validate_click_spring_geometry(
 
 
 def make_click_spring_prototype_positive(
-    fundamentals: FundamentalsParams,
-    click_springs: ClickSpringParams,
+    fundamentals: FundamentalsParamsData,
+    click_springs: ClickSpringParamsData,
 ) -> SpringShapeSlots:
     _validate_click_spring_geometry(fundamentals, click_springs)
     seed = make_click_spring_seed_positive(fundamentals, click_springs)
@@ -224,8 +224,8 @@ def make_click_spring_prototype_positive(
 
 
 def make_click_spring_prototype_negative(
-    fundamentals: FundamentalsParams,
-    click_springs: ClickSpringParams,
+    fundamentals: FundamentalsParamsData,
+    click_springs: ClickSpringParamsData,
 ) -> SpringShapeSlots:
     _validate_click_spring_geometry(fundamentals, click_springs)
     seed = make_click_spring_seed_negative(fundamentals, click_springs)
@@ -234,9 +234,9 @@ def make_click_spring_prototype_negative(
 
 def apply_click_spring_slots_to_cell(
     shape: Part.Shape,
-    fundamentals: FundamentalsParams,
-    core: BaseplateCoreParams,
-    click_springs: ClickSpringParams,
+    fundamentals: FundamentalsParamsData,
+    core: BaseplateCoreParamsData,
+    click_springs: ClickSpringParamsData,
     negative_slots: SpringShapeSlots,
     positive_slots: SpringShapeSlots,
     mask: SpringSlotMask,

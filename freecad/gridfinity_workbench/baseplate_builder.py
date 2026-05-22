@@ -21,7 +21,7 @@ from . import baseplate_corner_roundover
 from . import baseplate_full_layout
 from . import feature_construction as feat
 from . import utils
-from .baseplate_params import BaseplateParams, params_from_obj
+from .param import CombinedBaseplateParams, CombinedBaseplateParamsData
 from .baseplate_full_layout import GridfinityLayout, GridfinityLayoutGeometry
 
 
@@ -74,7 +74,7 @@ def _cache_normalize(value: object) -> object:
 
 
 def _baseplate_cache_key(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
     *,
@@ -144,7 +144,7 @@ def build_baseplate_support_cached(
     return _shape_cache_get_or_build(key, _build)
 
 
-def _layout_dims(layout: GridfinityLayout, params: BaseplateParams) -> tuple[int, int]:
+def _layout_dims(layout: GridfinityLayout, params: CombinedBaseplateParamsData) -> tuple[int, int]:
     nx = len(layout)
     if nx == 0:
         return 0, max(0, int(params.core.y_grid_count))
@@ -191,14 +191,14 @@ def _make_centered_box(
     return utils.make_centered_box(x_size, y_size, z_size, z_min=z_min)
 
 
-def _base_apex_height(params: BaseplateParams) -> fc.Units.Quantity:
+def _base_apex_height(params: CombinedBaseplateParamsData) -> fc.Units.Quantity:
     return (
         params.fundamentals.base_profile_main_height
         + params.fundamentals.base_profile_main_half_width
     )
 
 
-def baseplate_cell_top_crop(shape: Part.Shape, params: BaseplateParams) -> Part.Shape:
+def baseplate_cell_top_crop(shape: Part.Shape, params: CombinedBaseplateParamsData) -> Part.Shape:
     top_crop = params.core.base_profile_top_crop
     half_width = params.fundamentals.base_profile_main_half_width
     if top_crop >= half_width:
@@ -219,7 +219,7 @@ def baseplate_cell_top_crop(shape: Part.Shape, params: BaseplateParams) -> Part.
 
 
 def build_single_cell_baseplate_core(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     options: BaseplateBuildOptions,
 ) -> CoreCellBuildResult:
     baseplate_outside_shape = _create_rectangle_wire(
@@ -238,7 +238,7 @@ def build_single_cell_baseplate_core(
 
 
 def build_single_cell_baseplate_core_cached(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     options: BaseplateBuildOptions,
 ) -> CoreCellBuildResult:
     key = baseplate_cell_cache.make_key(
@@ -260,7 +260,7 @@ def build_single_cell_baseplate_core_cached(
 
 
 def build_preview_single_cell_baseplate_core(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
 ) -> CoreCellBuildResult:
     margin = 0.1
     x_grid_size = float(params.fundamentals.x_grid_size)
@@ -281,7 +281,7 @@ def build_preview_single_cell_baseplate_core(
 
 
 def build_preview_single_cell_baseplate_core_cached(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
 ) -> CoreCellBuildResult:
     key = baseplate_cell_cache.make_key(
         {
@@ -298,7 +298,7 @@ def build_preview_single_cell_baseplate_core_cached(
 
 def replicate_layout(
     shape: Part.Shape,
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     layout: GridfinityLayout,
 ) -> Part.Shape:
     base_cell = shape.copy()
@@ -319,7 +319,7 @@ def replicate_layout(
 
 def add_filler_strips(
     shape: Part.Shape,
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
     *,
@@ -368,7 +368,7 @@ def _build_grid_lines(sizes: list[fc.Units.Quantity]) -> list[float]:
 
 
 def _build_filler_cell_shape(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     target_cell_width: float,
     target_cell_height: float,
     options: BaseplateBuildOptions,
@@ -390,7 +390,7 @@ def _build_filler_cell_shape(
 
 
 def _build_filler_ring_shape(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     geometry: GridfinityLayoutGeometry,
     options: BaseplateBuildOptions,
     *,
@@ -603,7 +603,7 @@ def _build_filler_ring_shape(
 
 def _apply_layout_corner_roundover(
     shape: Part.Shape,
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape:
     apex = float(
@@ -633,7 +633,7 @@ def apply_junction_screws(
 
 
 def make_post_replication_cutter(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     geometry: GridfinityLayoutGeometry,
     options: BaseplateBuildOptions,
     top_z: fc.Units.Quantity,
@@ -678,7 +678,7 @@ def apply_clip_cutouts(
 
 def apply_snap_springs(
     shape: Part.Shape,
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     options: BaseplateBuildOptions,
 ) -> Part.Shape:
     if not options.include_snap_springs:
@@ -709,12 +709,12 @@ def build_simple_baseplate(
     *,
     preview: bool = False,
 ) -> Part.Shape:
-    params = params_from_obj(obj)
+    params = CombinedBaseplateParams().from_obj(obj).data()
     return build_simple_baseplate_from_params_cached(params, layout, options, preview=preview)
 
 
 def build_simple_baseplate_from_params_cached(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
     *,
@@ -737,7 +737,7 @@ def build_simple_baseplate_from_params_cached(
 
 
 def build_simple_baseplate_from_params(
-    params: BaseplateParams,
+    params: CombinedBaseplateParamsData,
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
     *,

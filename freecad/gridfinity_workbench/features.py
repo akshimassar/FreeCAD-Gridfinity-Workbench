@@ -18,7 +18,7 @@ from . import baseplate_builder
 from . import clip_profiles
 from . import check_version, const, grid_initial_layout, label_shelf, utils
 from . import feature_construction as feat
-from .baseplate_params import BaseplateParams, params_from_obj
+from .param import CombinedBaseplateParams
 from .drawer_split import split_axis_into_printable_chunks
 from .custom_shape_features import (
     clean_up_layout,
@@ -448,7 +448,7 @@ class DrawerBaseplate(FoundationGridfinity):
         return self.fit_drawer_with_printable_baseplates(obj)
 
     def fit_drawer_with_printable_baseplates(self, obj: fc.DocumentObject) -> Part.Shape:
-        params = params_from_obj(obj)
+        params = CombinedBaseplateParams().from_obj(obj).data()
         preview_mode = bool(getattr(obj, "PreviewBuildMode", False))
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
@@ -525,7 +525,7 @@ class DrawerBaseplate(FoundationGridfinity):
                 )
                 baseplate_names.append(baseplate_name)
 
-                piece_params: BaseplateParams = replace(
+                piece_params = replace(
                     params,
                     core=replace(params.core, x_grid_count=x_units, y_grid_count=y_units),
                     fillers=replace(

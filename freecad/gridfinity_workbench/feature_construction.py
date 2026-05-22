@@ -16,7 +16,7 @@ from . import baseplate_full_layout
 from . import junction_screws
 from . import label_shelf as label_shelf_module
 from . import magnet_hole as magnet_hole_module
-from .baseplate_params import BaseplateCoreParams, FundamentalsParams, params_from_obj
+from .param import BaseplateCoreParamsData, CombinedBaseplateParams, FundamentalsParamsData
 
 unitmm = fc.Units.Quantity("1 mm")
 zeromm = fc.Units.Quantity("0 mm")
@@ -1046,8 +1046,8 @@ def make_complex_bin_base_single(
 
 
 def make_complex_bin_base_single_from_params(
-    fundamentals: FundamentalsParams,
-    core: BaseplateCoreParams,
+    fundamentals: FundamentalsParamsData,
+    core: BaseplateCoreParamsData,
 ) -> Part.Shape:
     """Create one-cell complex shaped bin base centered at origin from baseplate params."""
     lower_enabled = bool(core.base_profile_lower_chamfer_enabled)
@@ -1134,9 +1134,10 @@ def make_baseplate_top_support(
     layout: GridfinityLayout,
 ) -> Part.Shape:
     """Create support body from per-cell slabs and optional center cutouts."""
-    main_half_width = obj.BaseProfileMainHalfWidth
-    top_half_width = obj.BaseProfileTopCrop
-    run = main_half_width + obj.ClickOffset - top_half_width
+    params = CombinedBaseplateParams().from_obj(obj).data()
+    main_half_width = params.fundamentals.base_profile_main_half_width
+    top_half_width = params.core.base_profile_top_crop
+    run = main_half_width + params.click_springs.click_offset - top_half_width
 
     if run <= 0:
         raise ValueError(
@@ -1148,11 +1149,10 @@ def make_baseplate_top_support(
     if loft_height <= 0:
         raise ValueError("Invalid support geometry: computed loft height must be positive")
 
-    params = params_from_obj(obj)
     geometry = baseplate_full_layout.build_full_layout(
         params,
         layout,
-        include_spring_masks=bool(getattr(obj, "ClickSpringsEnabled", False)),
+        include_spring_masks=bool(params.click_springs.enabled),
     )
     use_layout = [[cell.exists for cell in col] for col in geometry.cells]
     nx_cells = len(geometry.cells)
@@ -1217,12 +1217,12 @@ def make_baseplate_top_support(
 
             profile_a_face = Part.Face(utils.create_rounded_rectangle(x_a, y_a, 0, r_a))
 
-            if bool(getattr(obj, "ClickSpringsEnabled", False)):
+            if bool(params.click_springs.enabled):
                 seed = click_springs.make_support_click_spring_seed(
                     cell_inner_width=x_a,
                     cell_height=cell_height,
-                    click_offset=float(obj.ClickOffset),
-                    click_length=float(obj.ClickLength),
+                    click_offset=float(params.click_springs.click_offset),
+                    click_length=float(params.click_springs.click_length),
                 )
                 shift_x = cell_meta.spring_shift_x if cell_meta.kind == "Filler" else 0.0
                 shift_y = cell_meta.spring_shift_y if cell_meta.kind == "Filler" else 0.0
@@ -1247,9 +1247,9 @@ def make_baseplate_top_support(
                     "r_a": r_a,
                     "r_b": r_b,
                     "loft_height": float(loft_height),
-                    "click_enabled": bool(getattr(obj, "ClickSpringsEnabled", False)),
-                    "click_length": float(obj.ClickLength),
-                    "click_offset": float(obj.ClickOffset),
+                    "click_enabled": bool(params.click_springs.enabled),
+                    "click_length": float(params.click_springs.click_length),
+                    "click_offset": float(params.click_springs.click_offset),
                     "mask": cell_meta.get_mask(),
                     "shift_x": cell_meta.spring_shift_x if cell_meta.kind == "Filler" else 0.0,
                     "shift_y": cell_meta.spring_shift_y if cell_meta.kind == "Filler" else 0.0,
@@ -1270,10 +1270,7 @@ def make_baseplate_top_support(
     if cutters:
         support_solid = support_solid.cut(utils.multi_fuse(cutters))
 
-    params = params_from_obj(obj)
-    if bool(getattr(obj, "JunctionScrewHoles", False)) and bool(
-        getattr(obj, "ScrewStubsEnabled", False)
-    ):
+    if bool(params.junction_screws.enabled) and bool(params.screw_stubs.enabled):
         stub_shape = junction_screws.stubs_shape(
             params.junction_screws,
             params.screw_stubs,
