@@ -168,155 +168,121 @@ def _mm_spinbox(value: float, *, minimum: float = 0.0, maximum: float = 100.0) -
 
 
 def _build_size_section(layout: QVBoxLayout) -> dict[str, QWidget]:
-    layout.addWidget(_section_label("Size"))
-    form = QFormLayout()
-    form.setContentsMargins(20, 0, 0, 0)
-
+    from .param import BaseplateSizeParams
+    
+    # Create size param group and build its UI
     params = BaseplateSizeParams()
-    controls: dict[str, QWidget] = {}
-    for param_name, param in params._parameters.items():
-        if not isinstance(param, IntParam):
-            continue
-        control = QSpinBox()
-        if param.min_value is not None:
-            control.setMinimum(int(param.min_value))
-        else:
-            control.setMinimum(0)
-        if param.max_value is not None:
-            control.setMaximum(int(param.max_value))
-        else:
-            control.setMaximum(200)
-        control.setValue(int(params.get_value(param_name)))
-        form.addRow(param.display_name, control)
-        controls[f"size__{param_name}"] = control
-
-    layout.addLayout(form)
-    return controls
+    controls, widget = params.build_ui(None, "Size", True)
+    
+    # Add to layout
+    layout.addWidget(widget)
+    
+    # Prefix control names to match expected return format
+    prefixed_controls = {}
+    for param_name, control in controls.items():
+        prefixed_controls[f"size__{param_name}"] = control
+    
+    return prefixed_controls
 
 
 def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict[str, QWidget]:
-    layout.addWidget(_section_label("Fundamentals"))
+    from .param import FundamentalsParams
+    
+    # Create fundamentals param group and build its UI
+    params = FundamentalsParams()
+    controls, widget = params.build_ui(None, "Fundamentals", show_note)
+    
+    # Add to layout
+    layout.addWidget(widget)
+    
+    # Add note if needed
     if show_note:
         compatibility_note = QLabel(
             "Changing these values affects Gridfinity compatibility with other objects."
         )
         compatibility_note.setWordWrap(True)
         compatibility_note.setAlignment(Qt.AlignLeft)
-        layout.addWidget(compatibility_note)
-
-    form = QFormLayout()
-    form.setContentsMargins(20, 0, 0, 0)
-
-    grid_size = _mm_spinbox(defaults.grid_size, minimum=1.0, maximum=500.0)
-    form.addRow("Grid Size", grid_size)
-
-    base_profile_main_half_width = _mm_spinbox(defaults.base_profile_main_half_width)
-    form.addRow("Base profile half width", base_profile_main_half_width)
-
-    base_profile_main_height = _mm_spinbox(defaults.base_profile_main_height)
-    form.addRow("Base profile height", base_profile_main_height)
-
-    bin_outer_radius = _mm_spinbox(defaults.bin_outer_radius)
-    form.addRow("Outer radius", bin_outer_radius)
-
-    layout.addLayout(form)
-    return {
-        "fundamentals__grid_size": grid_size,
-        "fundamentals__main_half_width": base_profile_main_half_width,
-        "fundamentals__main_height": base_profile_main_height,
-        "fundamentals__outer_radius": bin_outer_radius,
-    }
+        layout.insertWidget(0, compatibility_note)  # Insert before the main widget
+        # We need to re-add the fundamentals label after the note
+        layout.insertWidget(0, _section_label("Fundamentals"))
+    
+    # Prefix control names to match expected return format
+    prefixed_controls = {}
+    for param_name, control in controls.items():
+        prefixed_controls[f"fundamentals__{param_name}"] = control
+    
+    return prefixed_controls
 
 
 def _build_baseplate_section(
     layout: QVBoxLayout, *, include_clearance: bool, include_filler: bool
 ) -> dict[str, QWidget]:
-    layout.addWidget(_section_label("Baseplate"))
-    form = QFormLayout()
-    form.setContentsMargins(20, 0, 0, 0)
-
-    enable_lower_chamfer = QCheckBox()
-    enable_lower_chamfer.setChecked(defaults.baseplate_lower_chamfer_enabled)
-    form.addRow("Enable lower chamfer", enable_lower_chamfer)
-
-    base_profile_lower_chamfer_size = _mm_spinbox(defaults.base_profile_lower_chamfer_size)
-    form.addRow("Lower chamfer size", base_profile_lower_chamfer_size)
-
-    top_crop = _mm_spinbox(defaults.baseplate_top_crop)
-    form.addRow("Top crop", top_crop)
-
-    controls: dict[str, QWidget] = {
-        "core__lower_chamfer_enabled": enable_lower_chamfer,
-        "core__lower_chamfer_size": base_profile_lower_chamfer_size,
-        "core__top_crop": top_crop,
-    }
+    from .param import BaseplateCoreParams, ClickSpringParams, JunctionScrewParams, ClipParams
+    from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QCheckBox, QDoubleSpinBox
+    from PySide.QtCore import Qt
+    
+    # Create the core baseplate param group and build its UI
+    core_params = BaseplateCoreParams()
+    core_controls, core_widget = core_params.build_ui(None, "Baseplate", True)
+    
+    # Add core controls to layout
+    layout.addWidget(core_widget)
+    
+    # Add to main controls dict
+    controls: dict[str, QWidget] = {}
+    for param_name, control in core_controls.items():
+        controls[f"core__{param_name}"] = control
+    
+    # Add clearance control if needed
     if include_clearance:
+        from .settings import defaults
         clearance = _mm_spinbox(defaults.clearance)
-        form.addRow("Clearance", clearance)
+        # Add clearance to a separate widget with proper indentation
+        clearance_form = QFormLayout()
+        clearance_form.setContentsMargins(20, 0, 0, 0)
+        clearance_form.addRow("Clearance", clearance)
+        clearance_widget = QWidget()
+        clearance_widget.setLayout(clearance_form)
+        layout.addWidget(clearance_widget)
         controls["core__clearance"] = clearance
 
-    layout.addLayout(form)
+    # Create and add snap springs section
+    click_params = ClickSpringParams()
+    click_controls, click_widget = click_params.build_ui(None, "", True)  # No title - we'll add our own
+    # Add styled label for subsection
+    click_label = _section_label("Snap springs", indent_px=20)
+    layout.addWidget(click_label)
+    layout.addWidget(click_widget)
+    
+    # Add click spring controls to main dict
+    for param_name, control in click_controls.items():
+        controls[f"click_springs__{param_name}"] = control
 
-    layout.addWidget(_section_label("Snap springs", indent_px=20))
-    click_form = QFormLayout()
-    click_form.setContentsMargins(40, 0, 0, 0)
-    click_springs_enabled = QCheckBox()
-    click_springs_enabled.setChecked(defaults.click_springs_enabled)
-    click_form.addRow("Enabled", click_springs_enabled)
-    click_thickness = _mm_spinbox(defaults.click_thickness)
-    click_form.addRow("Thickness", click_thickness)
-    click_length = _mm_spinbox(defaults.click_length, maximum=1000.0)
-    click_form.addRow("Length", click_length)
-    click_offset = _mm_spinbox(defaults.click_offset)
-    click_form.addRow("Offset", click_offset)
-    layout.addLayout(click_form)
-    controls.update(
-        {
-            "click_springs__enabled": click_springs_enabled,
-            "click_springs__click_thickness": click_thickness,
-            "click_springs__click_length": click_length,
-            "click_springs__click_offset": click_offset,
-        }
-    )
+    # Create and add junction screws section
+    junction_params = JunctionScrewParams()
+    junction_controls, junction_widget = junction_params.build_ui(None, "", True)  # No title
+    # Add styled label for subsection
+    junction_label = _section_label("Junction screws", indent_px=20)
+    layout.addWidget(junction_label)
+    layout.addWidget(junction_widget)
+    
+    # Add junction screw controls to main dict
+    for param_name, control in junction_controls.items():
+        controls[f"junction_screws__{param_name}"] = control
 
-    layout.addWidget(_section_label("Junction screws", indent_px=20))
-    junction_form = QFormLayout()
-    junction_form.setContentsMargins(40, 0, 0, 0)
-    junction_screw_holes = QCheckBox()
-    junction_screw_holes.setChecked(defaults.junction_screw_holes)
-    junction_form.addRow("Enabled", junction_screw_holes)
-    junction_screw_diameter = _mm_spinbox(defaults.junction_screw_diameter)
-    junction_form.addRow("Screw diameter", junction_screw_diameter)
-    junction_counterbore_diameter = _mm_spinbox(defaults.junction_counterbore_diameter)
-    junction_form.addRow("Counterbore diameter", junction_counterbore_diameter)
-    junction_counterbore_depth = _mm_spinbox(defaults.junction_counterbore_depth)
-    junction_form.addRow("Counterbore depth", junction_counterbore_depth)
-    layout.addLayout(junction_form)
-    controls.update(
-        {
-            "junction_screws__enabled": junction_screw_holes,
-            "junction_screws__screw_diameter": junction_screw_diameter,
-            "junction_screws__counterbore_diameter": junction_counterbore_diameter,
-            "junction_screws__counterbore_depth": junction_counterbore_depth,
-        }
-    )
+    # Create and add connecting clips section
+    clip_params = ClipParams()
+    clip_controls, clip_widget = clip_params.build_ui(None, "", True)  # No title
+    # Add styled label for subsection
+    clip_label = _section_label("Connecting clips", indent_px=20)
+    layout.addWidget(clip_label)
+    layout.addWidget(clip_widget)
+    
+    # Add clip controls to main dict
+    for param_name, control in clip_controls.items():
+        controls[f"clip_cutouts__{param_name}"] = control
 
-    layout.addWidget(_section_label("Connecting clips", indent_px=20))
-    clip_form = QFormLayout()
-    clip_form.setContentsMargins(40, 0, 0, 0)
-    clip_cutouts_enabled = QCheckBox()
-    clip_cutouts_enabled.setChecked(defaults.clip_cutouts_enabled)
-    clip_form.addRow("Enabled", clip_cutouts_enabled)
-    clip_length = _mm_spinbox(defaults.clip_length)
-    clip_form.addRow("Clip length", clip_length)
-    layout.addLayout(clip_form)
-    controls.update(
-        {
-            "clip_cutouts__enabled": clip_cutouts_enabled,
-            "clip_cutouts__clip_length": clip_length,
-        }
-    )
-
+    # Add filler section if needed
     if include_filler:
         layout.addWidget(_section_label("Filler strips", indent_px=20))
         filler_form = QFormLayout()
@@ -346,19 +312,21 @@ def _build_baseplate_section(
         filler_left_width = _mm_spinbox(30.0, maximum=1000.0)
         filler_form.addRow("Left width", filler_left_width)
 
-        layout.addLayout(filler_form)
-        controls.update(
-            {
-                "size__filler_right_enabled": filler_right_enabled,
-                "size__filler_right_width": filler_right_width,
-                "size__filler_left_enabled": filler_left_enabled,
-                "size__filler_left_width": filler_left_width,
-                "size__filler_top_enabled": filler_top_enabled,
-                "size__filler_top_width": filler_top_width,
-                "size__filler_bottom_enabled": filler_bottom_enabled,
-                "size__filler_bottom_width": filler_bottom_width,
-            }
-        )
+        filler_container = QWidget()
+        filler_container.setLayout(filler_form)
+        layout.addWidget(filler_container)
+        
+        controls.update({
+            "size__filler_right_enabled": filler_right_enabled,
+            "size__filler_right_width": filler_right_width,
+            "size__filler_left_enabled": filler_left_enabled,
+            "size__filler_left_width": filler_left_width,
+            "size__filler_top_enabled": filler_top_enabled,
+            "size__filler_top_width": filler_top_width,
+            "size__filler_bottom_enabled": filler_bottom_enabled,
+            "size__filler_bottom_width": filler_bottom_width,
+        })
+    
     return controls
 
 

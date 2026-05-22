@@ -479,6 +479,123 @@ class ParameterGroup(ABC):
         # This will be overridden by subclasses to return specific data classes
         raise NotImplementedError("Subclasses must implement data() method")
 
+    def get_ui_controls(self):
+        """Generate and return UI controls for all parameters in this group."""
+        try:
+            from PySide.QtWidgets import (
+                QCheckBox,
+                QDoubleSpinBox,
+                QComboBox,
+            )
+        except ImportError:
+            # Fallback if GUI is not available
+            return {}
+
+        controls = {}
+
+        # Get UI descriptors from the parameter group
+        ui_descriptors = self.ui_descriptors()
+
+        for param_name, ui_field in ui_descriptors.items():
+            param = self._parameters[param_name]
+            default_value = self.get_value(param_name)
+
+            if ui_field.control_type == "checkbox":
+                control = QCheckBox()
+                if isinstance(default_value, bool):
+                    control.setChecked(default_value)
+            elif ui_field.control_type == "spinbox":
+                control = QDoubleSpinBox()
+                # Handle min/max values safely
+                if hasattr(param, "min_value") and param.min_value is not None:
+                    try:
+                        control.setMinimum(float(param.min_value))
+                    except (TypeError, ValueError):
+                        control.setMinimum(0)
+                else:
+                    control.setMinimum(0)
+                    
+                if hasattr(param, "max_value") and param.max_value is not None:
+                    try:
+                        control.setMaximum(float(param.max_value))
+                    except (TypeError, ValueError):
+                        control.setMaximum(999999)
+                else:
+                    control.setMaximum(999999)
+                
+                try:
+                    control.setValue(float(default_value))
+                except (TypeError, ValueError):
+                    control.setValue(0.0)
+            elif ui_field.control_type == "combo":
+                control = QComboBox()
+                if hasattr(param, "choices") and param.choices:
+                    control.addItems(param.choices)
+                    if str(default_value) in param.choices:
+                        control.setCurrentText(str(default_value))
+            else:
+                # Default to spinbox
+                control = QDoubleSpinBox()
+                try:
+                    control.setValue(float(default_value) if isinstance(default_value, (int, float)) else 0)
+                except (TypeError, ValueError):
+                    control.setValue(0.0)
+
+            controls[param_name] = control
+
+        return controls
+
+    def build_ui(self, layout=None, section_title: str = "", show_description: bool = True):
+        """
+        Build UI for this parameter group.
+        
+        Args:
+            layout: Optional layout to add the UI to
+            section_title: Title to display for the section (empty string means no title)
+            show_description: Whether to show descriptions/notes
+            
+        Returns:
+            tuple: (controls_dict, widget) where controls_dict maps parameter names to UI controls
+                   and widget is the container widget
+        """
+        try:
+            from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QLabel
+            from PySide.QtCore import Qt
+        except ImportError:
+            # Fallback if GUI is not available
+            return {}, None
+        
+        widget = QWidget()
+        container_layout = QVBoxLayout(widget)
+        
+        # Add section title if provided
+        if section_title:
+            section_label = QLabel(section_title)
+            style = "font-weight: bold;"
+            section_label.setStyleSheet(style)
+            container_layout.addWidget(section_label)
+        
+        # Create form layout for the parameters
+        form_layout = QFormLayout()
+        form_layout.setContentsMargins(20, 0, 0, 0)
+        
+        # Generate controls for this group
+        controls = self.get_ui_controls()
+        
+        # Add each control to the form layout
+        ui_descriptors = self.ui_descriptors()
+        for param_name, control in controls.items():
+            if param_name in ui_descriptors:
+                form_layout.addRow(ui_descriptors[param_name].label, control)
+        
+        container_layout.addLayout(form_layout)
+        
+        # If a layout was provided, add our widget to it
+        if layout:
+            layout.addWidget(widget)
+        
+        return controls, widget
+
 
 class ParameterValidationError(Exception):
     """Exception raised when parameter validation fails."""
@@ -707,6 +824,56 @@ class CombinedParams:
                 # Update the category to be specific to this group
                 group._category = f"Gridfinity_{group_name.title()}"
                 group.add_properties_to_object(obj)
+
+    def build_ui(self, layout=None, section_title: str = "", show_description: bool = True):
+        """
+        Build UI controls for all parameter groups combined.
+        
+        Args:
+            layout: Optional layout to add the UI to
+            section_title: Title to display for the combined section (empty string means no title)
+            show_description: Whether to show descriptions/notes
+            
+        Returns:
+            tuple: (controls_dict, widget) where controls_dict maps parameter names to UI controls
+                   and widget is the container widget
+        """
+        try:
+            from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QLabel
+            from PySide.QtCore import Qt
+        except ImportError:
+            # Fallback if GUI is not available
+            return {}, None
+        
+        widget = QWidget()
+        container_layout = QVBoxLayout(widget)
+        
+        # Add section title if provided
+        if section_title:
+            section_label = QLabel(section_title)
+            style = "font-weight: bold;"
+            section_label.setStyleSheet(style)
+            container_layout.addWidget(section_label)
+        
+        # Build UI for each parameter group
+        all_controls = {}
+        for group_name, group in self._param_groups.items():
+            if hasattr(group, 'build_ui'):
+                group_controls, group_widget = group.build_ui(None, "", show_description)
+                # Prefix control names with group name
+                prefixed_controls = {}
+                for param_name, control in group_controls.items():
+                    prefixed_controls[f"{group_name}__{param_name}"] = control
+                all_controls.update(prefixed_controls)
+                
+                # Add the group widget to our container
+                container_layout.addWidget(group_widget)
+        
+        # If a layout was provided, add our widget to it
+        if layout:
+            layout.addWidget(widget)
+        
+        return all_controls, widget
 
 
 def generate_ui_from_param_group(param_group: ParameterGroup):
