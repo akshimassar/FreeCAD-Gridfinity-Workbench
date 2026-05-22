@@ -1468,27 +1468,27 @@ class StandaloneLabelShelf:
 
 
 class ConnectingClip(FoundationGridfinity):
-    def __init__(self, obj: fc.DocumentObject, params: "ConnectingClipParams") -> None:
+    def __init__(self, obj: fc.DocumentObject, params: "CombinedClipParams") -> None:
         super().__init__(obj)
 
         # Use the generic parameter-driven property addition
         params.add_all_properties_to_object(obj)
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        from .param_system import ConnectingClipParams
+        from .param import CombinedClipParams
 
         # Create param group and extract values from object
-        params = ConnectingClipParams().from_obj(obj)
+        params = CombinedClipParams().from_obj(obj)
 
         # Get frozen data object with all parameter values
         data = params.data()
 
         # Use the data object for geometry creation
         # Use the fundamentals for profile dimensions and clip-specific for geometry parameters
-        half_width_value = data.fundamentals.base_profile_main_half_width
-        height_value = data.fundamentals.base_profile_main_height
-        tolerance_value = data.clip_specific.tolerance
-        clip_length_value = data.clip_specific.clip_length
+        half_width_value = data.fundamentals.main_profile_half_width
+        height_value = data.fundamentals.main_profile_height
+        tolerance_value = data.clip.tolerance
+        clip_length_value = data.clip.clip_length
 
         wire = clip_profiles.build_clip_profile_wire(
             half_width_value,

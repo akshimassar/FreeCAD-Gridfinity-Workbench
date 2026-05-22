@@ -1116,19 +1116,17 @@ class CreateBaseplateTaskPanel:
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         params = params_from_obj(obj)
-        self.x_grid_units.setValue(int(params.core.x_grid_count))
-        self.y_grid_units.setValue(int(params.core.y_grid_count))
+        self.x_grid_units.setValue(int(params.size.x_grid_count))
+        self.y_grid_units.setValue(int(params.size.y_grid_count))
         self.grid_size.setValue(float(params.fundamentals.x_grid_size))
         self.base_profile_main_half_width.setValue(
-            float(params.fundamentals.base_profile_main_half_width)
+            float(params.fundamentals.main_profile_half_width)
         )
-        self.base_profile_main_height.setValue(float(params.fundamentals.base_profile_main_height))
+        self.base_profile_main_height.setValue(float(params.fundamentals.main_profile_height))
         self.bin_outer_radius.setValue(float(params.fundamentals.bin_outer_radius))
-        self.enable_lower_chamfer.setChecked(params.core.base_profile_lower_chamfer_enabled)
-        self.base_profile_lower_chamfer_size.setValue(
-            float(params.core.base_profile_lower_chamfer_size)
-        )
-        self.top_crop.setValue(float(params.core.base_profile_top_crop))
+        self.enable_lower_chamfer.setChecked(params.core.lower_chamfer_enabled)
+        self.base_profile_lower_chamfer_size.setValue(float(params.core.lower_chamfer_size))
+        self.top_crop.setValue(float(params.core.top_crop))
         self.clearance.setValue(float(params.core.clearance))
         self.click_springs_enabled.setChecked(params.click_springs.enabled)
         self.click_thickness.setValue(float(params.click_springs.click_thickness))
@@ -1146,14 +1144,14 @@ class CreateBaseplateTaskPanel:
             self.screw_stub_clearance.setValue(float(params.screw_stubs.clearance))
         self.clip_cutouts_enabled.setChecked(params.clip_cutouts.enabled)
         self.clip_length.setValue(float(params.clip_cutouts.clip_length))
-        self.filler_right_enabled.setChecked(params.fillers.right_enabled)
-        self.filler_right_width.setValue(float(params.fillers.right_width))
-        self.filler_left_enabled.setChecked(params.fillers.left_enabled)
-        self.filler_left_width.setValue(float(params.fillers.left_width))
-        self.filler_top_enabled.setChecked(params.fillers.top_enabled)
-        self.filler_top_width.setValue(float(params.fillers.top_width))
-        self.filler_bottom_enabled.setChecked(params.fillers.bottom_enabled)
-        self.filler_bottom_width.setValue(float(params.fillers.bottom_width))
+        self.filler_right_enabled.setChecked(params.size.filler_right_enabled)
+        self.filler_right_width.setValue(float(params.size.filler_right_width))
+        self.filler_left_enabled.setChecked(params.size.filler_left_enabled)
+        self.filler_left_width.setValue(float(params.size.filler_left_width))
+        self.filler_top_enabled.setChecked(params.size.filler_top_enabled)
+        self.filler_top_width.setValue(float(params.size.filler_top_width))
+        self.filler_bottom_enabled.setChecked(params.size.filler_bottom_enabled)
+        self.filler_bottom_width.setValue(float(params.size.filler_bottom_width))
 
     def _control_values(self) -> dict[str, Any]:
         return {
@@ -1425,8 +1423,8 @@ class CreateBaseplateTaskPanel:
         output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
         apply_params_to_obj(output_obj, params)
         output_obj.Label = self._format_simple_baseplate_label(
-            int(params.core.x_grid_count),
-            int(params.core.y_grid_count),
+            int(params.size.x_grid_count),
+            int(params.size.y_grid_count),
         )
         if hasattr(output_obj, "PreviewBuildMode"):
             output_obj.PreviewBuildMode = False
@@ -1584,8 +1582,8 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
             return False
 
         base_label = self._format_simple_baseplate_label(
-            int(params.core.x_grid_count),
-            int(params.core.y_grid_count),
+            int(params.size.x_grid_count),
+            int(params.size.y_grid_count),
         )
         base_obj.Label = base_label
 
@@ -1663,9 +1661,9 @@ class CreateConnectingClipTaskPanel:
         )
         layout = QVBoxLayout(self.form)
 
-        from .param_system import ConnectingClipParams
+        from .param import CombinedClipParams
 
-        params = ConnectingClipParams()
+        params = CombinedClipParams()
         self._controls_by_key = self._build_connecting_clip_controls(layout, params)
 
         # Create preview object
@@ -1698,18 +1696,18 @@ class CreateConnectingClipTaskPanel:
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         """Load values from an existing connecting clip object."""
-        from .param_system import ConnectingClipParams
+        from .param import CombinedClipParams
 
-        params = ConnectingClipParams().from_obj(obj)
+        params = CombinedClipParams().from_obj(obj)
         params.apply_to_ui_owner(self)
 
     def _build_connecting_clip_controls(
         self, layout: QVBoxLayout, params: Any
     ) -> dict[str, QWidget]:
-        from .param_system import BooleanParam, NumberParam
+        from .param_system import BooleanParam, FloatParam, IntParam
 
         controls: dict[str, QWidget] = {}
-        sections = (("fundamentals", "Fundamentals"), ("clip_specific", "Connecting Clip"))
+        sections = (("fundamentals", "Fundamentals"), ("clip", "Connecting Clip"))
 
         for group_name, title in sections:
             group = getattr(params, group_name)
@@ -1731,7 +1729,18 @@ class CreateConnectingClipTaskPanel:
                 if isinstance(param, BooleanParam):
                     control = QCheckBox()
                     control.setChecked(bool(group.get_value(param_name)))
-                elif isinstance(param, NumberParam):
+                elif isinstance(param, IntParam):
+                    control = QSpinBox()
+                    if param.min_value is not None:
+                        control.setMinimum(int(param.min_value))
+                    else:
+                        control.setMinimum(0)
+                    if param.max_value is not None:
+                        control.setMaximum(int(param.max_value))
+                    else:
+                        control.setMaximum(1000)
+                    control.setValue(int(group.get_value(param_name)))
+                elif isinstance(param, FloatParam):
                     control = QDoubleSpinBox()
                     control.setDecimals(2)
                     if param.min_value is not None:
@@ -1764,10 +1773,10 @@ class CreateConnectingClipTaskPanel:
             return
 
         # Apply values to the preview object using the new param system
-        from .param_system import ConnectingClipParams
+        from .param import CombinedClipParams
 
         # Create param object using values from controls
-        params = ConnectingClipParams()
+        params = CombinedClipParams()
 
         params.update_from_ui_owner(self)
 
@@ -1827,10 +1836,10 @@ class CreateConnectingClipTaskPanel:
             return False
 
         # Apply final values to the target object using the new param system
-        from .param_system import ConnectingClipParams
+        from .param import CombinedClipParams
 
         # Create param object using values from controls
-        params = ConnectingClipParams()
+        params = CombinedClipParams()
 
         params.update_from_ui_owner(self)
 

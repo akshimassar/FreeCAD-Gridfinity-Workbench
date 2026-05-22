@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from enum import Enum
 import re
 from typing import Any, Dict, Literal, Optional, Union
@@ -19,6 +18,18 @@ class DefaultType(Enum):
     MEM = "Mem"  # Runtime memory
 
 
+class ParamDefaultResolver:
+    """Resolver for persisted and runtime parameter defaults."""
+
+    def get_saved(self, group_name: str, param_name: str, fallback: Any) -> Any:
+        """Return persisted default for group/param pair or fallback."""
+        return fallback
+
+    def get_runtime(self, group_name: str, param_name: str, fallback: Any) -> Any:
+        """Return runtime default for group/param pair or fallback."""
+        return fallback
+
+
 class BaseParam:
     """Base class for individual parameters with FreeCAD property mapping."""
 
@@ -29,6 +40,7 @@ class BaseParam:
         property_name: str = None,
         freecad_property_type: str = "App::PropertyFloat",
         description: str = "",
+        default_type: DefaultType = DefaultType.VALUE,
     ):
         self.name = name
         self.display_name = display_name
@@ -37,6 +49,18 @@ class BaseParam:
             freecad_property_type  # FreeCAD property type (e.g., "App::PropertyLength")
         )
         self.description = description
+        self.group_name: str = ""
+        self._default_type = default_type
+
+    def set_group_name(self, group_name: str) -> None:
+        """Attach canonical group name to this parameter."""
+        self.group_name = group_name
+
+    def default_key(self) -> str:
+        """Return canonical key used by default resolvers."""
+        if not self.group_name:
+            raise ValueError(f"Parameter '{self.name}' is not attached to a group")
+        return f"{self.group_name}.{self.name}"
 
     def property_name_for_group(self, group_class_name: str) -> str:
         """Generate canonical prefixed snake_case property name."""
@@ -46,11 +70,31 @@ class BaseParam:
 
     def default_type(self) -> DefaultType:
         """Return which default type this parameter uses."""
-        return DefaultType.VALUE
+        return self._default_type
 
     def default(self) -> Any:
         """Return the actual default value."""
         return None
+
+    def resolve_default(self, resolver: Optional[ParamDefaultResolver] = None) -> Any:
+        """Resolve parameter default based on default type and resolver."""
+        fallback = self.default()
+        default_type = self.default_type()
+
+        if default_type == DefaultType.VALUE:
+            return fallback
+
+        if default_type == DefaultType.SAVED:
+            if resolver is None:
+                return fallback
+            return resolver.get_saved(self.group_name, self.name, fallback)
+
+        if default_type == DefaultType.MEM:
+            if resolver is None:
+                return fallback
+            return resolver.get_runtime(self.group_name, self.name, fallback)
+
+        return fallback
 
     def validate(self, value: Any) -> bool:
         """Validate the given value."""
@@ -68,8 +112,16 @@ class BooleanParam(BaseParam):
         property_name: str = None,
         freecad_property_type: str = "App::PropertyBool",
         description: str = "",
+        default_type: DefaultType = DefaultType.VALUE,
     ):
-        super().__init__(name, display_name, property_name, freecad_property_type, description)
+        super().__init__(
+            name,
+            display_name,
+            property_name,
+            freecad_property_type,
+            description,
+            default_type,
+        )
         self.default_value = default_value
 
     def default(self) -> bool:
@@ -80,8 +132,8 @@ class BooleanParam(BaseParam):
         return isinstance(value, bool)
 
 
-class NumberParam(BaseParam):
-    """Numeric parameter with units."""
+class FloatParam(BaseParam):
+    """Floating-point parameter, typically millimeter quantity."""
 
     def __init__(
         self,
@@ -94,8 +146,16 @@ class NumberParam(BaseParam):
         freecad_property_type: str = "App::PropertyLength",  # Default to Length for measurements
         description: str = "",
         positive_only: bool = False,  # Whether this parameter should be positive only
+        default_type: DefaultType = DefaultType.VALUE,
     ):
-        super().__init__(name, display_name, property_name, freecad_property_type, description)
+        super().__init__(
+            name,
+            display_name,
+            property_name,
+            freecad_property_type,
+            description,
+            default_type,
+        )
         self.default_value = default_value
         self.min_value = min_value
         self.max_value = max_value
@@ -131,8 +191,16 @@ class LiteralParam(BaseParam):
         property_name: str = None,
         freecad_property_type: str = "App::PropertyString",
         description: str = "",
+        default_type: DefaultType = DefaultType.VALUE,
     ):
-        super().__init__(name, display_name, property_name, freecad_property_type, description)
+        super().__init__(
+            name,
+            display_name,
+            property_name,
+            freecad_property_type,
+            description,
+            default_type,
+        )
         self.default_value = default_value
         self.choices = choices
 
@@ -148,15 +216,70 @@ class LiteralParam(BaseParam):
         return True
 
 
+class IntParam(BaseParam):
+    """Integer parameter for count-like values."""
+
+    def __init__(
+        self,
+        name: str,
+        display_name: str,
+        default_value: int,
+        min_value: Optional[int] = None,
+        max_value: Optional[int] = None,
+        property_name: str = None,
+        freecad_property_type: str = "App::PropertyInteger",
+        description: str = "",
+        positive_only: bool = False,
+        default_type: DefaultType = DefaultType.VALUE,
+    ):
+        super().__init__(
+            name,
+            display_name,
+            property_name,
+            freecad_property_type,
+            description,
+            default_type,
+        )
+        self.default_value = int(default_value)
+        self.min_value = min_value
+        self.max_value = max_value
+        self.positive_only = positive_only
+
+    def default(self) -> int:
+        return self.default_value
+
+    def validate(self, value: Any) -> bool:
+        if isinstance(value, bool):
+            return False
+        if not isinstance(value, int):
+            return False
+        if self.min_value is not None and value < self.min_value:
+            return False
+        if self.max_value is not None and value > self.max_value:
+            return False
+        if self.positive_only and value <= 0:
+            return False
+        return True
+
+
 class ParameterGroup(ABC):
     """Base class for parameter groups with automatic iteration and direct property mapping."""
 
     # Class attribute to define the category/group name for FreeCAD properties
     _category = "Gridfinity"
 
-    def __init__(self, parameters: list[Union[BooleanParam, NumberParam, LiteralParam]]):
+    def __init__(
+        self,
+        parameters: list[Union[BooleanParam, FloatParam, IntParam, LiteralParam]],
+        resolver: Optional[ParamDefaultResolver] = None,
+    ):
         self._parameters = {param.name: param for param in parameters}
         self._values = {}
+        self._resolver = resolver
+        self._group_name = self._compute_group_name()
+
+        for param in self._parameters.values():
+            param.set_group_name(self._group_name)
 
         # Dynamically create getter methods for each parameter
         for param_name in self._parameters:
@@ -198,16 +321,7 @@ class ParameterGroup(ABC):
             return self._values[param_name]
 
         param = self._parameters[param_name]
-        default_type = param.default_type()
-
-        if default_type == DefaultType.VALUE:
-            return param.default()
-        elif default_type == DefaultType.SAVED:
-            # Get from plugin config (to be implemented)
-            return self._get_saved_default(param_name, param.default())
-        elif default_type == DefaultType.MEM:
-            # Get from runtime memory (to be implemented)
-            return self._get_runtime_default(param_name, param.default())
+        return param.resolve_default(self._resolver)
 
     def set_value(self, param_name: str, value: Any):
         """Set value for a specific parameter."""
@@ -245,6 +359,15 @@ class ParameterGroup(ABC):
 
     def _property_name(self, param: BaseParam) -> str:
         return param.property_name or param.property_name_for_group(self.__class__.__name__)
+
+    def _compute_group_name(self) -> str:
+        """Return canonical group key generated from class name."""
+        explicit_group_key = getattr(self, "_group_name_override", None)
+        if explicit_group_key:
+            return explicit_group_key
+
+        group_name = self.__class__.__name__.replace("Params", "")
+        return re.sub(r"(?<!^)(?=[A-Z])", "_", group_name).lower()
 
     def validate(self) -> Dict[str, str]:
         """Automatically validate all parameters in this group."""
@@ -299,23 +422,29 @@ class ParameterGroup(ABC):
             defaults[param_name] = param.default()
         return defaults
 
-    def _get_control_type(self, param: Union[BooleanParam, NumberParam, LiteralParam]) -> str:
+    def _get_control_type(
+        self, param: Union[BooleanParam, FloatParam, IntParam, LiteralParam]
+    ) -> str:
         """Determine UI control type based on parameter type."""
         if isinstance(param, BooleanParam):
             return "checkbox"
-        elif isinstance(param, NumberParam):
+        elif isinstance(param, (FloatParam, IntParam)):
             return "spinbox"
         elif isinstance(param, LiteralParam):
             return "combo" if param.choices else "textbox"
         return "textbox"
 
     def _to_ui_value(self, param: BaseParam, value: Any) -> Any:
-        if isinstance(param, NumberParam):
+        if isinstance(param, IntParam):
+            return int(value)
+        if isinstance(param, FloatParam):
             return float(value)
         return value
 
     def _from_ui_value(self, param: BaseParam, ui_value: Any) -> Any:
-        if isinstance(param, NumberParam):
+        if isinstance(param, IntParam):
+            return int(ui_value)
+        if isinstance(param, FloatParam):
             if isinstance(ui_value, fc.Units.Quantity):
                 return ui_value
             return float(ui_value) * fc.Units.Quantity("1 mm")
@@ -327,13 +456,23 @@ class ParameterGroup(ABC):
 
     def _get_saved_default(self, param_name: str, fallback: Any) -> Any:
         """Get default value from plugin config."""
-        # Placeholder - to be implemented
-        return fallback
+        if param_name not in self._parameters:
+            return fallback
+        resolver = self._resolver
+        if resolver is None:
+            return fallback
+        param = self._parameters[param_name]
+        return resolver.get_saved(param.group_name, param.name, fallback)
 
     def _get_runtime_default(self, param_name: str, fallback: Any) -> Any:
         """Get default value from runtime memory."""
-        # Placeholder - to be implemented
-        return fallback
+        if param_name not in self._parameters:
+            return fallback
+        resolver = self._resolver
+        if resolver is None:
+            return fallback
+        param = self._parameters[param_name]
+        return resolver.get_runtime(param.group_name, param.name, fallback)
 
     def data(self) -> Any:
         """Return a frozen data object with current parameter values."""
@@ -349,27 +488,6 @@ class ParameterValidationError(Exception):
         super().__init__(
             f"{len(errors)} parameter validation error(s): {'; '.join(errors.values())}"
         )
-
-
-@dataclass(frozen=True)
-class FundamentalsParamsData:
-    x_grid_size: fc.Units.Quantity
-    y_grid_size: fc.Units.Quantity
-    outer_radius: fc.Units.Quantity
-    base_profile_main_half_width: fc.Units.Quantity
-    base_profile_main_height: fc.Units.Quantity
-
-
-@dataclass(frozen=True)
-class ClipSpecificParamsData:
-    tolerance: fc.Units.Quantity
-    clip_length: fc.Units.Quantity
-
-
-@dataclass(frozen=True)
-class ConnectingClipParamsData:
-    fundamentals: FundamentalsParamsData
-    clip_specific: ClipSpecificParamsData
 
 
 class UIField:
@@ -591,330 +709,6 @@ class CombinedParams:
                 group.add_properties_to_object(obj)
 
 
-class FundamentalsParams(ParameterGroup):
-    """Fundamental parameters for Gridfinity objects with direct property mapping."""
-
-    _category = "Gridfinity_Fundamentals"
-
-    def __init__(self, **kwargs):
-        parameters = [
-            NumberParam(
-                "x_grid_size", "X Grid Size", fc.Units.Quantity("42 mm"), positive_only=True
-            ),
-            NumberParam(
-                "y_grid_size", "Y Grid Size", fc.Units.Quantity("42 mm"), positive_only=True
-            ),
-            NumberParam(
-                "outer_radius", "Outer Radius", fc.Units.Quantity("4.0 mm"), positive_only=True
-            ),
-            NumberParam(
-                "base_profile_main_half_width",
-                "Base Profile Main Half Width",
-                fc.Units.Quantity("2.15 mm"),
-                positive_only=True,
-            ),
-            NumberParam(
-                "base_profile_main_height",
-                "Base Profile Main Height",
-                fc.Units.Quantity("2.5 mm"),
-                positive_only=True,
-            ),
-        ]
-
-        super().__init__(parameters)
-
-        # Apply any initial values passed in kwargs
-        self.set_all_values(kwargs)
-
-    def data(self) -> FundamentalsParamsData:
-        """Return a frozen data object with current parameter values."""
-        errors = self.validate()
-        if errors:
-            raise ParameterValidationError(errors)
-        return FundamentalsParamsData(
-            x_grid_size=self.get_value("x_grid_size"),
-            y_grid_size=self.get_value("y_grid_size"),
-            outer_radius=self.get_value("outer_radius"),
-            base_profile_main_half_width=self.get_value("base_profile_main_half_width"),
-            base_profile_main_height=self.get_value("base_profile_main_height"),
-        )
-
-
-class ClipSpecificParams(ParameterGroup):
-    """Clip-specific parameters with direct property mapping."""
-
-    _category = "Gridfinity_Clip"
-
-    def __init__(self, **kwargs):
-        parameters = [
-            NumberParam("tolerance", "Tolerance", fc.Units.Quantity("0.15 mm")),
-            NumberParam(
-                "clip_length",
-                "Clip Length",
-                fc.Units.Quantity("3.0 mm"),
-            ),
-        ]
-
-        super().__init__(parameters)
-
-        # Apply any initial values passed in kwargs
-        self.set_all_values(kwargs)
-
-    def data(self) -> ClipSpecificParamsData:
-        """Return a frozen data object with current parameter values."""
-        errors = self.validate()
-        if errors:
-            raise ParameterValidationError(errors)
-        return ClipSpecificParamsData(
-            tolerance=self.get_value("tolerance"), clip_length=self.get_value("clip_length")
-        )
-
-
-class ConnectingClipParams(CombinedParams):
-    """Combined parameters for connecting clips: fundamentals + clip-specific."""
-
-    def __init__(
-        self, fundamentals: FundamentalsParams = None, clip_specific: ClipSpecificParams = None
-    ):
-        super().__init__(
-            fundamentals=fundamentals or FundamentalsParams(),
-            clip_specific=clip_specific or ClipSpecificParams(),
-        )
-
-    def validate(self) -> Dict[str, str]:
-        """Validate all parameter groups with hierarchical validation and cross-parameter rules."""
-        errors = super().validate()
-
-        # Add cross-parameter validation rules
-        try:
-            tolerance_val = float(self.clip_specific.get_value("tolerance"))
-            clip_length_val = float(self.clip_specific.get_value("clip_length"))
-
-            if clip_length_val <= 2 * tolerance_val:
-                errors["clip_specific.clip_length"] = (
-                    f"Clip length ({clip_length_val}) must be greater than 2 * tolerance ({2 * tolerance_val})"
-                )
-
-        except (AttributeError, KeyError, TypeError, ValueError):
-            # If values are not available or not numeric, skip cross-validation
-            pass
-
-        return errors
-
-    def data(self) -> ConnectingClipParamsData:
-        """Return a frozen data object with current parameter values."""
-        errors = self.validate()
-        if errors:
-            raise ParameterValidationError(errors)
-        return ConnectingClipParamsData(
-            fundamentals=self.fundamentals.data(), clip_specific=self.clip_specific.data()
-        )
-
-
-class BaseplateSizeParams(ParameterGroup):
-    """Combined grid units and filler parameters for baseplates."""
-
-    _category = "Gridfinity_BaseplateSize"
-
-    def __init__(self, **kwargs):
-        parameters = [
-            NumberParam(
-                "x_grid_units", "X Grid Units", fc.Units.Quantity("2 mm"), positive_only=True
-            ),
-            NumberParam(
-                "y_grid_units", "Y Grid Units", fc.Units.Quantity("2 mm"), positive_only=True
-            ),
-            BooleanParam("filler_left_enabled", "Left Filler Enabled"),
-            NumberParam(
-                "filler_left_width",
-                "Left Filler Width",
-                fc.Units.Quantity("30 mm"),
-                positive_only=True,
-            ),
-            BooleanParam("filler_right_enabled", "Right Filler Enabled"),
-            NumberParam(
-                "filler_right_width",
-                "Right Filler Width",
-                fc.Units.Quantity("30 mm"),
-                positive_only=True,
-            ),
-            BooleanParam("filler_top_enabled", "Top Filler Enabled"),
-            NumberParam(
-                "filler_top_width",
-                "Top Filler Width",
-                fc.Units.Quantity("30 mm"),
-                positive_only=True,
-            ),
-            BooleanParam("filler_bottom_enabled", "Bottom Filler Enabled"),
-            NumberParam(
-                "filler_bottom_width",
-                "Bottom Filler Width",
-                fc.Units.Quantity("30 mm"),
-                positive_only=True,
-            ),
-        ]
-
-        super().__init__(parameters)
-
-        # Apply any initial values passed in kwargs
-        self.set_all_values(kwargs)
-
-
-class BaseplateCoreParams(ParameterGroup):
-    """Core parameters for baseplates."""
-
-    _category = "Gridfinity_Core"
-
-    def __init__(self, **kwargs):
-        parameters = [
-            NumberParam(
-                "x_grid_count", "X Grid Count", fc.Units.Quantity("1 mm"), positive_only=True
-            ),
-            NumberParam(
-                "y_grid_count", "Y Grid Count", fc.Units.Quantity("1 mm"), positive_only=True
-            ),
-            BooleanParam(
-                "base_profile_lower_chamfer_enabled", "Base Profile Lower Chamfer Enabled"
-            ),
-            NumberParam(
-                "base_profile_lower_chamfer_size",
-                "Base Profile Lower Chamfer Size",
-                fc.Units.Quantity("0 mm"),
-            ),
-            NumberParam(
-                "base_profile_top_crop", "Base Profile Top Crop", fc.Units.Quantity("0 mm")
-            ),
-            NumberParam("clearance", "Clearance", fc.Units.Quantity("0 mm")),
-        ]
-
-        super().__init__(parameters)
-
-        # Apply any initial values passed in kwargs
-        self.set_all_values(kwargs)
-
-
-class ClipParams(ParameterGroup):
-    """Clip parameters for baseplates."""
-
-    _category = "Gridfinity_ClipParams"
-
-    def __init__(self, **kwargs):
-        parameters = [
-            BooleanParam("enabled", "Enabled"),
-            NumberParam(
-                "clip_length", "Clip Length", fc.Units.Quantity("3 mm"), positive_only=True
-            ),
-            NumberParam("clip_tolerance", "Clip Tolerance", fc.Units.Quantity("0.15 mm")),
-        ]
-
-        super().__init__(parameters)
-
-        # Apply any initial values passed in kwargs
-        self.set_all_values(kwargs)
-
-
-class ClickSpringParams(ParameterGroup):
-    """Click spring parameters for baseplates."""
-
-    _category = "Gridfinity_ClickSpring"
-
-    def __init__(self, **kwargs):
-        parameters = [
-            BooleanParam("enabled", "Enabled"),
-            NumberParam("click_thickness", "Click Thickness", fc.Units.Quantity("0 mm")),
-            NumberParam("click_length", "Click Length", fc.Units.Quantity("0 mm")),
-            NumberParam("click_offset", "Click Offset", fc.Units.Quantity("0 mm")),
-        ]
-
-        super().__init__(parameters)
-
-        # Apply any initial values passed in kwargs
-        self.set_all_values(kwargs)
-
-
-class JunctionScrewParams(ParameterGroup):
-    """Junction screw parameters for baseplates."""
-
-    _category = "Gridfinity_JunctionScrew"
-
-    def __init__(self, **kwargs):
-        parameters = [
-            BooleanParam("enabled", "Enabled"),
-            NumberParam("screw_diameter", "Screw Diameter", fc.Units.Quantity("0 mm")),
-            NumberParam("counterbore_diameter", "Counterbore Diameter", fc.Units.Quantity("0 mm")),
-            NumberParam("counterbore_depth", "Counterbore Depth", fc.Units.Quantity("0 mm")),
-        ]
-
-        super().__init__(parameters)
-
-        # Apply any initial values passed in kwargs
-        self.set_all_values(kwargs)
-
-
-class ScrewStubParams(ParameterGroup):
-    """Screw stub parameters for baseplates."""
-
-    _category = "Gridfinity_ScrewStub"
-
-    def __init__(self, **kwargs):
-        parameters = [
-            BooleanParam("enabled", "Enabled"),
-            NumberParam("clearance", "Clearance", fc.Units.Quantity("0 mm")),
-        ]
-
-        super().__init__(parameters)
-
-        # Apply any initial values passed in kwargs
-        self.set_all_values(kwargs)
-
-
-class BaseplateFillersParams(ParameterGroup):
-    """Filler parameters for baseplates."""
-
-    _category = "Gridfinity_Fillers"
-
-    def __init__(self, **kwargs):
-        parameters = [
-            BooleanParam("right_enabled", "Right Enabled"),
-            NumberParam("right_width", "Right Width", fc.Units.Quantity("0 mm")),
-            BooleanParam("left_enabled", "Left Enabled"),
-            NumberParam("left_width", "Left Width", fc.Units.Quantity("0 mm")),
-            BooleanParam("top_enabled", "Top Enabled"),
-            NumberParam("top_width", "Top Width", fc.Units.Quantity("0 mm")),
-            BooleanParam("bottom_enabled", "Bottom Enabled"),
-            NumberParam("bottom_width", "Bottom Width", fc.Units.Quantity("0 mm")),
-        ]
-
-        super().__init__(parameters)
-
-        # Apply any initial values passed in kwargs
-        self.set_all_values(kwargs)
-
-
-class CombinedBaseplateParams(CombinedParams):
-    """Combined baseplate parameters using individual parameter groups."""
-
-    def __init__(
-        self,
-        fundamentals: FundamentalsParams = None,
-        core: BaseplateCoreParams = None,
-        fillers: BaseplateFillersParams = None,
-        click_springs: ClickSpringParams = None,
-        junction_screws: JunctionScrewParams = None,
-        screw_stubs: ScrewStubParams = None,
-        clip_cutouts: ClipParams = None,
-    ):
-        super().__init__(
-            fundamentals=fundamentals or FundamentalsParams(),
-            core=core or BaseplateCoreParams(),
-            fillers=fillers or BaseplateFillersParams(),
-            click_springs=click_springs or ClickSpringParams(),
-            junction_screws=junction_screws or JunctionScrewParams(),
-            screw_stubs=screw_stubs or ScrewStubParams(),
-            clip_cutouts=clip_cutouts or ClipParams(),
-        )
-
-
 def generate_ui_from_param_group(param_group: ParameterGroup):
     """
     Generate UI controls for a parameter group.
@@ -1059,15 +853,24 @@ class ParamSystemRouter:
     @staticmethod
     def route_obj_to_params(obj: fc.DocumentObject) -> Any:
         """Route to appropriate param conversion based on object type."""
+        from .param import (
+            CombinedBaseplateParams,
+            CombinedStackedBaseplateParams,
+            CombinedClipParams,
+            FundamentalsParams,
+        )
+
         proxy = getattr(obj, "Proxy", None)
 
         if proxy and hasattr(proxy, "__class__"):
             class_name = proxy.__class__.__name__
 
             if class_name == "ConnectingClip":
-                return ConnectingClipParams().from_obj(obj)
+                return CombinedClipParams().from_obj(obj)
             elif class_name == "Baseplate":
                 return CombinedBaseplateParams().from_obj(obj)
+            elif class_name == "StackedBaseplates":
+                return CombinedStackedBaseplateParams().from_obj(obj)
 
         # Default fallback - return fundamentals
         return FundamentalsParams().from_obj(obj)
