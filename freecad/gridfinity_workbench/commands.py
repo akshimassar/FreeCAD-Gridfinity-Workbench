@@ -331,6 +331,10 @@ def _build_baseplate_section(
 
 
 def _build_bin_section(layout: QVBoxLayout) -> dict[str, QWidget]:
+    from .settings import defaults
+    from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QCheckBox
+    from PySide.QtCore import Qt
+    
     layout.addWidget(_section_label("Bin"))
     form = QFormLayout()
     form.setContentsMargins(20, 0, 0, 0)
@@ -344,27 +348,38 @@ def _build_bin_section(layout: QVBoxLayout) -> dict[str, QWidget]:
 
 
 def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dict[str, QWidget]:
-    layout.addWidget(_section_label("Support"))
-    form = QFormLayout()
-    form.setContentsMargins(20, 0, 0, 0)
-    support_overhang_angle = QDoubleSpinBox()
-    support_overhang_angle.setDecimals(1)
-    support_overhang_angle.setMinimum(1.0)
-    support_overhang_angle.setMaximum(89.0)
-    support_overhang_angle.setSuffix(" deg")
-    support_overhang_angle.setValue(overhang_angle)
-    form.addRow("Overhang angle", support_overhang_angle)
-    screw_stubs_enabled = QCheckBox()
-    screw_stubs_enabled.setChecked(defaults.screw_stubs_enabled)
-    form.addRow("Screw stubs", screw_stubs_enabled)
-    screw_stub_clearance = _mm_spinbox(defaults.screw_stub_clearance)
-    form.addRow("Stub clearance", screw_stub_clearance)
-    layout.addLayout(form)
-    return {
-        "support_overhang_angle": support_overhang_angle,
-        "screw_stubs_enabled": screw_stubs_enabled,
-        "screw_stub_clearance": screw_stub_clearance,
-    }
+    from .param import SupportParams, ScrewStubParams
+    from PySide.QtWidgets import QDoubleSpinBox, QCheckBox, QFormLayout, QVBoxLayout, QWidget
+    
+    # Create the support params group
+    support_params = SupportParams(overhang_angle=overhang_angle * fc.Units.Quantity("1 deg"))
+    support_controls, support_widget = support_params.build_ui(None, "Support", True)
+    
+    # Add to layout
+    layout.addWidget(support_widget)
+    
+    # Create screw stub params group
+    screw_stub_params = ScrewStubParams()
+    screw_stub_controls, screw_stub_widget = screw_stub_params.build_ui(None, "", True)  # No title for secondary section
+    
+    # Add label for screw stubs section
+    stub_label = _section_label("Screw stubs")
+    layout.addWidget(stub_label)
+    layout.addWidget(screw_stub_widget)
+    
+    # Combine controls with appropriate naming
+    controls = {}
+    for param_name, control in support_controls.items():
+        controls[f"support__{param_name}"] = control
+        
+    for param_name, control in screw_stub_controls.items():
+        controls[f"screw_stubs__{param_name}"] = control
+    
+    # Special handling for the overhang angle parameter to match original naming
+    if "support__overhang_angle" in controls:
+        controls["support_overhang_angle"] = controls.pop("support__overhang_angle")
+    
+    return controls
 
 
 def _build_stacked_section(
@@ -1441,64 +1456,41 @@ class CreateConnectingClipTaskPanel:
     def _build_connecting_clip_controls(
         self, layout: QVBoxLayout, params: Any
     ) -> dict[str, QWidget]:
-        from .param_system import BooleanParam, FloatParam, IntParam
-
         controls: dict[str, QWidget] = {}
-        sections = (("fundamentals", "Fundamentals"), ("clip", "Connecting Clip"))
-
-        for group_name, title in sections:
-            group = getattr(params, group_name)
-            layout.addWidget(_section_label(title))
-            if group_name == "fundamentals":
-                compatibility_note = QLabel(
-                    "Changing these values affects Gridfinity compatibility with other objects."
-                )
-                compatibility_note.setWordWrap(True)
-                compatibility_note.setAlignment(Qt.AlignLeft)
-                layout.addWidget(compatibility_note)
-
-            form = QFormLayout()
-            form.setContentsMargins(20, 0, 0, 0)
-
-            for param_name, param in group._parameters.items():
-                key = f"{group_name}__{param_name}"
-                label = param.display_name
-                if isinstance(param, BooleanParam):
-                    control = QCheckBox()
-                    control.setChecked(bool(group.get_value(param_name)))
-                elif isinstance(param, IntParam):
-                    control = QSpinBox()
-                    if param.min_value is not None:
-                        control.setMinimum(int(param.min_value))
-                    else:
-                        control.setMinimum(0)
-                    if param.max_value is not None:
-                        control.setMaximum(int(param.max_value))
-                    else:
-                        control.setMaximum(1000)
-                    control.setValue(int(group.get_value(param_name)))
-                elif isinstance(param, FloatParam):
-                    control = QDoubleSpinBox()
-                    control.setDecimals(2)
-                    if param.min_value is not None:
-                        control.setMinimum(float(param.min_value))
-                    else:
-                        control.setMinimum(0.0)
-                    if param.max_value is not None:
-                        control.setMaximum(float(param.max_value))
-                    else:
-                        control.setMaximum(1000.0)
-                    control.setSuffix(" mm")
-                    control.setValue(float(group.get_value(param_name)))
-                else:
-                    continue
-
-                form.addRow(label, control)
+        
+        # Use the new param system UI generation for fundamentals
+        if hasattr(params, 'fundamentals') and hasattr(params.fundamentals, 'build_ui'):
+            # Add fundamentals section with compatibility note
+            layout.addWidget(_section_label("Fundamentals"))
+            compatibility_note = QLabel(
+                "Changing these values affects Gridfinity compatibility with other objects."
+            )
+            compatibility_note.setWordWrap(True)
+            compatibility_note.setAlignment(Qt.AlignLeft)
+            layout.addWidget(compatibility_note)
+            
+            # Generate UI for fundamentals group
+            fundamental_controls, fundamental_widget = params.fundamentals.build_ui()
+            layout.addWidget(fundamental_widget)
+            
+            # Add controls with proper naming
+            for param_name, control in fundamental_controls.items():
+                key = f"fundamentals__{param_name}"
                 controls[key] = control
                 setattr(self, key, control)
-
-            layout.addLayout(form)
-
+        
+        # Use the new param system UI generation for clip section
+        if hasattr(params, 'clip') and hasattr(params.clip, 'build_ui'):
+            # Add clip section
+            clip_controls, clip_widget = params.clip.build_ui(None, "Connecting Clip", True)
+            layout.addWidget(clip_widget)
+            
+            # Add controls with proper naming
+            for param_name, control in clip_controls.items():
+                key = f"clip__{param_name}"
+                controls[key] = control
+                setattr(self, key, control)
+        
         return controls
 
     def getStandardButtons(self) -> int:  # noqa: N802
