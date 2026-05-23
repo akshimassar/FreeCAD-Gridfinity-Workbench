@@ -138,8 +138,9 @@ def make_click_spring_seed_negative(
     total_height = float(fundamentals.main_height + fundamentals.main_half_width)
     x_vert_width = float(fundamentals.x_grid_size - 2 * fundamentals.main_half_width)
     x0 = x_vert_width / 2
-    x_min = float(x0 - click_springs.click_offset)
-    click_width_x = float(click_springs.click_offset + click_springs.click_thickness)
+    click_offset = float(click_springs.click_offset)
+    x_min = x0 - click_offset
+    click_width_x = click_offset + float(click_springs.click_thickness)
     click_length = float(click_springs.click_length)
     click_center_y = float(fundamentals.y_grid_size) / 4
     return Part.makeBox(

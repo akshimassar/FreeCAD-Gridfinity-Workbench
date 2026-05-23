@@ -28,6 +28,16 @@ from PySide.QtWidgets import (
 )
 
 from . import custom_shape, features, utils
+
+
+def _standard_buttons_ok_cancel() -> int:
+    """Return Ok|Cancel button flags compatible with both PySide2 and PySide6."""
+    ok = QDialogButtonBox.Ok
+    cancel = QDialogButtonBox.Cancel
+    # PySide6 enums have .value, PySide2 enums are already int-like
+    if hasattr(ok, "value"):
+        return ok.value | cancel.value
+    return int(ok) | int(cancel)
 from .param import CombinedBaseplateParams
 from .drawer_split import split_axis_into_printable_chunks
 
@@ -697,7 +707,7 @@ class CreateDrawerBaseplateTaskPanel:
         params.apply_to_ui_owner(self)
 
     def getStandardButtons(self) -> int:  # noqa: N802
-        return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        return _standard_buttons_ok_cancel()
 
     def _set_validation_visuals(self, errors: dict[str, str]) -> None:
         mapping = {
@@ -815,7 +825,6 @@ class CreateDrawerBaseplateTaskPanel:
         if preview_mode:
             params.click_springs.set_value("enabled", False)
             params.junction_screws.set_value("enabled", False)
-            params.screw_stubs.set_value("enabled", False)
             params.clip_cutouts.set_value("enabled", False)
         return params
 
@@ -984,7 +993,7 @@ class CreateBaseplateTaskPanel:
         return
 
     def getStandardButtons(self) -> int:  # noqa: N802
-        return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        return _standard_buttons_ok_cancel()
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         params = CombinedBaseplateParams().from_obj(obj)
@@ -993,11 +1002,6 @@ class CreateBaseplateTaskPanel:
     def _validate_controls(self, *, preview_mode: bool) -> CombinedBaseplateParams | None:
         params = CombinedBaseplateParams()
         params.update_from_ui_owner(self)
-        if preview_mode:
-            params.click_springs.set_value("enabled", False)
-            params.junction_screws.set_value("enabled", False)
-            params.screw_stubs.set_value("enabled", False)
-            params.clip_cutouts.set_value("enabled", False)
         errors = dict(params.validate())
         self._render_validation_errors(errors)
         self._last_valid_params = params
@@ -1486,7 +1490,7 @@ class CreateConnectingClipTaskPanel:
         return controls
 
     def getStandardButtons(self) -> int:  # noqa: N802
-        return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        return _standard_buttons_ok_cancel()
 
     def _update_preview(self) -> None:
         """Update the preview object with current values."""
@@ -1660,7 +1664,7 @@ class GridfinitySettingsTaskPanel:
             self._group_controls[group._group_name] = controls
 
     def getStandardButtons(self) -> int:
-        return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        return _standard_buttons_ok_cancel()
 
     def accept(self) -> bool:
         # Update group values from UI controls, then save
