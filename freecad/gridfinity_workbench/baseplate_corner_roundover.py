@@ -87,13 +87,17 @@ def apply_layout_corner_roundover(
     extrude_vec = fc.Vector(0, 0, float(height))
     out = shape
     if negative_profiles:
-        negative_solids = [profile.extrude(extrude_vec) for profile in negative_profiles]
+        negative_solids: list[Part.Shape] = [
+            profile.extrude(extrude_vec) for profile in negative_profiles
+        ]
         negative_shape = (
             utils.multi_fuse(negative_solids) if len(negative_solids) > 1 else negative_solids[0]
         )
         out = out.cut(negative_shape)
     if positive_profiles:
-        positive_solids = [profile.extrude(extrude_vec) for profile in positive_profiles]
+        positive_solids: list[Part.Shape] = [
+            profile.extrude(extrude_vec) for profile in positive_profiles
+        ]
         positive_shape = (
             utils.multi_fuse(positive_solids) if len(positive_solids) > 1 else positive_solids[0]
         )

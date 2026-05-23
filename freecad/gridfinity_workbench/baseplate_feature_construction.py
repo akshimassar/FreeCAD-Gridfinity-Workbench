@@ -578,7 +578,7 @@ def make_clip_cutouts_from_params(
             f"Clip cutout top Z after scaling ({clip_cutout_top_z}) must be greater than "
             f"BaseProfileMainHeight + BaseProfileMainHalfWidth ({max_clip_cutout_top_z})"
         )
-    clip_x = _profile_wire_to_centered_x_solid(clip_wire, clip_cutouts.clip_length)
+    clip_x = _profile_wire_to_centered_x_solid(clip_wire, float(clip_cutouts.clip_length))
 
     clip_y = clip_x.copy()
     clip_y.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)

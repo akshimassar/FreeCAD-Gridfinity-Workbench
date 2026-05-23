@@ -388,10 +388,10 @@ def _filler_spring_mask(
 
     mask = click_springs.SpringSlotMask.all_true()
     side_masks = [
-        (leftmost, [[True, True], [False, False]]),
-        (rightmost, [[False, False], [True, True]]),
-        (topmost, [[True, False], [True, False]]),
-        (bottommost, [[False, True], [False, True]]),
+        (leftmost, BoolMatrix2x2([[True, True], [False, False]])),
+        (rightmost, BoolMatrix2x2([[False, False], [True, True]])),
+        (topmost, BoolMatrix2x2([[True, False], [True, False]])),
+        (bottommost, BoolMatrix2x2([[False, True], [False, True]])),
     ]
     for enabled, side_mask in side_masks:
         if not enabled:

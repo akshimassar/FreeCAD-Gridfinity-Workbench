@@ -18,7 +18,7 @@ from . import baseplate_builder
 from . import clip_profiles
 from . import check_version, const, grid_initial_layout, label_shelf, utils
 from . import feature_construction as feat
-from .param import CombinedBaseplateParams
+from .param import CombinedBaseplateParams, CombinedClipParams
 from .drawer_split import split_axis_into_printable_chunks
 from .custom_shape_features import (
     clean_up_layout,
@@ -671,7 +671,8 @@ class StackedBaseplatesSupport(FoundationGridfinity):
 
 
 def _stacked_support_prototype(obj: fc.DocumentObject) -> Part.Shape:
-    return SupportBaseplate.generate_gridfinity_shape(obj.Proxy, obj)
+    proxy: SupportBaseplate = obj.Proxy  # type: ignore[assignment]
+    return proxy.generate_gridfinity_shape(obj)
 
 
 def _build_corner_stitching_shape(
@@ -750,7 +751,8 @@ def _build_corner_stitching_shape(
 
 
 def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
-    baseplate_shape = Baseplate.generate_gridfinity_shape(obj.Proxy, obj)
+    proxy: Baseplate = obj.Proxy  # type: ignore[assignment]
+    baseplate_shape = proxy.generate_gridfinity_shape(obj)
     support_shape = _stacked_support_prototype(obj)
     instance_count = max(1, int(getattr(obj, "InstanceCount", 3)))
     z_step = support_shape.BoundBox.ZMax
@@ -1475,8 +1477,6 @@ class ConnectingClip(FoundationGridfinity):
         params.add_all_properties_to_object(obj)
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        from .param import CombinedClipParams
-
         # Create param group and extract values from object
         params = CombinedClipParams().from_obj(obj)
 

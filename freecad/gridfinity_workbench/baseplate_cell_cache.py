@@ -39,7 +39,7 @@ def normalize(value: object) -> object:
         return round(value, 4)
     if hasattr(value, "Value"):
         try:
-            return round(float(value), 4)
+            return round(float(value), 4)  # type: ignore[arg-type]
         except Exception:
             return str(value)
     return str(value)

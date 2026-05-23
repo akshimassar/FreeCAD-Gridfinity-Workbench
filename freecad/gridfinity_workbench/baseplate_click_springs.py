@@ -14,15 +14,6 @@ from .param import BaseplateCoreLayoutParamsData, ClickSpringParamsData, Fundame
 unitmm = fc.Units.Quantity("1 mm")
 
 
-def _assert_2x2_bool_matrix(name: str, matrix: BoolMatrix2x2) -> None:
-    if len(matrix) != 2 or any(len(col) != 2 for col in matrix):
-        raise ValueError(f"{name} must be a 2x2 bool matrix")
-    for col in matrix:
-        for value in col:
-            if not isinstance(value, bool):
-                raise ValueError(f"{name} must contain only bool values")
-
-
 def _assert_2x2_shape_matrix(name: str, matrix: ShapeMatrix2x2) -> None:
     if len(matrix) != 2 or any(len(col) != 2 for col in matrix):
         raise ValueError(f"{name} must be a 2x2 shape matrix")
@@ -35,42 +26,37 @@ class SpringSlotMask:
     vertical_slots: BoolMatrix2x2
     horizontal_slots: BoolMatrix2x2
 
-    def __post_init__(self) -> None:
-        _assert_2x2_bool_matrix("vertical_slots", self.vertical_slots)
-        _assert_2x2_bool_matrix("horizontal_slots", self.horizontal_slots)
-
     @classmethod
     def all_true(cls) -> SpringSlotMask:
         return cls(
-            vertical_slots=[[True, True], [True, True]],
-            horizontal_slots=[[True, True], [True, True]],
+            vertical_slots=BoolMatrix2x2([[True, True], [True, True]]),
+            horizontal_slots=BoolMatrix2x2([[True, True], [True, True]]),
         )
 
     def with_vertical_disabled(self, disable: BoolMatrix2x2) -> SpringSlotMask:
-        _assert_2x2_bool_matrix("disable", disable)
-        matrix = [
-            [self.vertical_slots[x][y] and (not disable[x][y]) for y in range(2)] for x in range(2)
-        ]
+        matrix = BoolMatrix2x2([
+            [self.vertical_slots[x][y] and (not disable[x][y]) for y in range(2)]
+            for x in range(2)
+        ])
         return SpringSlotMask(vertical_slots=matrix, horizontal_slots=self.horizontal_slots)
 
     def with_horizontal_disabled(self, disable: BoolMatrix2x2) -> SpringSlotMask:
-        _assert_2x2_bool_matrix("disable", disable)
-        matrix = [
+        matrix = BoolMatrix2x2([
             [self.horizontal_slots[x][y] and (not disable[x][y]) for y in range(2)]
             for x in range(2)
-        ]
+        ])
         return SpringSlotMask(vertical_slots=self.vertical_slots, horizontal_slots=matrix)
 
     def with_all_vertical_disabled(self) -> SpringSlotMask:
         return SpringSlotMask(
-            vertical_slots=[[False, False], [False, False]],
+            vertical_slots=BoolMatrix2x2([[False, False], [False, False]]),
             horizontal_slots=self.horizontal_slots,
         )
 
     def with_all_horizontal_disabled(self) -> SpringSlotMask:
         return SpringSlotMask(
             vertical_slots=self.vertical_slots,
-            horizontal_slots=[[False, False], [False, False]],
+            horizontal_slots=BoolMatrix2x2([[False, False], [False, False]]),
         )
 
 
@@ -149,13 +135,13 @@ def make_click_spring_seed_negative(
     fundamentals: FundamentalsParamsData,
     click_springs: ClickSpringParamsData,
 ) -> Part.Shape:
-    total_height = fundamentals.main_height + fundamentals.main_half_width
-    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.main_half_width
+    total_height = float(fundamentals.main_height + fundamentals.main_half_width)
+    x_vert_width = float(fundamentals.x_grid_size - 2 * fundamentals.main_half_width)
     x0 = x_vert_width / 2
-    x_min = x0 - click_springs.click_offset
-    click_width_x = click_springs.click_offset + click_springs.click_thickness
-    click_length = click_springs.click_length
-    click_center_y = fundamentals.y_grid_size / 4
+    x_min = float(x0 - click_springs.click_offset)
+    click_width_x = float(click_springs.click_offset + click_springs.click_thickness)
+    click_length = float(click_springs.click_length)
+    click_center_y = float(fundamentals.y_grid_size) / 4
     return Part.makeBox(
         click_width_x,
         click_length,
@@ -199,7 +185,7 @@ def _validate_click_spring_geometry(
     if click_springs.click_thickness >= fundamentals.main_half_width:
         raise ValueError(
             f"Invalid click spring geometry: ClickThickness ({click_springs.click_thickness}) must be "
-            f"smaller than BaseProfileMainHalfWidth ({fundamentals.main_half_width})"
+            f"smaller than BaseProfileMainHalfWidth ({fundamentals.main_half_width})",
         )
 
     half_len = click_springs.click_length / 2
@@ -210,7 +196,7 @@ def _validate_click_spring_geometry(
     if half_len >= x_limit or half_len >= y_limit:
         raise ValueError(
             f"Invalid click spring geometry: ClickLength/2 ({half_len}) must be smaller than "
-            f"cell_size/4 - main_round_radius in both axes (x={x_limit}, y={y_limit})"
+            f"cell_size/4 - main_round_radius in both axes (x={x_limit}, y={y_limit})",
         )
 
 
@@ -299,6 +285,6 @@ def carve_support_profile_with_click_springs(
     cut = profile_a_face.cut(support_profiles)
     if not cut.Faces:
         raise ValueError(
-            "Support A-profile generation failed after click spring support profile cut"
+            "Support A-profile generation failed after click spring support profile cut",
         )
     return max(cut.Faces, key=lambda f: f.Area)

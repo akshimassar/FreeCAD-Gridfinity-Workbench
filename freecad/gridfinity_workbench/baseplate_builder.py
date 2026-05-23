@@ -2,27 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
-import json
 from collections import OrderedDict
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, is_dataclass, replace
 from dataclasses import fields as dataclass_fields
-from dataclasses import is_dataclass
 from typing import Callable
 
 import FreeCAD as fc  # noqa: N813
 import Part
 
-from . import baseplate_feature_construction as baseplate_feat
+from . import baseplate_cell_cache, baseplate_corner_roundover, baseplate_full_layout, utils
 from . import baseplate_click_springs as click_springs
-from . import baseplate_cell_cache
-from . import baseplate_corner_roundover
-from . import baseplate_full_layout
+from . import baseplate_feature_construction as baseplate_feat
 from . import feature_construction as feat
-from . import utils
-from .param import CombinedBaseplateParams, CombinedBaseplateParamsData
 from .baseplate_full_layout import GridfinityLayout, GridfinityLayoutGeometry
+from .param import CombinedBaseplateParams, CombinedBaseplateParamsData
 
 
 def _timing_enabled() -> bool:
@@ -67,7 +63,7 @@ def _cache_normalize(value: object) -> object:
         return round(value, 2)
     if hasattr(value, "Value"):
         try:
-            return round(float(value), 2)
+            return round(float(value), 2)  # type: ignore[arg-type]
         except Exception:
             return str(value)
     return str(value)
@@ -136,7 +132,7 @@ def build_baseplate_support_cached(
         except Exception:
             shifted_shape = shape.copy()
             try:
-                shifted_shape.transformShape(z_matrix, copy=False)
+                shifted_shape.transformShape(z_matrix, copy=False)  # type: ignore[call-arg]
             except TypeError:
                 shifted_shape.transformShape(z_matrix, False)
             return shifted_shape
@@ -204,7 +200,7 @@ def baseplate_cell_top_crop(shape: Part.Shape, params: CombinedBaseplateParamsDa
     if top_crop >= half_width:
         raise ValueError(
             f"BaseProfileTopCrop ({top_crop}) must be smaller than "
-            f"BaseProfileMainHalfWidth ({half_width})"
+            f"BaseProfileMainHalfWidth ({half_width})",
         )
 
     apex = _base_apex_height(params)
@@ -223,8 +219,8 @@ def build_single_cell_baseplate_core(
     options: BaseplateBuildOptions,
 ) -> CoreCellBuildResult:
     baseplate_outside_shape = _create_rectangle_wire(
-        params.fundamentals.x_grid_size,
-        params.fundamentals.y_grid_size,
+        float(params.fundamentals.x_grid_size),
+        float(params.fundamentals.y_grid_size),
     )
     total_height = _base_apex_height(params)
     face = Part.Face(baseplate_outside_shape)
@@ -246,7 +242,7 @@ def build_single_cell_baseplate_core_cached(
             "kind": "baseplate_core_cell",
             "params": params,
             "options": options,
-        }
+        },
     )
 
     def _build() -> Part.Shape:
@@ -254,7 +250,7 @@ def build_single_cell_baseplate_core_cached(
 
     shape = baseplate_cell_cache.get_or_build(key, _build)
     tiny_cell = feat.make_complex_bin_base_single_from_params(
-        params.fundamentals, params.core
+        params.fundamentals, params.core,
     ).isNull()
     return CoreCellBuildResult(shape=shape, is_tiny=tiny_cell)
 
@@ -287,7 +283,7 @@ def build_preview_single_cell_baseplate_core_cached(
         {
             "kind": "baseplate_preview_core_cell",
             "params": params,
-        }
+        },
     )
 
     def _build() -> Part.Shape:
@@ -307,7 +303,7 @@ def replicate_layout(
             params.fundamentals.x_grid_size / 2,
             params.fundamentals.y_grid_size / 2,
             0,
-        )
+        ),
     )
     return utils.copy_in_layout(
         base_cell,
@@ -349,7 +345,7 @@ def add_filler_strips(
             if params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
             else 0 * params.fundamentals.y_grid_size
         )
-        shape.translate(fc.Vector(x_core_shift, y_core_shift, 0))
+        shape.translate(fc.Vector(float(x_core_shift), float(y_core_shift), 0))
 
     filler_shape = _build_filler_ring_shape(params, expanded, options, preview=preview)
     if shape.isNull():
@@ -514,8 +510,8 @@ def _build_filler_ring_shape(
         for (ix, iy), vec in zip(spec["indices"], spec["vectors"]):
             t0 = time.perf_counter() if timing_on else 0.0
             side_result = proto(
-                spec["width"],
-                spec["height"],
+                float(spec["width"]),  # type: ignore[arg-type]
+                float(spec["height"]),  # type: ignore[arg-type]
                 cell_meta=geometry.cells[ix][iy],
             )
             if timing_on:
@@ -569,18 +565,18 @@ def _build_filler_ring_shape(
         if not spec["enabled"]:
             continue
         t_corner = time.perf_counter() if timing_on else 0.0
-        leftmost, rightmost, bottommost, topmost = spec["flags"]
+        leftmost, rightmost, bottommost, topmost = spec["flags"]  # type: ignore[misc]
         t0 = time.perf_counter() if timing_on else 0.0
         corner_result = proto(
-            spec["width"],
-            spec["height"],
-            cell_meta=geometry.cells[spec["ix"]][spec["iy"]],
+            float(spec["width"]),  # type: ignore[arg-type]
+            float(spec["height"]),  # type: ignore[arg-type]
+            cell_meta=geometry.cells[spec["ix"]][spec["iy"]],  # type: ignore[index]
         )
         if timing_on:
             t_proto += time.perf_counter() - t0
         corner = corner_result.shape.copy()
         t1 = time.perf_counter() if timing_on else 0.0
-        corner.translate(center(spec["ix"], spec["iy"]))
+        corner.translate(center(int(spec["ix"]), int(spec["iy"])))
         if timing_on:
             t_translate += time.perf_counter() - t1
             t_corners += time.perf_counter() - t_corner
@@ -608,7 +604,7 @@ def _apply_layout_corner_roundover(
 ) -> Part.Shape:
     apex = float(
         params.fundamentals.main_height
-        + params.fundamentals.main_half_width
+        + params.fundamentals.main_half_width,
     )
     top_crop = float(params.core.base_profile_top_crop)
     roundover_height = apex - top_crop
@@ -766,7 +762,7 @@ def build_simple_baseplate_from_params(
         shape, geometry = add_filler_strips(empty_shape, params, layout, options, preview=preview)
         if timing_on:
             _timing_print(
-                "baseplate.filler_only.add_filler_strips", time.perf_counter() - t_fill_only
+                "baseplate.filler_only.add_filler_strips", time.perf_counter() - t_fill_only,
             )
         if shape.isNull():
             raise ValueError("No core cells and no fillers to build")
@@ -839,18 +835,17 @@ def build_simple_baseplate_from_params(
         if timing_on:
             _timing_print("baseplate.total", time.perf_counter() - t_total)
         return shape
-    else:
-        t_post = time.perf_counter() if timing_on else 0.0
-        top_z = (
-            max(v.Z for v in shape.Vertexes) * fc.Units.Quantity("1 mm")
-            if shape.Vertexes
-            else 0 * fc.Units.Quantity("1 mm")
-        )
-        post_cutter = make_post_replication_cutter(params, geometry, options, top_z)
-        if post_cutter is not None:
-            shape = shape.cut(post_cutter)
-        if timing_on:
-            _timing_print("baseplate.post_cutter", time.perf_counter() - t_post)
-            _timing_print("baseplate.total", time.perf_counter() - t_total)
+    t_post = time.perf_counter() if timing_on else 0.0
+    top_z = (
+        max(v.Z for v in shape.Vertexes) * fc.Units.Quantity("1 mm")
+        if shape.Vertexes
+        else 0 * fc.Units.Quantity("1 mm")
+    )
+    post_cutter = make_post_replication_cutter(params, geometry, options, top_z)
+    if post_cutter is not None:
+        shape = shape.cut(post_cutter)
+    if timing_on:
+        _timing_print("baseplate.post_cutter", time.perf_counter() - t_post)
+        _timing_print("baseplate.total", time.perf_counter() - t_total)
 
     return shape

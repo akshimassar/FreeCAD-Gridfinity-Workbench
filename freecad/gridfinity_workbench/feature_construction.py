@@ -1074,33 +1074,33 @@ def make_complex_bin_base_single_from_params(
         return Part.Shape()
 
     vertical_section = utils.rounded_rectangle_extrude(
-        x_vert_width,
-        y_vert_width,
-        -total_height + lower_size,
-        vertical_section_height,
-        bin_vertical_radius,
+        float(x_vert_width),
+        float(y_vert_width),
+        float(-total_height + lower_size),
+        float(vertical_section_height),
+        float(bin_vertical_radius),
     )
 
     if lower_enabled:
         bottom_chamfer = utils.rounded_rectangle_chamfer(
-            x_bt_cmf_width,
-            y_bt_cmf_width,
-            -total_height,
-            lower_size,
-            bin_vertical_radius - lower_size,
-            bin_vertical_radius,
+            float(x_bt_cmf_width),
+            float(y_bt_cmf_width),
+            float(-total_height),
+            float(lower_size),
+            float(bin_vertical_radius - lower_size),
+            float(bin_vertical_radius),
         )
         assembly = bottom_chamfer.fuse(vertical_section)
     else:
         assembly = vertical_section
 
     top_chamfer = utils.rounded_rectangle_chamfer(
-        x_vert_width,
-        y_vert_width,
-        -total_height + lower_size + vertical_section_height,
-        upper_size,
-        bin_vertical_radius,
-        fundamentals.bin_outer_radius,
+        float(x_vert_width),
+        float(y_vert_width),
+        float(-total_height + lower_size + vertical_section_height),
+        float(upper_size),
+        float(bin_vertical_radius),
+        float(fundamentals.bin_outer_radius),
     )
 
     if lower_enabled:
