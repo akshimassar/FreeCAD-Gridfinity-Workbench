@@ -27,7 +27,8 @@ from PySide.QtWidgets import (
     QWidget,
 )
 
-from . import custom_shape, features, utils
+from . import baseplate_builder, custom_shape, features, utils
+from .param import CombinedBaseplateParams
 
 
 def _standard_buttons_ok_cancel() -> int:
@@ -38,7 +39,6 @@ def _standard_buttons_ok_cancel() -> int:
     if hasattr(ok, "value"):
         return ok.value | cancel.value
     return int(ok) | int(cancel)
-from .param import CombinedBaseplateParams
 from .drawer_split import split_axis_into_printable_chunks
 
 if TYPE_CHECKING:
@@ -1009,15 +1009,6 @@ class CreateBaseplateTaskPanel:
             return None
         return params
 
-    def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
-        params = self._validate_controls(preview_mode=preview_mode)
-        if params is None:
-            return False
-        params.to_obj(obj)
-        if hasattr(obj, "PreviewBuildMode"):
-            obj.PreviewBuildMode = preview_mode
-        return True
-
     def _find_form_layout_for_widget(self, widget: QWidget) -> QFormLayout | None:
         def visit(layout: QLayout) -> QFormLayout | None:
             if isinstance(layout, QFormLayout):
@@ -1124,9 +1115,10 @@ class CreateBaseplateTaskPanel:
     def _update_preview(self) -> None:
         if self._target_obj is None:
             return
-        applied = self._apply_dialog_values(self._target_obj, preview_mode=True)
-        if not applied:
+        params = self._validate_controls(preview_mode=True)
+        if params is None:
             return
+        params.to_obj(self._target_obj)
         base_label = self._format_simple_baseplate_label(
             int(self.size__x_grid_count.value()),
             int(self.size__y_grid_count.value()),
@@ -1136,16 +1128,30 @@ class CreateBaseplateTaskPanel:
         if fc.GuiUp and fcg is not None:
             try:
                 status_bar = fcg.getMainWindow().statusBar()
-                status_bar.showMessage("Recomputing preview...")
+                status_bar.showMessage("Building preview...")
             except Exception:
                 status_bar = None
 
         start = time.perf_counter()
-        fc.ActiveDocument.recompute()
+        # Directly build preview shape instead of relying on recompute
+        data = params.data()
+        layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
+        options = baseplate_builder.BaseplateBuildOptions(
+            include_junction_screws=data.junction_screws.enabled,
+            include_clip_cutouts=data.clip_cutouts.enabled,
+            include_snap_springs=data.click_springs.enabled,
+        )
+        shape = baseplate_builder.build_simple_baseplate_from_params(
+            data,
+            layout,
+            options,
+            preview=True,
+        )
+        self._target_obj.Shape = shape
         elapsed = time.perf_counter() - start
 
         if status_bar is not None:
-            status_bar.showMessage(f"Preview recomputed in {elapsed:.2f} seconds", 2500)
+            status_bar.showMessage(f"Preview built in {elapsed:.2f} seconds", 2500)
         self._preview_applied = True
 
     @staticmethod
@@ -1181,9 +1187,6 @@ class CreateBaseplateTaskPanel:
             int(params.size.get_value("x_grid_count")),
             int(params.size.get_value("y_grid_count")),
         )
-        if hasattr(output_obj, "PreviewBuildMode"):
-            output_obj.PreviewBuildMode = False
-
         if self._edit_obj is not None and self._created_preview_obj:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
         else:

@@ -350,24 +350,22 @@ class EcoBin(FoundationGridfinity):
 class Baseplate(FoundationGridfinity):
     def __init__(self, obj: fc.DocumentObject) -> None:
         super().__init__(obj)
-
-        grid_initial_layout.rectangle_layout_properties(obj, baseplate_default=True)
-        baseplate_feat.solid_shape_properties(obj)
-        baseplate_feat.base_values_properties(obj)
+        CombinedBaseplateParams().add_all_properties_to_object(obj)
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        layout = grid_initial_layout.make_rectangle_layout(obj)
-        preview_mode = bool(getattr(obj, "PreviewBuildMode", False))
+        params = CombinedBaseplateParams().from_obj(obj)
+        data = params.data()
+        layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
         options = baseplate_builder.BaseplateBuildOptions(
-            include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
-            include_clip_cutouts=bool(getattr(obj, "ClipCutoutsEnabled", False)),
-            include_snap_springs=bool(getattr(obj, "ClickSpringsEnabled", False)),
+            include_junction_screws=data.junction_screws.enabled,
+            include_clip_cutouts=data.clip_cutouts.enabled,
+            include_snap_springs=data.click_springs.enabled,
         )
-        return baseplate_builder.build_simple_baseplate(
-            obj,
+        return baseplate_builder.build_simple_baseplate_from_params(
+            data,
             layout,
             options,
-            preview=preview_mode,
+            preview=False,
         )
 
 

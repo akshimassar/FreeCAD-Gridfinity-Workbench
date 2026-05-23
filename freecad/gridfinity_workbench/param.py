@@ -733,10 +733,10 @@ class CombinedSupportBaseplateParams(CombinedParams):
         core = self.core.data()
         half_width = float(fundamentals.main_half_width)
         outer_radius = float(fundamentals.bin_outer_radius)
-        top_crop = float(core.top_crop)
+        top_crop = float(core.base_profile_top_crop)
 
         if not top_crop < half_width:
-            errors["core.top_crop"] = "Top crop must be less than main profile half width"
+            errors["core.base_profile_top_crop"] = "Top crop must be less than main profile half width"
         if not outer_radius > half_width:
             errors["fundamentals.outer_radius"] = (
                 "Outer radius must be greater than main profile half width"
