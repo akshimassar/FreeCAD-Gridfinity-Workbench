@@ -28,10 +28,8 @@ from PySide.QtWidgets import (
 )
 
 from . import custom_shape, features, utils
-from .param import BaseplateSizeParams, CombinedBaseplateParams
-from .param_system import IntParam
+from .param import CombinedBaseplateParams
 from .drawer_split import split_axis_into_printable_chunks
-from .settings import defaults, factory_defaults
 
 if TYPE_CHECKING:
     import Part
@@ -169,32 +167,32 @@ def _mm_spinbox(value: float, *, minimum: float = 0.0, maximum: float = 100.0) -
 
 def _build_size_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     from .param import BaseplateSizeParams
-    
+
     # Create size param group and build its UI
     params = BaseplateSizeParams()
     controls, widget = params.build_ui(None, "Size", True)
-    
+
     # Add to layout
     layout.addWidget(widget)
-    
+
     # Prefix control names to match expected return format
     prefixed_controls = {}
     for param_name, control in controls.items():
         prefixed_controls[f"size__{param_name}"] = control
-    
+
     return prefixed_controls
 
 
 def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict[str, QWidget]:
     from .param import FundamentalsParams
-    
+
     # Create fundamentals param group and build its UI
     params = FundamentalsParams()
     controls, widget = params.build_ui(None, "Fundamentals", show_note)
-    
+
     # Add to layout
     layout.addWidget(widget)
-    
+
     # Add note if needed
     if show_note:
         compatibility_note = QLabel(
@@ -205,12 +203,12 @@ def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict
         layout.insertWidget(0, compatibility_note)  # Insert before the main widget
         # We need to re-add the fundamentals label after the note
         layout.insertWidget(0, _section_label("Fundamentals"))
-    
+
     # Prefix control names to match expected return format
     prefixed_controls = {}
     for param_name, control in controls.items():
         prefixed_controls[f"fundamentals__{param_name}"] = control
-    
+
     return prefixed_controls
 
 
@@ -220,22 +218,23 @@ def _build_baseplate_section(
     from .param import BaseplateCoreParams, ClickSpringParams, JunctionScrewParams, ClipParams
     from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QCheckBox, QDoubleSpinBox
     from PySide.QtCore import Qt
-    
+
     # Create the core baseplate param group and build its UI
     core_params = BaseplateCoreParams()
     core_controls, core_widget = core_params.build_ui(None, "Baseplate", True)
-    
+
     # Add core controls to layout
     layout.addWidget(core_widget)
-    
+
     # Add to main controls dict
     controls: dict[str, QWidget] = {}
     for param_name, control in core_controls.items():
         controls[f"core__{param_name}"] = control
-    
+
     # Add clearance control if needed
     if include_clearance:
         from .settings import defaults
+
         clearance = _mm_spinbox(defaults.clearance)
         # Add clearance to a separate widget with proper indentation
         clearance_form = QFormLayout()
@@ -248,12 +247,14 @@ def _build_baseplate_section(
 
     # Create and add snap springs section
     click_params = ClickSpringParams()
-    click_controls, click_widget = click_params.build_ui(None, "", True)  # No title - we'll add our own
+    click_controls, click_widget = click_params.build_ui(
+        None, "", True
+    )  # No title - we'll add our own
     # Add styled label for subsection
     click_label = _section_label("Snap springs", indent_px=20)
     layout.addWidget(click_label)
     layout.addWidget(click_widget)
-    
+
     # Add click spring controls to main dict
     for param_name, control in click_controls.items():
         controls[f"click_springs__{param_name}"] = control
@@ -265,7 +266,7 @@ def _build_baseplate_section(
     junction_label = _section_label("Junction screws", indent_px=20)
     layout.addWidget(junction_label)
     layout.addWidget(junction_widget)
-    
+
     # Add junction screw controls to main dict
     for param_name, control in junction_controls.items():
         controls[f"junction_screws__{param_name}"] = control
@@ -277,7 +278,7 @@ def _build_baseplate_section(
     clip_label = _section_label("Connecting clips", indent_px=20)
     layout.addWidget(clip_label)
     layout.addWidget(clip_widget)
-    
+
     # Add clip controls to main dict
     for param_name, control in clip_controls.items():
         controls[f"clip_cutouts__{param_name}"] = control
@@ -315,18 +316,20 @@ def _build_baseplate_section(
         filler_container = QWidget()
         filler_container.setLayout(filler_form)
         layout.addWidget(filler_container)
-        
-        controls.update({
-            "size__filler_right_enabled": filler_right_enabled,
-            "size__filler_right_width": filler_right_width,
-            "size__filler_left_enabled": filler_left_enabled,
-            "size__filler_left_width": filler_left_width,
-            "size__filler_top_enabled": filler_top_enabled,
-            "size__filler_top_width": filler_top_width,
-            "size__filler_bottom_enabled": filler_bottom_enabled,
-            "size__filler_bottom_width": filler_bottom_width,
-        })
-    
+
+        controls.update(
+            {
+                "size__filler_right_enabled": filler_right_enabled,
+                "size__filler_right_width": filler_right_width,
+                "size__filler_left_enabled": filler_left_enabled,
+                "size__filler_left_width": filler_left_width,
+                "size__filler_top_enabled": filler_top_enabled,
+                "size__filler_top_width": filler_top_width,
+                "size__filler_bottom_enabled": filler_bottom_enabled,
+                "size__filler_bottom_width": filler_bottom_width,
+            }
+        )
+
     return controls
 
 
@@ -334,7 +337,7 @@ def _build_bin_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     from .settings import defaults
     from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QCheckBox
     from PySide.QtCore import Qt
-    
+
     layout.addWidget(_section_label("Bin"))
     form = QFormLayout()
     form.setContentsMargins(20, 0, 0, 0)
@@ -350,35 +353,37 @@ def _build_bin_section(layout: QVBoxLayout) -> dict[str, QWidget]:
 def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dict[str, QWidget]:
     from .param import SupportParams, ScrewStubParams
     from PySide.QtWidgets import QDoubleSpinBox, QCheckBox, QFormLayout, QVBoxLayout, QWidget
-    
+
     # Create the support params group
     support_params = SupportParams(overhang_angle=overhang_angle * fc.Units.Quantity("1 deg"))
     support_controls, support_widget = support_params.build_ui(None, "Support", True)
-    
+
     # Add to layout
     layout.addWidget(support_widget)
-    
+
     # Create screw stub params group
     screw_stub_params = ScrewStubParams()
-    screw_stub_controls, screw_stub_widget = screw_stub_params.build_ui(None, "", True)  # No title for secondary section
-    
+    screw_stub_controls, screw_stub_widget = screw_stub_params.build_ui(
+        None, "", True
+    )  # No title for secondary section
+
     # Add label for screw stubs section
     stub_label = _section_label("Screw stubs")
     layout.addWidget(stub_label)
     layout.addWidget(screw_stub_widget)
-    
+
     # Combine controls with appropriate naming
     controls = {}
     for param_name, control in support_controls.items():
         controls[f"support__{param_name}"] = control
-        
+
     for param_name, control in screw_stub_controls.items():
         controls[f"screw_stubs__{param_name}"] = control
-    
+
     # Special handling for the overhang angle parameter to match original naming
     if "support__overhang_angle" in controls:
         controls["support_overhang_angle"] = controls.pop("support__overhang_angle")
-    
+
     return controls
 
 
@@ -676,7 +681,7 @@ class CreateDrawerBaseplateTaskPanel:
     def _restore_object_values(self, obj: fc.DocumentObject, values: dict[str, Any]) -> None:
         baseplate_params = values.get("BaseplateParams")
         if baseplate_params is not None:
-            baseplate_params.apply_to_obj(obj)
+            baseplate_params.to_obj(obj)
         for key, value in values.items():
             if key == "BaseplateParams":
                 continue
@@ -836,7 +841,7 @@ class CreateDrawerBaseplateTaskPanel:
         errors = params.validate()
         if errors:
             return False
-        params.apply_to_obj(obj)
+        params.to_obj(obj)
 
         obj.DrawerWidth = float(self.drawer_width.value()) * fc.Units.Quantity("1 mm")
         obj.DrawerDepth = float(self.drawer_depth.value()) * fc.Units.Quantity("1 mm")
@@ -961,7 +966,7 @@ class CreateBaseplateTaskPanel:
                     pass
         self._feature_ctor(self._target_obj)
         if self._edit_obj is not None:
-            CombinedBaseplateParams().from_obj(self._edit_obj).apply_to_obj(self._target_obj)
+            CombinedBaseplateParams().from_obj(self._edit_obj).to_obj(self._target_obj)
             self._copy_extended_params_to_preview(self._edit_obj, self._target_obj)
 
         self._capture_and_set_preview_visuals()
@@ -1015,7 +1020,7 @@ class CreateBaseplateTaskPanel:
         params = self._validate_controls(preview_mode=preview_mode)
         if params is None:
             return False
-        params.apply_to_obj(obj)
+        params.to_obj(obj)
         if hasattr(obj, "PreviewBuildMode"):
             obj.PreviewBuildMode = preview_mode
         return True
@@ -1067,9 +1072,7 @@ class CreateBaseplateTaskPanel:
             self._error_containers[key] = container
 
     def _render_validation_errors(self, errors: dict[str, str]) -> None:
-        normalized_errors = {
-            key.replace(".", "__"): message for key, message in errors.items()
-        }
+        normalized_errors = {key.replace(".", "__"): message for key, message in errors.items()}
         for key, label in self._error_labels.items():
             control = getattr(self, key)
             if key in normalized_errors:
@@ -1180,7 +1183,7 @@ class CreateBaseplateTaskPanel:
         if params is None:
             return False
         output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
-        params.apply_to_obj(output_obj)
+        params.to_obj(output_obj)
         output_obj.Label = self._format_simple_baseplate_label(
             int(params.size.get_value("x_grid_count")),
             int(params.size.get_value("y_grid_count")),
@@ -1457,9 +1460,9 @@ class CreateConnectingClipTaskPanel:
         self, layout: QVBoxLayout, params: Any
     ) -> dict[str, QWidget]:
         controls: dict[str, QWidget] = {}
-        
+
         # Use the new param system UI generation for fundamentals
-        if hasattr(params, 'fundamentals') and hasattr(params.fundamentals, 'build_ui'):
+        if hasattr(params, "fundamentals") and hasattr(params.fundamentals, "build_ui"):
             # Add fundamentals section with compatibility note
             layout.addWidget(_section_label("Fundamentals"))
             compatibility_note = QLabel(
@@ -1468,29 +1471,29 @@ class CreateConnectingClipTaskPanel:
             compatibility_note.setWordWrap(True)
             compatibility_note.setAlignment(Qt.AlignLeft)
             layout.addWidget(compatibility_note)
-            
+
             # Generate UI for fundamentals group
             fundamental_controls, fundamental_widget = params.fundamentals.build_ui()
             layout.addWidget(fundamental_widget)
-            
+
             # Add controls with proper naming
             for param_name, control in fundamental_controls.items():
                 key = f"fundamentals__{param_name}"
                 controls[key] = control
                 setattr(self, key, control)
-        
+
         # Use the new param system UI generation for clip section
-        if hasattr(params, 'clip') and hasattr(params.clip, 'build_ui'):
+        if hasattr(params, "clip") and hasattr(params.clip, "build_ui"):
             # Add clip section
             clip_controls, clip_widget = params.clip.build_ui(None, "Connecting Clip", True)
             layout.addWidget(clip_widget)
-            
+
             # Add controls with proper naming
             for param_name, control in clip_controls.items():
                 key = f"clip__{param_name}"
                 controls[key] = control
                 setattr(self, key, control)
-        
+
         return controls
 
     def getStandardButtons(self) -> int:  # noqa: N802
@@ -1510,7 +1513,7 @@ class CreateConnectingClipTaskPanel:
         params.update_from_ui_owner(self)
 
         # Apply params to object
-        params.apply_to_obj(self._target_obj)
+        params.to_obj(self._target_obj)
 
         # Recompute the object to update the shape
         try:
@@ -1589,7 +1592,7 @@ class CreateConnectingClipTaskPanel:
             return False
 
         # Apply params to object using the new system
-        params.apply_to_obj(self._target_obj)
+        params.to_obj(self._target_obj)
 
         output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
         # Use a clean name without dimensions
@@ -1631,133 +1634,62 @@ class CreateConnectingClip(CreateCommand):
 
 
 class GridfinitySettingsTaskPanel:
-    """Task panel for editing persisted Gridfinity defaults."""
+    """Task panel for editing persisted Gridfinity defaults using param system."""
 
     def __init__(self) -> None:
+        from .param import (
+            FundamentalsParams,
+            BaseplateCoreParams,
+            ClickSpringParams,
+            JunctionScrewParams,
+            ClipParams,
+            PluginSettingsParams,
+        )
+
         self.form = QWidget()
         self.form.setWindowTitle("Gridfinity Default Settings")
-
         layout = QVBoxLayout(self.form)
-        controls: dict[str, QWidget] = {}
-        controls.update(_build_fundamentals_section(layout, show_note=True))
-        controls.update(
-            _build_baseplate_section(layout, include_clearance=False, include_filler=False)
-        )
-        controls.update(_build_bin_section(layout))
-        for key, widget in controls.items():
-            setattr(self, key, widget)
 
-        layout.addWidget(_section_label("Performance"))
-        perf_form = QFormLayout()
-        perf_form.setContentsMargins(20, 0, 0, 0)
-        self.baseplate_cache_size = QSpinBox()
-        self.baseplate_cache_size.setRange(0, 4096)
-        self.baseplate_cache_size.setValue(int(defaults.baseplate_cache_size))
-        self.baseplate_cache_size.setSuffix(" entries")
-        perf_form.addRow("Baseplate cache size", self.baseplate_cache_size)
-        self.cell_cache_size = QSpinBox()
-        self.cell_cache_size.setRange(0, 4096)
-        self.cell_cache_size.setValue(int(defaults.cell_cache_size))
-        self.cell_cache_size.setSuffix(" entries")
-        perf_form.addRow("Cell cache size", self.cell_cache_size)
-        layout.addLayout(perf_form)
+        # Create param groups and load saved defaults
+        self._groups = [
+            FundamentalsParams(),
+            BaseplateCoreParams(),
+            ClickSpringParams(),
+            JunctionScrewParams(),
+            ClipParams(),
+            PluginSettingsParams(),
+        ]
 
-        self._wire_default_warning_colors()
+        # Store controls per group for later retrieval
+        self._group_controls: dict[str, dict[str, QWidget]] = {}
 
-    def getStandardButtons(self) -> int:  # noqa: N802
+        for group in self._groups:
+            group.load_saved_defaults()
+            title = getattr(group, "_section_title", "")
+            controls, widget = group.build_ui(None, title, show_description=True)
+            layout.addWidget(widget)
+            self._group_controls[group._group_name] = controls
+
+    def getStandardButtons(self) -> int:
         return int(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 
-    def _set_warn_style(self, widget: QWidget, warn: bool) -> None:
-        if warn:
-            widget.setStyleSheet("border: 1px solid #e6a700;")
-        else:
-            widget.setStyleSheet("")
-
-    def _wire_default_warning_colors(self) -> None:
-        numeric_controls = [
-            (self.fundamentals__grid_size, factory_defaults.grid_size),
-            (self.fundamentals__main_half_width, factory_defaults.base_profile_main_half_width),
-            (self.fundamentals__main_height, factory_defaults.base_profile_main_height),
-            (self.fundamentals__outer_radius, factory_defaults.bin_outer_radius),
-            (
-                self.core__lower_chamfer_size,
-                factory_defaults.base_profile_lower_chamfer_size,
-            ),
-            (self.core__top_crop, factory_defaults.baseplate_top_crop),
-            (self.click_springs__click_thickness, factory_defaults.click_thickness),
-            (self.click_springs__click_length, factory_defaults.click_length),
-            (self.click_springs__click_offset, factory_defaults.click_offset),
-            (self.junction_screws__screw_diameter, factory_defaults.junction_screw_diameter),
-            (self.junction_screws__counterbore_diameter, factory_defaults.junction_counterbore_diameter),
-            (self.junction_screws__counterbore_depth, factory_defaults.junction_counterbore_depth),
-            (self.clip_cutouts__clip_length, factory_defaults.clip_length),
-            (self.core__clearance, factory_defaults.clearance),
-            (self.baseplate_cache_size, factory_defaults.baseplate_cache_size),
-            (self.cell_cache_size, factory_defaults.cell_cache_size),
-        ]
-        if hasattr(self, "screw_stubs__clearance"):
-            numeric_controls.append(
-                (self.screw_stubs__clearance, factory_defaults.screw_stub_clearance)
-            )
-
-        for control, default_value in numeric_controls:
-
-            def updater(_value: float, c: QWidget = control, d: float = default_value) -> None:
-                if isinstance(c, QSpinBox):
-                    self._set_warn_style(c, int(c.value()) != int(d))
-                    return
-                self._set_warn_style(c, abs(float(c.value()) - float(d)) > 1e-9)
-
-            control.valueChanged.connect(updater)
-            updater(control.value())
-
-        bool_controls = [
-            (self.core__lower_chamfer_enabled, factory_defaults.baseplate_lower_chamfer_enabled),
-            (self.click_springs__enabled, factory_defaults.click_springs_enabled),
-            (self.junction_screws__enabled, factory_defaults.junction_screw_holes),
-            (self.clip_cutouts__enabled, factory_defaults.clip_cutouts_enabled),
-            (self.half_grid_size, factory_defaults.half_grid_size),
-        ]
-        if hasattr(self, "screw_stubs__enabled"):
-            bool_controls.append((self.screw_stubs__enabled, factory_defaults.screw_stubs_enabled))
-
-        for control, default_value in bool_controls:
-
-            def updater(_state: int, c: QCheckBox = control, d: bool = default_value) -> None:
-                self._set_warn_style(c, c.isChecked() != d)
-
-            control.stateChanged.connect(updater)
-            updater(0)
-
     def accept(self) -> bool:
-        defaults.grid_size = self.fundamentals__grid_size.value()
-        defaults.base_profile_main_half_width = self.fundamentals__main_half_width.value()
-        defaults.base_profile_main_height = self.fundamentals__main_height.value()
-        defaults.base_profile_lower_chamfer_size = self.core__lower_chamfer_size.value()
-        defaults.baseplate_lower_chamfer_enabled = self.core__lower_chamfer_enabled.isChecked()
-        defaults.baseplate_top_crop = self.core__top_crop.value()
-        defaults.bin_outer_radius = self.fundamentals__outer_radius.value()
-        defaults.clearance = self.core__clearance.value()
-        defaults.half_grid_size = self.half_grid_size.isChecked()
+        # Update group values from UI controls, then save
+        for group in self._groups:
+            controls = self._group_controls.get(group._group_name, {})
+            group.update_from_ui_controls(controls)
+            errors = group.validate()
+            if errors:
+                # TODO: Show validation errors to user
+                fc.Console.PrintError(f"Validation errors: {errors}\n")
+                return False
+            group.save_as_defaults()
 
-        defaults.click_springs_enabled = self.click_springs__enabled.isChecked()
-        defaults.click_thickness = self.click_springs__click_thickness.value()
-        defaults.click_length = self.click_springs__click_length.value()
-        defaults.click_offset = self.click_springs__click_offset.value()
+        # Apply plugin settings (cache sizes)
+        for group in self._groups:
+            if hasattr(group, "apply_to_system"):
+                group.apply_to_system()
 
-        defaults.junction_screw_holes = self.junction_screws__enabled.isChecked()
-        defaults.junction_screw_diameter = self.junction_screws__screw_diameter.value()
-        defaults.junction_counterbore_diameter = self.junction_screws__counterbore_diameter.value()
-        defaults.junction_counterbore_depth = self.junction_screws__counterbore_depth.value()
-        if hasattr(self, "screw_stubs__enabled"):
-            defaults.screw_stubs_enabled = self.screw_stubs__enabled.isChecked()
-        if hasattr(self, "screw_stubs__clearance"):
-            defaults.screw_stub_clearance = self.screw_stubs__clearance.value()
-        defaults.clip_cutouts_enabled = self.clip_cutouts__enabled.isChecked()
-        defaults.clip_length = self.clip_cutouts__clip_length.value()
-        defaults.baseplate_cache_size = int(self.baseplate_cache_size.value())
-        defaults.cell_cache_size = int(self.cell_cache_size.value())
-        defaults.save()
         fcg.Control.closeDialog()
         return True
 

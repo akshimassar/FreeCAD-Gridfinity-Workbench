@@ -16,6 +16,10 @@ dev = ["mypy==1.15.0", "ruff==0.9.5", "freecad-stubs==1.0.20"]
 disable_error_code = "attr-defined, union-attr, assignment, call-overload"
 explicit_package_bases = true
 
+[[tool.mypy.overrides]]
+module = ["PySide.*"]
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 

@@ -16,7 +16,7 @@ from . import baseplate_full_layout
 from . import junction_screws
 from . import label_shelf as label_shelf_module
 from . import magnet_hole as magnet_hole_module
-from .param import BaseplateCoreParamsData, CombinedBaseplateParams, FundamentalsParamsData
+from .param import BaseplateCoreLayoutParamsData, CombinedBaseplateParams, FundamentalsParamsData
 
 unitmm = fc.Units.Quantity("1 mm")
 zeromm = fc.Units.Quantity("0 mm")
@@ -1047,7 +1047,7 @@ def make_complex_bin_base_single(
 
 def make_complex_bin_base_single_from_params(
     fundamentals: FundamentalsParamsData,
-    core: BaseplateCoreParamsData,
+    core: BaseplateCoreLayoutParamsData,
 ) -> Part.Shape:
     """Create one-cell complex shaped bin base centered at origin from baseplate params."""
     lower_enabled = bool(core.base_profile_lower_chamfer_enabled)

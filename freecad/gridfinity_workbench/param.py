@@ -23,8 +23,8 @@ class FundamentalsParamsData:
     x_grid_size: fc.Units.Quantity
     y_grid_size: fc.Units.Quantity
     bin_outer_radius: fc.Units.Quantity
-    base_profile_main_half_width: fc.Units.Quantity
-    base_profile_main_height: fc.Units.Quantity
+    main_half_width: fc.Units.Quantity
+    main_height: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
@@ -56,6 +56,14 @@ class BaseplateSizeParamsData:
 
 @dataclass(frozen=True)
 class BaseplateCoreParamsData:
+    base_profile_lower_chamfer_enabled: bool
+    base_profile_lower_chamfer_size: fc.Units.Quantity
+    base_profile_top_crop: fc.Units.Quantity
+    clearance: fc.Units.Quantity
+
+
+@dataclass(frozen=True)
+class BaseplateCoreLayoutParamsData:
     x_grid_count: int
     y_grid_count: int
     base_profile_lower_chamfer_enabled: bool
@@ -74,14 +82,6 @@ class BaseplateFillersParamsData:
     top_width: fc.Units.Quantity
     bottom_enabled: bool
     bottom_width: fc.Units.Quantity
-
-
-@dataclass(frozen=True)
-class BaseplateCoreRawParamsData:
-    lower_chamfer_enabled: bool
-    lower_chamfer_size: fc.Units.Quantity
-    top_crop: fc.Units.Quantity
-    clearance: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
@@ -114,7 +114,7 @@ class SupportParamsData:
 @dataclass(frozen=True)
 class CombinedBaseplateParamsData:
     fundamentals: FundamentalsParamsData
-    core: BaseplateCoreParamsData
+    core: BaseplateCoreLayoutParamsData
     fillers: BaseplateFillersParamsData
     click_springs: ClickSpringParamsData
     junction_screws: JunctionScrewParamsData
@@ -125,7 +125,7 @@ class CombinedBaseplateParamsData:
 @dataclass(frozen=True)
 class CombinedStackedBaseplateParamsData:
     fundamentals: FundamentalsParamsData
-    core: BaseplateCoreParamsData
+    core: BaseplateCoreLayoutParamsData
     fillers: BaseplateFillersParamsData
     click_springs: ClickSpringParamsData
     junction_screws: JunctionScrewParamsData
@@ -136,6 +136,7 @@ class CombinedStackedBaseplateParamsData:
 
 class FundamentalsParams(ParameterGroup):
     _category = "Gridfinity_Fundamentals"
+    _section_title = "Fundamentals"
 
     def __init__(self, **kwargs):
         parameters = [
@@ -143,28 +144,24 @@ class FundamentalsParams(ParameterGroup):
                 "grid_size",
                 "Grid Size",
                 fc.Units.Quantity("42 mm"),
-                property_name="xGridSize",
                 positive_only=True,
             ),
             FloatParam(
                 "outer_radius",
                 "Outer Radius",
                 fc.Units.Quantity("4.0 mm"),
-                property_name="BinOuterRadius",
                 positive_only=True,
             ),
             FloatParam(
                 "main_half_width",
                 "Main Profile Half Width",
                 fc.Units.Quantity("2.15 mm"),
-                property_name="BaseProfileMainHalfWidth",
                 positive_only=True,
             ),
             FloatParam(
                 "main_height",
                 "Main Profile Height",
                 fc.Units.Quantity("2.5 mm"),
-                property_name="BaseProfileMainHeight",
                 positive_only=True,
             ),
         ]
@@ -180,12 +177,14 @@ class FundamentalsParams(ParameterGroup):
             x_grid_size=self.get_value("grid_size"),
             y_grid_size=self.get_value("grid_size"),
             bin_outer_radius=self.get_value("outer_radius"),
-            base_profile_main_half_width=self.get_value("main_half_width"),
-            base_profile_main_height=self.get_value("main_height"),
+            main_half_width=self.get_value("main_half_width"),
+            main_height=self.get_value("main_height"),
         )
+
 
 class ClipParams(ParameterGroup):
     _category = "Gridfinity_Clip"
+    _section_title = "Clip Cutouts"
 
     def __init__(self, **kwargs):
         parameters = [
@@ -194,13 +193,11 @@ class ClipParams(ParameterGroup):
                 "tolerance",
                 "Tolerance",
                 fc.Units.Quantity("0.15 mm"),
-                property_name="ClipTolerance",
             ),
             FloatParam(
                 "clip_length",
                 "Clip Length",
                 fc.Units.Quantity("3.0 mm"),
-                property_name="ClipLength",
             ),
         ]
 
@@ -254,6 +251,7 @@ class CombinedClipParams(CombinedParams):
 
 class BaseplateSizeParams(ParameterGroup):
     _category = "Gridfinity_BaseplateSize"
+    _section_title = "Size"
 
     def __init__(self, **kwargs):
         parameters = [
@@ -261,7 +259,6 @@ class BaseplateSizeParams(ParameterGroup):
                 "x_grid_count",
                 "X Grid Count",
                 2,
-                property_name="xGridUnits",
                 positive_only=True,
                 default_type=DefaultType.MEM,
             ),
@@ -269,40 +266,35 @@ class BaseplateSizeParams(ParameterGroup):
                 "y_grid_count",
                 "Y Grid Count",
                 2,
-                property_name="yGridUnits",
                 positive_only=True,
                 default_type=DefaultType.MEM,
             ),
-            BooleanParam("filler_left_enabled", "Left Filler Enabled", property_name="FillerLeftEnabled"),
+            BooleanParam("filler_left_enabled", "Left Filler Enabled"),
             FloatParam(
                 "filler_left_width",
                 "Left Filler Width",
                 fc.Units.Quantity("30 mm"),
-                property_name="FillerLeftWidth",
                 positive_only=True,
             ),
-            BooleanParam("filler_right_enabled", "Right Filler Enabled", property_name="FillerRightEnabled"),
+            BooleanParam("filler_right_enabled", "Right Filler Enabled"),
             FloatParam(
                 "filler_right_width",
                 "Right Filler Width",
                 fc.Units.Quantity("30 mm"),
-                property_name="FillerRightWidth",
                 positive_only=True,
             ),
-            BooleanParam("filler_top_enabled", "Top Filler Enabled", property_name="FillerTopEnabled"),
+            BooleanParam("filler_top_enabled", "Top Filler Enabled"),
             FloatParam(
                 "filler_top_width",
                 "Top Filler Width",
                 fc.Units.Quantity("30 mm"),
-                property_name="FillerTopWidth",
                 positive_only=True,
             ),
-            BooleanParam("filler_bottom_enabled", "Bottom Filler Enabled", property_name="FillerBottomEnabled"),
+            BooleanParam("filler_bottom_enabled", "Bottom Filler Enabled"),
             FloatParam(
                 "filler_bottom_width",
                 "Bottom Filler Width",
                 fc.Units.Quantity("30 mm"),
-                property_name="FillerBottomWidth",
                 positive_only=True,
             ),
         ]
@@ -327,75 +319,69 @@ class BaseplateSizeParams(ParameterGroup):
 
 class BaseplateCoreParams(ParameterGroup):
     _category = "Gridfinity_Core"
+    _section_title = "Baseplate"
 
     def __init__(self, **kwargs):
         parameters = [
             BooleanParam(
                 "lower_chamfer_enabled",
                 "Lower Chamfer Enabled",
-                property_name="BaseProfileLowerChamferEnabled",
                 default_value=False,
             ),
             FloatParam(
                 "lower_chamfer_size",
                 "Lower Chamfer Size",
                 fc.Units.Quantity("0.7 mm"),
-                property_name="BaseProfileLowerChamferSize",
             ),
             FloatParam(
                 "top_crop",
                 "Top Crop",
                 fc.Units.Quantity("0.8 mm"),
-                property_name="BaseProfileTopCrop",
             ),
             FloatParam(
                 "clearance",
                 "Clearance",
                 fc.Units.Quantity("0.25 mm"),
-                property_name="Clearance",
             ),
         ]
 
         super().__init__(parameters)
         self.set_all_values(kwargs)
 
-    def data(self) -> BaseplateCoreRawParamsData:
-        return BaseplateCoreRawParamsData(
-            lower_chamfer_enabled=self.get_value("lower_chamfer_enabled"),
-            lower_chamfer_size=self.get_value("lower_chamfer_size"),
-            top_crop=self.get_value("top_crop"),
+    def data(self) -> BaseplateCoreParamsData:
+        return BaseplateCoreParamsData(
+            base_profile_lower_chamfer_enabled=self.get_value("lower_chamfer_enabled"),
+            base_profile_lower_chamfer_size=self.get_value("lower_chamfer_size"),
+            base_profile_top_crop=self.get_value("top_crop"),
             clearance=self.get_value("clearance"),
         )
 
 
 class ClickSpringParams(ParameterGroup):
     _category = "Gridfinity_ClickSpring"
+    _section_title = "Snap Springs"
 
     def __init__(self, **kwargs):
         parameters = [
             BooleanParam(
                 "enabled",
                 "Enabled",
-                property_name="ClickSpringsEnabled",
                 default_value=True,
             ),
             FloatParam(
                 "click_thickness",
                 "Click Thickness",
                 fc.Units.Quantity("0.8 mm"),
-                property_name="ClickThickness",
             ),
             FloatParam(
                 "click_length",
                 "Click Length",
                 fc.Units.Quantity("12 mm"),
-                property_name="ClickLength",
             ),
             FloatParam(
                 "click_offset",
                 "Click Offset",
                 fc.Units.Quantity("0.55 mm"),
-                property_name="ClickOffset",
             ),
         ]
 
@@ -413,32 +399,29 @@ class ClickSpringParams(ParameterGroup):
 
 class JunctionScrewParams(ParameterGroup):
     _category = "Gridfinity_JunctionScrew"
+    _section_title = "Junction Screws"
 
     def __init__(self, **kwargs):
         parameters = [
             BooleanParam(
                 "enabled",
                 "Enabled",
-                property_name="JunctionScrewHoles",
                 default_value=True,
             ),
             FloatParam(
                 "screw_diameter",
                 "Screw Diameter",
                 fc.Units.Quantity("3.3 mm"),
-                property_name="JunctionScrewDiameter",
             ),
             FloatParam(
                 "counterbore_diameter",
                 "Counterbore Diameter",
                 fc.Units.Quantity("6.0 mm"),
-                property_name="JunctionCounterboreDiameter",
             ),
             FloatParam(
                 "counterbore_depth",
                 "Counterbore Depth",
                 fc.Units.Quantity("1.5 mm"),
-                property_name="JunctionCounterboreDepth",
             ),
         ]
 
@@ -456,20 +439,19 @@ class JunctionScrewParams(ParameterGroup):
 
 class ScrewStubParams(ParameterGroup):
     _category = "Gridfinity_ScrewStub"
+    _section_title = "Screw Stubs"
 
     def __init__(self, **kwargs):
         parameters = [
             BooleanParam(
                 "enabled",
                 "Enabled",
-                property_name="ScrewStubsEnabled",
                 default_value=False,
             ),
             FloatParam(
                 "clearance",
                 "Clearance",
                 fc.Units.Quantity("0.15 mm"),
-                property_name="ScrewStubClearance",
             ),
         ]
 
@@ -485,6 +467,7 @@ class ScrewStubParams(ParameterGroup):
 
 class SupportParams(ParameterGroup):
     _category = "Gridfinity_Support"
+    _section_title = "Support"
 
     def __init__(self, **kwargs):
         parameters = [
@@ -492,7 +475,6 @@ class SupportParams(ParameterGroup):
                 "overhang_angle",
                 "Overhang Angle",
                 fc.Units.Quantity("45.0 mm"),
-                property_name="SupportOverhangAngle",
             ),
         ]
 
@@ -585,7 +567,9 @@ class CombinedBaseplateParams(CombinedParams):
                     "Clip length must be less than 2 * main profile half width"
                 )
             if not clip_tolerance >= 0:
-                errors["clip_cutouts.tolerance"] = "Clip tolerance must be greater than or equal to 0"
+                errors["clip_cutouts.tolerance"] = (
+                    "Clip tolerance must be greater than or equal to 0"
+                )
 
         x_units = int(size.x_grid_count)
         y_units = int(size.y_grid_count)
@@ -606,22 +590,38 @@ class CombinedBaseplateParams(CombinedParams):
             (size.filler_left_enabled, float(size.filler_left_width), "size.filler_left_width"),
             (size.filler_right_enabled, float(size.filler_right_width), "size.filler_right_width"),
             (size.filler_top_enabled, float(size.filler_top_width), "size.filler_top_width"),
-            (size.filler_bottom_enabled, float(size.filler_bottom_width), "size.filler_bottom_width"),
+            (
+                size.filler_bottom_enabled,
+                float(size.filler_bottom_width),
+                "size.filler_bottom_width",
+            ),
         ]
         for enabled, width, key in filler_checks:
             if enabled and not (0 < width < grid_size):
                 errors[key] = "Filler width must be greater than 0 and less than grid size"
 
         two_radius = 2 * outer_radius
-        if size.filler_left_enabled and x_units == 0 and not float(size.filler_left_width) > two_radius:
+        if (
+            size.filler_left_enabled
+            and x_units == 0
+            and not float(size.filler_left_width) > two_radius
+        ):
             errors["size.filler_left_width"] = (
                 "With x grid count 0, left filler width must be greater than 2 * outer radius"
             )
-        if size.filler_right_enabled and x_units == 0 and not float(size.filler_right_width) > two_radius:
+        if (
+            size.filler_right_enabled
+            and x_units == 0
+            and not float(size.filler_right_width) > two_radius
+        ):
             errors["size.filler_right_width"] = (
                 "With x grid count 0, right filler width must be greater than 2 * outer radius"
             )
-        if size.filler_top_enabled and y_units == 0 and not float(size.filler_top_width) > two_radius:
+        if (
+            size.filler_top_enabled
+            and y_units == 0
+            and not float(size.filler_top_width) > two_radius
+        ):
             errors["size.filler_top_width"] = (
                 "With y grid count 0, top filler width must be greater than 2 * outer radius"
             )
@@ -641,12 +641,12 @@ class CombinedBaseplateParams(CombinedParams):
         core = self.core.data()
         return CombinedBaseplateParamsData(
             fundamentals=self.fundamentals.data(),
-            core=BaseplateCoreParamsData(
+            core=BaseplateCoreLayoutParamsData(
                 x_grid_count=size.x_grid_count,
                 y_grid_count=size.y_grid_count,
-                base_profile_lower_chamfer_enabled=core.lower_chamfer_enabled,
-                base_profile_lower_chamfer_size=core.lower_chamfer_size,
-                base_profile_top_crop=core.top_crop,
+                base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
+                base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
+                base_profile_top_crop=core.base_profile_top_crop,
                 clearance=core.clearance,
             ),
             fillers=BaseplateFillersParamsData(
@@ -715,12 +715,12 @@ class CombinedStackedBaseplateParams(CombinedParams):
         core = self.core.data()
         return CombinedStackedBaseplateParamsData(
             fundamentals=self.fundamentals.data(),
-            core=BaseplateCoreParamsData(
+            core=BaseplateCoreLayoutParamsData(
                 x_grid_count=size.x_grid_count,
                 y_grid_count=size.y_grid_count,
-                base_profile_lower_chamfer_enabled=core.lower_chamfer_enabled,
-                base_profile_lower_chamfer_size=core.lower_chamfer_size,
-                base_profile_top_crop=core.top_crop,
+                base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
+                base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
+                base_profile_top_crop=core.base_profile_top_crop,
                 clearance=core.clearance,
             ),
             fillers=BaseplateFillersParamsData(
@@ -739,3 +739,42 @@ class CombinedStackedBaseplateParams(CombinedParams):
             support=self.support.data(),
             clip_cutouts=self.clip_cutouts.data(),
         )
+
+
+class PluginSettingsParams(ParameterGroup):
+    """Plugin-level settings (cache sizes, etc.) - not used for geometry."""
+
+    _category = "Gridfinity_PluginSettings"
+    _section_title = "Performance"
+
+    def __init__(self, **kwargs):
+        parameters = [
+            IntParam(
+                "baseplate_cache_size",
+                "Baseplate Cache Size",
+                32,
+                min_value=0,
+                max_value=4096,
+                default_type=DefaultType.SAVED,
+            ),
+            IntParam(
+                "cell_cache_size",
+                "Cell Cache Size",
+                64,
+                min_value=0,
+                max_value=4096,
+                default_type=DefaultType.SAVED,
+            ),
+        ]
+
+        super().__init__(parameters)
+        self.set_all_values(kwargs)
+
+    def apply_to_system(self) -> None:
+        """Apply cache settings to the baseplate builder."""
+        from . import baseplate_builder
+
+        baseplate_builder.set_baseplate_shape_cache_max_entries(
+            self.get_value("baseplate_cache_size")
+        )
+        baseplate_builder.set_cell_shape_cache_max_entries(self.get_value("cell_cache_size"))

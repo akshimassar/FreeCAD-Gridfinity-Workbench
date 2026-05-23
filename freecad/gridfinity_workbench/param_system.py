@@ -5,7 +5,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from enum import Enum
 import re
-from typing import Any, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
+
+if TYPE_CHECKING:
+    from PySide.QtWidgets import QWidget
 
 import FreeCAD as fc  # noqa: N813
 
@@ -19,15 +22,54 @@ class DefaultType(Enum):
 
 
 class ParamDefaultResolver:
-    """Resolver for persisted and runtime parameter defaults."""
+    """Resolver for persisted (SAVED) and runtime (MEM) parameter defaults."""
 
-    def get_saved(self, group_name: str, param_name: str, fallback: Any) -> Any:
-        """Return persisted default for group/param pair or fallback."""
+    _prefs_path = "User parameter:BaseApp/Preferences/Mod/GridfinityWorkbench"
+    _runtime_cache: Dict[str, Any] = {}  # Class-level session memory for MEM defaults
+
+    def _make_key(self, group_name: str, param_name: str) -> str:
+        return f"{group_name}.{param_name}"
+
+    def get_saved(self, group_name: str, param_name: str, fallback: Any, value_type: type) -> Any:
+        """Load from FreeCAD prefs by type."""
+        prefs = fc.ParamGet(self._prefs_path)
+        key = self._make_key(group_name, param_name)
+        if value_type == bool:
+            return prefs.GetBool(key, fallback)
+        elif value_type == int:
+            return prefs.GetInt(key, fallback)
+        elif value_type == float:
+            return prefs.GetFloat(key, fallback)
+        elif value_type == str:
+            return prefs.GetString(key, fallback)
         return fallback
+
+    def set_saved(self, group_name: str, param_name: str, value: Any) -> None:
+        """Persist to FreeCAD prefs."""
+        prefs = fc.ParamGet(self._prefs_path)
+        key = self._make_key(group_name, param_name)
+        if isinstance(value, bool):
+            prefs.SetBool(key, value)
+        elif isinstance(value, int):
+            prefs.SetInt(key, value)
+        elif isinstance(value, float):
+            prefs.SetFloat(key, value)
+        elif isinstance(value, str):
+            prefs.SetString(key, value)
 
     def get_runtime(self, group_name: str, param_name: str, fallback: Any) -> Any:
-        """Return runtime default for group/param pair or fallback."""
-        return fallback
+        """Get from session memory."""
+        key = self._make_key(group_name, param_name)
+        return self._runtime_cache.get(key, fallback)
+
+    def set_runtime(self, group_name: str, param_name: str, value: Any) -> None:
+        """Store in session memory."""
+        key = self._make_key(group_name, param_name)
+        self._runtime_cache[key] = value
+
+
+# Global resolver instance
+default_resolver = ParamDefaultResolver()
 
 
 class BaseParam:
@@ -37,30 +79,17 @@ class BaseParam:
         self,
         name: str,
         display_name: str,
-        property_name: str = None,
         freecad_property_type: str = "App::PropertyFloat",
         description: str = "",
         default_type: DefaultType = DefaultType.VALUE,
     ):
         self.name = name
         self.display_name = display_name
-        self.property_name = property_name
         self.freecad_property_type = (
             freecad_property_type  # FreeCAD property type (e.g., "App::PropertyLength")
         )
         self.description = description
-        self.group_name: str = ""
         self._default_type = default_type
-
-    def set_group_name(self, group_name: str) -> None:
-        """Attach canonical group name to this parameter."""
-        self.group_name = group_name
-
-    def default_key(self) -> str:
-        """Return canonical key used by default resolvers."""
-        if not self.group_name:
-            raise ValueError(f"Parameter '{self.name}' is not attached to a group")
-        return f"{self.group_name}.{self.name}"
 
     def property_name_for_group(self, group_class_name: str) -> str:
         """Generate canonical prefixed snake_case property name."""
@@ -76,23 +105,33 @@ class BaseParam:
         """Return the actual default value."""
         return None
 
-    def resolve_default(self, resolver: Optional[ParamDefaultResolver] = None) -> Any:
-        """Resolve parameter default based on default type and resolver."""
-        fallback = self.default()
-        default_type = self.default_type()
+    def default_value_type(self) -> type:
+        """Return the Python type of the default value for resolver lookups."""
+        return type(self.default())
 
-        if default_type == DefaultType.VALUE:
+    def resolve_default(
+        self, group_name: str, resolver: Optional[ParamDefaultResolver] = None
+    ) -> Any:
+        """Resolve parameter default based on default type and resolver.
+
+        Args:
+            group_name: The canonical group name (provided by ParameterGroup).
+            resolver: The resolver instance for SAVED/MEM lookups.
+        """
+        fallback = self.default()
+        dt = self.default_type()
+
+        if dt == DefaultType.VALUE:
             return fallback
 
-        if default_type == DefaultType.SAVED:
-            if resolver is None:
-                return fallback
-            return resolver.get_saved(self.group_name, self.name, fallback)
+        if resolver is None:
+            return fallback
 
-        if default_type == DefaultType.MEM:
-            if resolver is None:
-                return fallback
-            return resolver.get_runtime(self.group_name, self.name, fallback)
+        if dt == DefaultType.SAVED:
+            return resolver.get_saved(group_name, self.name, fallback, self.default_value_type())
+
+        if dt == DefaultType.MEM:
+            return resolver.get_runtime(group_name, self.name, fallback)
 
         return fallback
 
@@ -109,7 +148,6 @@ class BooleanParam(BaseParam):
         name: str,
         display_name: str,
         default_value: bool = False,
-        property_name: str = None,
         freecad_property_type: str = "App::PropertyBool",
         description: str = "",
         default_type: DefaultType = DefaultType.VALUE,
@@ -117,7 +155,6 @@ class BooleanParam(BaseParam):
         super().__init__(
             name,
             display_name,
-            property_name,
             freecad_property_type,
             description,
             default_type,
@@ -142,7 +179,6 @@ class FloatParam(BaseParam):
         default_value: fc.Units.Quantity,
         min_value: Optional[fc.Units.Quantity] = None,
         max_value: Optional[fc.Units.Quantity] = None,
-        property_name: str = None,
         freecad_property_type: str = "App::PropertyLength",  # Default to Length for measurements
         description: str = "",
         positive_only: bool = False,  # Whether this parameter should be positive only
@@ -151,7 +187,6 @@ class FloatParam(BaseParam):
         super().__init__(
             name,
             display_name,
-            property_name,
             freecad_property_type,
             description,
             default_type,
@@ -188,7 +223,6 @@ class LiteralParam(BaseParam):
         display_name: str,
         default_value: str,
         choices: Optional[list[str]] = None,
-        property_name: str = None,
         freecad_property_type: str = "App::PropertyString",
         description: str = "",
         default_type: DefaultType = DefaultType.VALUE,
@@ -196,7 +230,6 @@ class LiteralParam(BaseParam):
         super().__init__(
             name,
             display_name,
-            property_name,
             freecad_property_type,
             description,
             default_type,
@@ -226,7 +259,6 @@ class IntParam(BaseParam):
         default_value: int,
         min_value: Optional[int] = None,
         max_value: Optional[int] = None,
-        property_name: str = None,
         freecad_property_type: str = "App::PropertyInteger",
         description: str = "",
         positive_only: bool = False,
@@ -235,7 +267,6 @@ class IntParam(BaseParam):
         super().__init__(
             name,
             display_name,
-            property_name,
             freecad_property_type,
             description,
             default_type,
@@ -267,19 +298,20 @@ class ParameterGroup(ABC):
 
     # Class attribute to define the category/group name for FreeCAD properties
     _category = "Gridfinity"
+    # Subclasses should override this for Edit Defaults UI
+    _section_title = ""
 
     def __init__(
         self,
-        parameters: list[Union[BooleanParam, FloatParam, IntParam, LiteralParam]],
+        parameters: Optional[list[Union[BooleanParam, FloatParam, IntParam, LiteralParam]]] = None,
         resolver: Optional[ParamDefaultResolver] = None,
     ):
-        self._parameters = {param.name: param for param in parameters}
-        self._values = {}
-        self._resolver = resolver
+        self._parameters: Dict[str, BaseParam] = (
+            {param.name: param for param in parameters} if parameters else {}
+        )
+        self._values: Dict[str, Any] = {}
+        self._resolver = resolver if resolver is not None else default_resolver
         self._group_name = self._compute_group_name()
-
-        for param in self._parameters.values():
-            param.set_group_name(self._group_name)
 
         # Dynamically create getter methods for each parameter
         for param_name in self._parameters:
@@ -321,7 +353,7 @@ class ParameterGroup(ABC):
             return self._values[param_name]
 
         param = self._parameters[param_name]
-        return param.resolve_default(self._resolver)
+        return param.resolve_default(self._group_name, self._resolver)
 
     def set_value(self, param_name: str, value: Any):
         """Set value for a specific parameter."""
@@ -349,16 +381,43 @@ class ParameterGroup(ABC):
         new_group.set_all_values(values)
         return new_group
 
-    def apply_to_obj(self, obj: fc.DocumentObject):
-        """Apply parameters to FreeCAD object using direct property mapping."""
-        for param_name in self._parameters.keys():
-            # Use the direct property name mapping
-            obj_property_name = self._property_name(self._parameters[param_name])
+    def to_obj(self, obj: fc.DocumentObject) -> None:
+        """Apply parameters to FreeCAD object and update MEM defaults."""
+        for param_name, param in self._parameters.items():
+            obj_property_name = self._property_name(param)
             if hasattr(obj, obj_property_name):
-                setattr(obj, obj_property_name, self.get_value(param_name))
+                value = self.get_value(param_name)
+                setattr(obj, obj_property_name, value)
+                # Update MEM defaults for MEM-type params
+                if param.default_type() == DefaultType.MEM:
+                    self._resolver.set_runtime(self._group_name, param_name, value)
+
+    def save_as_defaults(self) -> None:
+        """Save current values as SAVED defaults (for Edit Defaults command)."""
+        for param_name, param in self._parameters.items():
+            value = self.get_value(param_name)
+            # Convert Quantity to float for storage
+            if hasattr(value, "Value"):
+                value = float(value.Value)
+            self._resolver.set_saved(self._group_name, param_name, value)
+
+    def load_saved_defaults(self) -> ParameterGroup:
+        """Load SAVED defaults into _values (for Edit Defaults UI initialization)."""
+        for param_name, param in self._parameters.items():
+            fallback = param.default()
+            # Convert Quantity to float for comparison
+            fallback_for_lookup = float(fallback.Value) if hasattr(fallback, "Value") else fallback
+            saved = self._resolver.get_saved(
+                self._group_name, param_name, fallback_for_lookup, param.default_value_type()
+            )
+            # For FloatParams, convert back to Quantity if needed
+            if hasattr(fallback, "Value") and isinstance(saved, (int, float)):
+                saved = fc.Units.Quantity(saved, fallback.Unit)
+            self._values[param_name] = saved
+        return self
 
     def _property_name(self, param: BaseParam) -> str:
-        return param.property_name or param.property_name_for_group(self.__class__.__name__)
+        return param.property_name_for_group(self.__class__.__name__)
 
     def _compute_group_name(self) -> str:
         """Return canonical group key generated from class name."""
@@ -422,15 +481,13 @@ class ParameterGroup(ABC):
             defaults[param_name] = param.default()
         return defaults
 
-    def _get_control_type(
-        self, param: Union[BooleanParam, FloatParam, IntParam, LiteralParam]
-    ) -> str:
+    def _get_control_type(self, param: BaseParam) -> ControlType:
         """Determine UI control type based on parameter type."""
         if isinstance(param, BooleanParam):
             return "checkbox"
-        elif isinstance(param, (FloatParam, IntParam)):
+        if isinstance(param, (FloatParam, IntParam)):
             return "spinbox"
-        elif isinstance(param, LiteralParam):
+        if isinstance(param, LiteralParam):
             return "combo" if param.choices else "textbox"
         return "textbox"
 
@@ -458,21 +515,21 @@ class ParameterGroup(ABC):
         """Get default value from plugin config."""
         if param_name not in self._parameters:
             return fallback
-        resolver = self._resolver
-        if resolver is None:
+        if self._resolver is None:
             return fallback
         param = self._parameters[param_name]
-        return resolver.get_saved(param.group_name, param.name, fallback)
+        return self._resolver.get_saved(
+            self._group_name, param.name, fallback, param.default_value_type()
+        )
 
     def _get_runtime_default(self, param_name: str, fallback: Any) -> Any:
         """Get default value from runtime memory."""
         if param_name not in self._parameters:
             return fallback
-        resolver = self._resolver
-        if resolver is None:
+        if self._resolver is None:
             return fallback
         param = self._parameters[param_name]
-        return resolver.get_runtime(param.group_name, param.name, fallback)
+        return self._resolver.get_runtime(self._group_name, param.name, fallback)
 
     def data(self) -> Any:
         """Return a frozen data object with current parameter values."""
@@ -506,30 +563,32 @@ class ParameterGroup(ABC):
                     control.setChecked(default_value)
             elif ui_field.control_type == "spinbox":
                 control = QDoubleSpinBox()
-                # Handle min/max values safely
-                if hasattr(param, "min_value") and param.min_value is not None:
-                    try:
-                        control.setMinimum(float(param.min_value))
-                    except (TypeError, ValueError):
+                # Handle min/max values safely for numeric params
+                if isinstance(param, (FloatParam, IntParam)):
+                    if param.min_value is not None:
+                        try:
+                            control.setMinimum(float(param.min_value))
+                        except (TypeError, ValueError):
+                            control.setMinimum(0)
+                    else:
                         control.setMinimum(0)
-                else:
-                    control.setMinimum(0)
-                    
-                if hasattr(param, "max_value") and param.max_value is not None:
-                    try:
-                        control.setMaximum(float(param.max_value))
-                    except (TypeError, ValueError):
+                    if param.max_value is not None:
+                        try:
+                            control.setMaximum(float(param.max_value))
+                        except (TypeError, ValueError):
+                            control.setMaximum(999999)
+                    else:
                         control.setMaximum(999999)
                 else:
+                    control.setMinimum(0)
                     control.setMaximum(999999)
-                
                 try:
                     control.setValue(float(default_value))
                 except (TypeError, ValueError):
                     control.setValue(0.0)
             elif ui_field.control_type == "combo":
                 control = QComboBox()
-                if hasattr(param, "choices") and param.choices:
+                if isinstance(param, LiteralParam) and param.choices:
                     control.addItems(param.choices)
                     if str(default_value) in param.choices:
                         control.setCurrentText(str(default_value))
@@ -537,7 +596,9 @@ class ParameterGroup(ABC):
                 # Default to spinbox
                 control = QDoubleSpinBox()
                 try:
-                    control.setValue(float(default_value) if isinstance(default_value, (int, float)) else 0)
+                    control.setValue(
+                        float(default_value) if isinstance(default_value, (int, float)) else 0
+                    )
                 except (TypeError, ValueError):
                     control.setValue(0.0)
 
@@ -545,15 +606,47 @@ class ParameterGroup(ABC):
 
         return controls
 
+    def update_from_ui_controls(self, controls: Dict[str, Any]) -> None:
+        """Update parameter values from UI controls.
+
+        Args:
+            controls: Dict mapping param_name to Qt widget controls.
+        """
+        try:
+            from PySide.QtWidgets import QCheckBox, QDoubleSpinBox, QSpinBox, QComboBox
+        except ImportError:
+            return
+
+        for param_name, control in controls.items():
+            if param_name not in self._parameters:
+                continue
+            param = self._parameters[param_name]
+
+            if isinstance(control, QCheckBox):
+                value = control.isChecked()
+            elif isinstance(control, (QDoubleSpinBox, QSpinBox)):
+                raw_value = control.value()
+                # For FloatParam, convert to Quantity
+                if isinstance(param, FloatParam):
+                    value = fc.Units.Quantity(raw_value, param.default().Unit)
+                else:
+                    value = int(raw_value) if isinstance(param, IntParam) else raw_value
+            elif isinstance(control, QComboBox):
+                value = control.currentText()
+            else:
+                continue
+
+            self.set_value(param_name, value)
+
     def build_ui(self, layout=None, section_title: str = "", show_description: bool = True):
         """
         Build UI for this parameter group.
-        
+
         Args:
             layout: Optional layout to add the UI to
             section_title: Title to display for the section (empty string means no title)
             show_description: Whether to show descriptions/notes
-            
+
         Returns:
             tuple: (controls_dict, widget) where controls_dict maps parameter names to UI controls
                    and widget is the container widget
@@ -564,36 +657,36 @@ class ParameterGroup(ABC):
         except ImportError:
             # Fallback if GUI is not available
             return {}, None
-        
+
         widget = QWidget()
         container_layout = QVBoxLayout(widget)
-        
+
         # Add section title if provided
         if section_title:
             section_label = QLabel(section_title)
             style = "font-weight: bold;"
             section_label.setStyleSheet(style)
             container_layout.addWidget(section_label)
-        
+
         # Create form layout for the parameters
         form_layout = QFormLayout()
         form_layout.setContentsMargins(20, 0, 0, 0)
-        
+
         # Generate controls for this group
         controls = self.get_ui_controls()
-        
+
         # Add each control to the form layout
         ui_descriptors = self.ui_descriptors()
         for param_name, control in controls.items():
             if param_name in ui_descriptors:
                 form_layout.addRow(ui_descriptors[param_name].label, control)
-        
+
         container_layout.addLayout(form_layout)
-        
+
         # If a layout was provided, add our widget to it
         if layout:
             layout.addWidget(widget)
-        
+
         return controls, widget
 
 
@@ -607,12 +700,15 @@ class ParameterValidationError(Exception):
         )
 
 
+ControlType = Literal["spinbox", "checkbox", "combo", "textbox"]
+
+
 class UIField:
     """UI descriptor for a parameter."""
 
     def __init__(
         self,
-        control_type: Literal["spinbox", "checkbox", "combo", "slider"],
+        control_type: ControlType,
         label: str,
         param_name: str,
         min_val: Optional[float] = None,
@@ -648,11 +744,11 @@ class CombinedParams:
                 new_groups[name] = group  # Keep unchanged if no from_obj method
         return self.__class__(**new_groups)
 
-    def apply_to_obj(self, obj: fc.DocumentObject) -> None:
-        """Apply all parameter groups to FreeCAD object."""
+    def to_obj(self, obj: fc.DocumentObject) -> None:
+        """Apply all parameter groups to FreeCAD object and update MEM defaults."""
         for group in self._param_groups.values():
-            if hasattr(group, "apply_to_obj"):
-                group.apply_to_obj(obj)
+            if hasattr(group, "to_obj"):
+                group.to_obj(obj)
 
     def validate(self) -> Dict[str, str]:
         """Validate all parameter groups with hierarchical validation."""
@@ -828,12 +924,12 @@ class CombinedParams:
     def build_ui(self, layout=None, section_title: str = "", show_description: bool = True):
         """
         Build UI controls for all parameter groups combined.
-        
+
         Args:
             layout: Optional layout to add the UI to
             section_title: Title to display for the combined section (empty string means no title)
             show_description: Whether to show descriptions/notes
-            
+
         Returns:
             tuple: (controls_dict, widget) where controls_dict maps parameter names to UI controls
                    and widget is the container widget
@@ -844,35 +940,35 @@ class CombinedParams:
         except ImportError:
             # Fallback if GUI is not available
             return {}, None
-        
+
         widget = QWidget()
         container_layout = QVBoxLayout(widget)
-        
+
         # Add section title if provided
         if section_title:
             section_label = QLabel(section_title)
             style = "font-weight: bold;"
             section_label.setStyleSheet(style)
             container_layout.addWidget(section_label)
-        
+
         # Build UI for each parameter group
         all_controls = {}
         for group_name, group in self._param_groups.items():
-            if hasattr(group, 'build_ui'):
+            if hasattr(group, "build_ui"):
                 group_controls, group_widget = group.build_ui(None, "", show_description)
                 # Prefix control names with group name
                 prefixed_controls = {}
                 for param_name, control in group_controls.items():
                     prefixed_controls[f"{group_name}__{param_name}"] = control
                 all_controls.update(prefixed_controls)
-                
+
                 # Add the group widget to our container
                 container_layout.addWidget(group_widget)
-        
+
         # If a layout was provided, add our widget to it
         if layout:
             layout.addWidget(widget)
-        
+
         return all_controls, widget
 
 
@@ -912,18 +1008,22 @@ def generate_ui_from_param_group(param_group: ParameterGroup):
                 control.setChecked(default_value)
         elif ui_field.control_type == "spinbox":
             control = QDoubleSpinBox()
-            if hasattr(param, "min_value") and param.min_value is not None:
-                control.setMinimum(float(param.min_value))
+            if isinstance(param, (FloatParam, IntParam)):
+                if param.min_value is not None:
+                    control.setMinimum(float(param.min_value))
+                else:
+                    control.setMinimum(ui_field.min_val or 0)
+                if param.max_value is not None:
+                    control.setMaximum(float(param.max_value))
+                else:
+                    control.setMaximum(ui_field.max_val or 999999)
             else:
                 control.setMinimum(ui_field.min_val or 0)
-            if hasattr(param, "max_value") and param.max_value is not None:
-                control.setMaximum(float(param.max_value))
-            else:
                 control.setMaximum(ui_field.max_val or 999999)
             control.setValue(float(default_value))
         elif ui_field.control_type == "combo":
             control = QComboBox()
-            if hasattr(param, "choices") and param.choices:
+            if isinstance(param, LiteralParam) and param.choices:
                 control.addItems(param.choices)
                 if str(default_value) in param.choices:
                     control.setCurrentText(str(default_value))
@@ -937,7 +1037,7 @@ def generate_ui_from_param_group(param_group: ParameterGroup):
     return controls
 
 
-def build_param_group_ui(param_group: ParameterGroup) -> QWidget:
+def build_param_group_ui(param_group: ParameterGroup) -> "Optional[QWidget]":
     """
     Build a complete UI widget for a parameter group organized by sections.
 
@@ -953,7 +1053,7 @@ def build_param_group_ui(param_group: ParameterGroup) -> QWidget:
     layout = QVBoxLayout(widget)
 
     # Group UI fields by their group
-    grouped_fields = {}
+    grouped_fields: Dict[str, list[tuple[str, UIField]]] = {}
     ui_descriptors = param_group.ui_descriptors()
 
     for param_name, ui_field in ui_descriptors.items():
@@ -999,11 +1099,11 @@ class ParamConverter:
     @staticmethod
     def params_to_obj(params_instance: Any, obj: fc.DocumentObject) -> None:
         """Apply parameter instance values back to FreeCAD object."""
-        if hasattr(params_instance, "apply_to_obj"):
-            params_instance.apply_to_obj(obj)
+        if hasattr(params_instance, "to_obj"):
+            params_instance.to_obj(obj)
         else:
             raise ValueError(
-                f"Parameter instance {type(params_instance)} does not have an apply_to_obj method"
+                f"Parameter instance {type(params_instance)} does not have a to_obj method"
             )
 
     @staticmethod
@@ -1045,8 +1145,8 @@ class ParamSystemRouter:
     @staticmethod
     def route_params_to_obj(params_instance: Any, obj: fc.DocumentObject) -> None:
         """Route to appropriate param application based on param type."""
-        if hasattr(params_instance, "apply_to_obj"):
-            params_instance.apply_to_obj(obj)
+        if hasattr(params_instance, "to_obj"):
+            params_instance.to_obj(obj)
 
 
 def get_current_param_system(obj: fc.DocumentObject) -> Any:

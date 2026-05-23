@@ -1485,8 +1485,8 @@ class ConnectingClip(FoundationGridfinity):
 
         # Use the data object for geometry creation
         # Use the fundamentals for profile dimensions and clip-specific for geometry parameters
-        half_width_value = data.fundamentals.main_profile_half_width
-        height_value = data.fundamentals.main_profile_height
+        half_width_value = data.fundamentals.main_half_width
+        height_value = data.fundamentals.main_height
         tolerance_value = data.clip.tolerance
         clip_length_value = data.clip.clip_length
 

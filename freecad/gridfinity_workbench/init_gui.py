@@ -49,6 +49,13 @@ class GridfinityWorkbench(Workbench):
         """
         fc.Console.PrintMessage("switching to Gridfinity Workbench\n")
 
+        # Load and apply plugin settings (cache sizes)
+        from .param import PluginSettingsParams
+
+        plugin_settings = PluginSettingsParams()
+        plugin_settings.load_saved_defaults()
+        plugin_settings.apply_to_system()
+
         workbench_commands = OrderedDict(
             [
                 ("CreateBinBlank", commands.CreateBinBlank()),
