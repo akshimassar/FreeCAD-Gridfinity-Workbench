@@ -29,6 +29,7 @@ from PySide.QtWidgets import (
 
 from . import baseplate_builder, custom_shape, features, utils
 from .param import CombinedBaseplateParams
+from .param_system import CombinedParams
 
 
 def _standard_buttons_ok_cancel() -> int:
@@ -939,7 +940,7 @@ class CreateBaseplateTaskPanel:
         params = CombinedBaseplateParams().from_obj(obj)
         params.apply_to_ui_owner(self)
 
-    def _validate_controls(self, *, preview_mode: bool) -> CombinedBaseplateParams | None:
+    def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:
         params = CombinedBaseplateParams()
         params.update_from_ui_owner(self)
         errors = dict(params.validate())
@@ -1150,6 +1151,9 @@ class CreateBaseplateTaskPanel:
 
 class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
     def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
+        from .param import CombinedStackedBaseplatesParams
+
+        self._params_class = CombinedStackedBaseplatesParams
         super().__init__(
             pixmap,
             target_obj,
@@ -1170,14 +1174,9 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
         source_obj: fc.DocumentObject,
         preview_obj: fc.DocumentObject,
     ) -> None:
-        for property_name in (
-            "SupportOverhangAngle",
-            "InstanceCount",
-            "CornerStitching",
-            "StitchingThickness",
-        ):
-            if hasattr(source_obj, property_name) and hasattr(preview_obj, property_name):
-                setattr(preview_obj, property_name, getattr(source_obj, property_name))
+        from .param import CombinedStackedBaseplatesParams
+
+        CombinedStackedBaseplatesParams().from_obj(source_obj).to_obj(preview_obj)
 
     def _build_pre_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
         controls: dict[str, QWidget] = {}
@@ -1201,28 +1200,22 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
         ]
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
-        super()._load_from_object(obj)
-        if hasattr(obj, "SupportOverhangAngle"):
-            self.support__overhang_angle.setValue(float(obj.SupportOverhangAngle))
-        if hasattr(obj, "InstanceCount"):
-            self.stacking__instance_count.setValue(int(obj.InstanceCount))
-        if hasattr(obj, "CornerStitching"):
-            self.stacking__corner_stitching.setChecked(bool(obj.CornerStitching))
-        if hasattr(obj, "StitchingThickness"):
-            self.stacking__stitching_thickness.setValue(float(obj.StitchingThickness))
+        from .param import CombinedStackedBaseplatesParams
 
-    def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
-        if not super()._apply_dialog_values(obj, preview_mode=preview_mode):
-            return False
-        if hasattr(obj, "SupportOverhangAngle"):
-            obj.SupportOverhangAngle = float(self.support__overhang_angle.value())
-        if hasattr(obj, "InstanceCount"):
-            obj.InstanceCount = int(self.stacking__instance_count.value())
-        if hasattr(obj, "CornerStitching"):
-            obj.CornerStitching = bool(self.stacking__corner_stitching.isChecked())
-        if hasattr(obj, "StitchingThickness"):
-            obj.StitchingThickness = float(self.stacking__stitching_thickness.value())
-        return True
+        params = CombinedStackedBaseplatesParams().from_obj(obj)
+        params.apply_to_ui_owner(self)
+
+    def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:
+        from .param import CombinedStackedBaseplatesParams
+
+        params = CombinedStackedBaseplatesParams()
+        params.update_from_ui_owner(self)
+        errors = dict(params.validate())
+        self._render_validation_errors(errors)
+        self._last_valid_params = params
+        if errors:
+            return None
+        return params
 
     @staticmethod
     def _support_label_for(base_label: str) -> str:
@@ -1269,8 +1262,7 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
         base_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
         companion, extra_companions = self._resolve_or_create_support_companion(base_obj)
 
-        if not self._apply_dialog_values(base_obj, preview_mode=False):
-            return False
+        params.to_obj(base_obj)
 
         base_label = self._format_simple_baseplate_label(
             int(params.size.x_grid_count),

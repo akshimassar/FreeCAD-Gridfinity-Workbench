@@ -1017,7 +1017,7 @@ class ParamSystemRouter:
         """Route to appropriate param conversion based on object type."""
         from .param import (
             CombinedBaseplateParams,
-            CombinedStackedBaseplateParams,
+            CombinedStackedBaseplatesParams,
             CombinedClipParams,
             FundamentalsParams,
         )
@@ -1032,7 +1032,7 @@ class ParamSystemRouter:
             elif class_name == "Baseplate":
                 return CombinedBaseplateParams().from_obj(obj)
             elif class_name == "StackedBaseplates":
-                return CombinedStackedBaseplateParams().from_obj(obj)
+                return CombinedStackedBaseplatesParams().from_obj(obj)
 
         # Default fallback - return fundamentals
         return FundamentalsParams().from_obj(obj)
