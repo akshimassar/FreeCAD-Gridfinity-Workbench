@@ -325,10 +325,6 @@ def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dic
     for param_name, control in screw_stub_controls.items():
         controls[f"screw_stubs__{param_name}"] = control
 
-    # Special handling for the overhang angle parameter to match original naming
-    if "support__overhang_angle" in controls:
-        controls["support_overhang_angle"] = controls.pop("support__overhang_angle")
-
     return controls
 
 
@@ -339,25 +335,23 @@ def _build_stacked_section(
     corner_stitching: bool,
     stitching_thickness: float,
 ) -> dict[str, QWidget]:
-    layout.addWidget(_section_label("Stacked"))
-    form = QFormLayout()
-    form.setContentsMargins(20, 0, 0, 0)
-    instance_count_box = QSpinBox()
-    instance_count_box.setMinimum(1)
-    instance_count_box.setMaximum(999)
-    instance_count_box.setValue(instance_count)
-    form.addRow("Instance count", instance_count_box)
-    corner_stitching_box = QCheckBox()
-    corner_stitching_box.setChecked(corner_stitching)
-    form.addRow("Corner stitching", corner_stitching_box)
-    stitching_thickness_box = _mm_spinbox(stitching_thickness, minimum=0.0, maximum=100.0)
-    form.addRow("Stitching thickness", stitching_thickness_box)
-    layout.addLayout(form)
-    return {
-        "instance_count": instance_count_box,
-        "corner_stitching": corner_stitching_box,
-        "stitching_thickness": stitching_thickness_box,
-    }
+    from .param import StackingParams
+
+    stacking_params = StackingParams(
+        instance_count=instance_count,
+        corner_stitching=corner_stitching,
+        stitching_thickness=fc.Units.Quantity(f"{stitching_thickness} mm"),
+    )
+    stacking_controls, stacking_widget = stacking_params.build_ui(None, "Stacked", True)
+
+    layout.addWidget(stacking_widget)
+
+    # Prefix control names with group name for consistent naming
+    controls = {}
+    for param_name, control in stacking_controls.items():
+        controls[f"stacking__{param_name}"] = control
+
+    return controls
 
 
 class CreateCommand(BaseCommand):
@@ -980,7 +974,7 @@ class CreateBaseplateTaskPanel:
         for key, widget in vars(self).items():
             if not isinstance(widget, QWidget):
                 continue
-            if "__" not in key and key not in {"stitching_thickness"}:
+            if "__" not in key:
                 continue
             layout = self._find_form_layout_for_widget(widget)
             if layout is None:
@@ -1200,34 +1194,34 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
 
     def _extra_preview_controls(self) -> list[QWidget]:
         return [
-            self.support_overhang_angle,
-            self.instance_count,
-            self.corner_stitching,
-            self.stitching_thickness,
+            self.support__overhang_angle,
+            self.stacking__instance_count,
+            self.stacking__corner_stitching,
+            self.stacking__stitching_thickness,
         ]
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         super()._load_from_object(obj)
         if hasattr(obj, "SupportOverhangAngle"):
-            self.support_overhang_angle.setValue(float(obj.SupportOverhangAngle))
+            self.support__overhang_angle.setValue(float(obj.SupportOverhangAngle))
         if hasattr(obj, "InstanceCount"):
-            self.instance_count.setValue(int(obj.InstanceCount))
+            self.stacking__instance_count.setValue(int(obj.InstanceCount))
         if hasattr(obj, "CornerStitching"):
-            self.corner_stitching.setChecked(bool(obj.CornerStitching))
+            self.stacking__corner_stitching.setChecked(bool(obj.CornerStitching))
         if hasattr(obj, "StitchingThickness"):
-            self.stitching_thickness.setValue(float(obj.StitchingThickness))
+            self.stacking__stitching_thickness.setValue(float(obj.StitchingThickness))
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
         if not super()._apply_dialog_values(obj, preview_mode=preview_mode):
             return False
         if hasattr(obj, "SupportOverhangAngle"):
-            obj.SupportOverhangAngle = float(self.support_overhang_angle.value())
+            obj.SupportOverhangAngle = float(self.support__overhang_angle.value())
         if hasattr(obj, "InstanceCount"):
-            obj.InstanceCount = int(self.instance_count.value())
+            obj.InstanceCount = int(self.stacking__instance_count.value())
         if hasattr(obj, "CornerStitching"):
-            obj.CornerStitching = bool(self.corner_stitching.isChecked())
+            obj.CornerStitching = bool(self.stacking__corner_stitching.isChecked())
         if hasattr(obj, "StitchingThickness"):
-            obj.StitchingThickness = float(self.stitching_thickness.value())
+            obj.StitchingThickness = float(self.stacking__stitching_thickness.value())
         return True
 
     @staticmethod
