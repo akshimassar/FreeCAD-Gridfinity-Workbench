@@ -110,6 +110,22 @@ class SupportParamsData:
 
 
 @dataclass(frozen=True)
+class StackingParamsData:
+    instance_count: int
+    corner_stitching: bool
+    stitching_thickness: fc.Units.Quantity
+
+
+@dataclass(frozen=True)
+class CombinedSupportBaseplateParamsData:
+    fundamentals: FundamentalsParamsData
+    core: BaseplateCoreLayoutParamsData
+    fillers: BaseplateFillersParamsData
+    click_springs: ClickSpringParamsData
+    support: SupportParamsData
+
+
+@dataclass(frozen=True)
 class CombinedBaseplateParamsData:
     fundamentals: FundamentalsParamsData
     core: BaseplateCoreLayoutParamsData
@@ -121,7 +137,7 @@ class CombinedBaseplateParamsData:
 
 
 @dataclass(frozen=True)
-class CombinedStackedBaseplateParamsData:
+class CombinedStackedBaseplatesParamsData:
     fundamentals: FundamentalsParamsData
     core: BaseplateCoreLayoutParamsData
     fillers: BaseplateFillersParamsData
@@ -129,6 +145,7 @@ class CombinedStackedBaseplateParamsData:
     junction_screws: JunctionScrewParamsData
     screw_stubs: ScrewStubParamsData
     support: SupportParamsData
+    stacking: StackingParamsData
     clip_cutouts: ClipParamsData
 
 
@@ -466,7 +483,7 @@ class SupportParams(ParameterGroup):
             FloatParam(
                 "overhang_angle",
                 "Overhang Angle",
-                fc.Units.Quantity("45.0 mm"),
+                fc.Units.Quantity("50.0 deg"),
             ),
         ]
 
@@ -475,6 +492,42 @@ class SupportParams(ParameterGroup):
 
     def data(self) -> SupportParamsData:
         return SupportParamsData(overhang_angle=self.get_value("overhang_angle"))
+
+
+class StackingParams(ParameterGroup):
+    _category = "Gridfinity_Stacking"
+    _section_title = "Stacking"
+
+    def __init__(self, **kwargs):
+        parameters = [
+            IntParam(
+                "instance_count",
+                "Instance Count",
+                3,
+                min_value=1,
+            ),
+            BooleanParam(
+                "corner_stitching",
+                "Corner Stitching",
+                default_value=False,
+            ),
+            FloatParam(
+                "stitching_thickness",
+                "Stitching Thickness",
+                fc.Units.Quantity("0.4 mm"),
+                positive_only=True,
+            ),
+        ]
+
+        super().__init__(parameters)
+        self.set_all_values(kwargs)
+
+    def data(self) -> StackingParamsData:
+        return StackingParamsData(
+            instance_count=self.get_value("instance_count"),
+            corner_stitching=self.get_value("corner_stitching"),
+            stitching_thickness=self.get_value("stitching_thickness"),
+        )
 
 
 class CombinedBaseplateParams(CombinedParams):
@@ -657,7 +710,67 @@ class CombinedBaseplateParams(CombinedParams):
         )
 
 
-class CombinedStackedBaseplateParams(CombinedParams):
+class CombinedSupportBaseplateParams(CombinedParams):
+    def __init__(
+        self,
+        fundamentals: FundamentalsParams = None,
+        size: BaseplateSizeParams = None,
+        core: BaseplateCoreParams = None,
+        click_springs: ClickSpringParams = None,
+        support: SupportParams = None,
+    ):
+        super().__init__(
+            fundamentals=fundamentals or FundamentalsParams(),
+            size=size or BaseplateSizeParams(),
+            core=core or BaseplateCoreParams(),
+            click_springs=click_springs or ClickSpringParams(),
+            support=support or SupportParams(),
+        )
+
+    def validate(self) -> Dict[str, str]:
+        errors = super().validate()
+        fundamentals = self.fundamentals.data()
+        core = self.core.data()
+        half_width = float(fundamentals.main_half_width)
+        outer_radius = float(fundamentals.bin_outer_radius)
+        top_crop = float(core.top_crop)
+
+        if not top_crop < half_width:
+            errors["core.top_crop"] = "Top crop must be less than main profile half width"
+        if not outer_radius > half_width:
+            errors["fundamentals.outer_radius"] = (
+                "Outer radius must be greater than main profile half width"
+            )
+        return errors
+
+    def data(self) -> CombinedSupportBaseplateParamsData:
+        size = self.size.data()
+        core = self.core.data()
+        return CombinedSupportBaseplateParamsData(
+            fundamentals=self.fundamentals.data(),
+            core=BaseplateCoreLayoutParamsData(
+                x_grid_count=size.x_grid_count,
+                y_grid_count=size.y_grid_count,
+                base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
+                base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
+                base_profile_top_crop=core.base_profile_top_crop,
+            ),
+            fillers=BaseplateFillersParamsData(
+                left_enabled=size.filler_left_enabled,
+                left_width=size.filler_left_width,
+                right_enabled=size.filler_right_enabled,
+                right_width=size.filler_right_width,
+                top_enabled=size.filler_top_enabled,
+                top_width=size.filler_top_width,
+                bottom_enabled=size.filler_bottom_enabled,
+                bottom_width=size.filler_bottom_width,
+            ),
+            click_springs=self.click_springs.data(),
+            support=self.support.data(),
+        )
+
+
+class CombinedStackedBaseplatesParams(CombinedParams):
     def __init__(
         self,
         fundamentals: FundamentalsParams = None,
@@ -667,6 +780,7 @@ class CombinedStackedBaseplateParams(CombinedParams):
         junction_screws: JunctionScrewParams = None,
         screw_stubs: ScrewStubParams = None,
         support: SupportParams = None,
+        stacking: StackingParams = None,
         clip_cutouts: ClipParams = None,
     ):
         super().__init__(
@@ -677,6 +791,7 @@ class CombinedStackedBaseplateParams(CombinedParams):
             junction_screws=junction_screws or JunctionScrewParams(),
             screw_stubs=screw_stubs or ScrewStubParams(),
             support=support or SupportParams(),
+            stacking=stacking or StackingParams(),
             clip_cutouts=clip_cutouts or ClipParams(),
         )
 
@@ -701,10 +816,10 @@ class CombinedStackedBaseplateParams(CombinedParams):
                 errors["screw_stubs.clearance"] = "Screw stub clearance is too large"
         return errors
 
-    def data(self) -> CombinedStackedBaseplateParamsData:
+    def data(self) -> CombinedStackedBaseplatesParamsData:
         size = self.size.data()
         core = self.core.data()
-        return CombinedStackedBaseplateParamsData(
+        return CombinedStackedBaseplatesParamsData(
             fundamentals=self.fundamentals.data(),
             core=BaseplateCoreLayoutParamsData(
                 x_grid_count=size.x_grid_count,
@@ -727,6 +842,7 @@ class CombinedStackedBaseplateParams(CombinedParams):
             junction_screws=self.junction_screws.data(),
             screw_stubs=self.screw_stubs.data(),
             support=self.support.data(),
+            stacking=self.stacking.data(),
             clip_cutouts=self.clip_cutouts.data(),
         )
 

@@ -751,8 +751,9 @@ def _build_corner_stitching_shape(
 
 
 def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
+    # Use Baseplate.generate_gridfinity_shape directly to avoid recursion through StackedBaseplates
     proxy: Baseplate = obj.Proxy  # type: ignore[assignment]
-    baseplate_shape = proxy.generate_gridfinity_shape(obj)
+    baseplate_shape = Baseplate.generate_gridfinity_shape(proxy, obj)
     support_shape = _stacked_support_prototype(obj)
     instance_count = max(1, int(getattr(obj, "InstanceCount", 3)))
     z_step = support_shape.BoundBox.ZMax
