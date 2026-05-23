@@ -107,7 +107,7 @@ def make_click_spring_seed_positive(
     fundamentals: FundamentalsParamsData,
     click_springs: ClickSpringParamsData,
 ) -> Part.Shape:
-    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
+    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.main_half_width
     click_length = click_springs.click_length
     click_center_y = fundamentals.y_grid_size / 4
     click_top_y = click_center_y + click_length / 2
@@ -131,7 +131,7 @@ def make_click_spring_seed_positive(
     ]
     spine = Part.Wire(Part.makePolygon(path_points))
 
-    z1 = fundamentals.base_profile_main_height
+    z1 = fundamentals.main_height
     x2 = x0 + click_springs.click_thickness
     z2 = z1 + click_springs.click_thickness
     profile_points = [
@@ -149,8 +149,8 @@ def make_click_spring_seed_negative(
     fundamentals: FundamentalsParamsData,
     click_springs: ClickSpringParamsData,
 ) -> Part.Shape:
-    total_height = fundamentals.base_profile_main_height + fundamentals.base_profile_main_half_width
-    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
+    total_height = fundamentals.main_height + fundamentals.main_half_width
+    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.main_half_width
     x0 = x_vert_width / 2
     x_min = x0 - click_springs.click_offset
     click_width_x = click_springs.click_offset + click_springs.click_thickness
@@ -196,14 +196,14 @@ def _validate_click_spring_geometry(
     fundamentals: FundamentalsParamsData,
     click_springs: ClickSpringParamsData,
 ) -> None:
-    if click_springs.click_thickness >= fundamentals.base_profile_main_half_width:
+    if click_springs.click_thickness >= fundamentals.main_half_width:
         raise ValueError(
             f"Invalid click spring geometry: ClickThickness ({click_springs.click_thickness}) must be "
-            f"smaller than BaseProfileMainHalfWidth ({fundamentals.base_profile_main_half_width})"
+            f"smaller than BaseProfileMainHalfWidth ({fundamentals.main_half_width})"
         )
 
     half_len = click_springs.click_length / 2
-    bin_vertical_radius = fundamentals.bin_outer_radius - fundamentals.base_profile_main_half_width
+    bin_vertical_radius = fundamentals.bin_outer_radius - fundamentals.main_half_width
     x_limit = fundamentals.x_grid_size / 4 - bin_vertical_radius
     y_limit = fundamentals.y_grid_size / 4 - bin_vertical_radius
 

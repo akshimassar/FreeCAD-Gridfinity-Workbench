@@ -231,19 +231,8 @@ def _build_baseplate_section(
     for param_name, control in core_controls.items():
         controls[f"core__{param_name}"] = control
 
-    # Add clearance control if needed
-    if include_clearance:
-        from .settings import defaults
-
-        clearance = _mm_spinbox(defaults.clearance)
-        # Add clearance to a separate widget with proper indentation
-        clearance_form = QFormLayout()
-        clearance_form.setContentsMargins(20, 0, 0, 0)
-        clearance_form.addRow("Clearance", clearance)
-        clearance_widget = QWidget()
-        clearance_widget.setLayout(clearance_form)
-        layout.addWidget(clearance_widget)
-        controls["core__clearance"] = clearance
+    # TODO: Clearance removed from baseplate params - not used for baseplates, only bins.
+    # The include_clearance parameter is now ignored.
 
     # Create and add snap springs section
     click_params = ClickSpringParams()
@@ -334,17 +323,17 @@ def _build_baseplate_section(
 
 
 def _build_bin_section(layout: QVBoxLayout) -> dict[str, QWidget]:
-    from .settings import defaults
+    # TODO: Bin section needs rework. Hardcoded defaults for now.
     from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QCheckBox
     from PySide.QtCore import Qt
 
     layout.addWidget(_section_label("Bin"))
     form = QFormLayout()
     form.setContentsMargins(20, 0, 0, 0)
-    clearance = _mm_spinbox(defaults.clearance)
+    clearance = _mm_spinbox(0.25)  # TODO: migrate to param system after bin rework
     form.addRow("Clearance", clearance)
     half_grid_size = QCheckBox()
-    half_grid_size.setChecked(defaults.half_grid_size)
+    half_grid_size.setChecked(False)  # TODO: half_grid_size dropped until bin rework
     form.addRow("Half Grid Size", half_grid_size)
     layout.addLayout(form)
     return {"clearance": clearance, "half_grid_size": half_grid_size}

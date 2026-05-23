@@ -193,14 +193,14 @@ def _make_centered_box(
 
 def _base_apex_height(params: CombinedBaseplateParamsData) -> fc.Units.Quantity:
     return (
-        params.fundamentals.base_profile_main_height
-        + params.fundamentals.base_profile_main_half_width
+        params.fundamentals.main_height
+        + params.fundamentals.main_half_width
     )
 
 
 def baseplate_cell_top_crop(shape: Part.Shape, params: CombinedBaseplateParamsData) -> Part.Shape:
     top_crop = params.core.base_profile_top_crop
-    half_width = params.fundamentals.base_profile_main_half_width
+    half_width = params.fundamentals.main_half_width
     if top_crop >= half_width:
         raise ValueError(
             f"BaseProfileTopCrop ({top_crop}) must be smaller than "
@@ -265,8 +265,8 @@ def build_preview_single_cell_baseplate_core(
     margin = 0.1
     x_grid_size = float(params.fundamentals.x_grid_size)
     y_grid_size = float(params.fundamentals.y_grid_size)
-    main_height = float(params.fundamentals.base_profile_main_height)
-    main_half_width = float(params.fundamentals.base_profile_main_half_width)
+    main_height = float(params.fundamentals.main_height)
+    main_half_width = float(params.fundamentals.main_half_width)
 
     outer = _make_centered_box(x_grid_size, y_grid_size, main_height)
     if x_grid_size <= main_half_width or y_grid_size <= main_half_width:
@@ -607,8 +607,8 @@ def _apply_layout_corner_roundover(
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape:
     apex = float(
-        params.fundamentals.base_profile_main_height
-        + params.fundamentals.base_profile_main_half_width
+        params.fundamentals.main_height
+        + params.fundamentals.main_half_width
     )
     top_crop = float(params.core.base_profile_top_crop)
     roundover_height = apex - top_crop

@@ -3,7 +3,11 @@
 import FreeCAD as fc  # noqa: N813
 
 from . import const
-from .settings import defaults
+from .param import FundamentalsParams
+
+# Cached param instance for grid_size default
+_fundamentals = FundamentalsParams()
+_fundamentals.load_saved_defaults()
 
 
 def _location_properties(obj: fc.DocumentObject) -> None:
@@ -49,8 +53,8 @@ def _total_width_properties(obj: fc.DocumentObject) -> None:
 
 def _grid_size_properties(obj: fc.DocumentObject, *, baseplate_default: bool) -> None:
     """Grid Size Properties."""
-    use_half_grid = defaults.half_grid_size and not baseplate_default
-    grid_size = defaults.grid_size / 2 if use_half_grid else defaults.grid_size
+    # TODO: half_grid_size dropped until bin rework. Using full grid_size only.
+    grid_size = _fundamentals.get_value("grid_size")
 
     obj.addProperty(
         "App::PropertyLength",

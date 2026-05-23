@@ -59,7 +59,6 @@ class BaseplateCoreParamsData:
     base_profile_lower_chamfer_enabled: bool
     base_profile_lower_chamfer_size: fc.Units.Quantity
     base_profile_top_crop: fc.Units.Quantity
-    clearance: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
@@ -69,7 +68,6 @@ class BaseplateCoreLayoutParamsData:
     base_profile_lower_chamfer_enabled: bool
     base_profile_lower_chamfer_size: fc.Units.Quantity
     base_profile_top_crop: fc.Units.Quantity
-    clearance: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
@@ -338,11 +336,6 @@ class BaseplateCoreParams(ParameterGroup):
                 "Top Crop",
                 fc.Units.Quantity("0.8 mm"),
             ),
-            FloatParam(
-                "clearance",
-                "Clearance",
-                fc.Units.Quantity("0.25 mm"),
-            ),
         ]
 
         super().__init__(parameters)
@@ -353,7 +346,6 @@ class BaseplateCoreParams(ParameterGroup):
             base_profile_lower_chamfer_enabled=self.get_value("lower_chamfer_enabled"),
             base_profile_lower_chamfer_size=self.get_value("lower_chamfer_size"),
             base_profile_top_crop=self.get_value("top_crop"),
-            clearance=self.get_value("clearance"),
         )
 
 
@@ -513,7 +505,7 @@ class CombinedBaseplateParams(CombinedParams):
         junction = self.junction_screws.data()
         clip = self.clip_cutouts.data()
 
-        half_width = float(fundamentals.base_profile_main_half_width)
+        half_width = float(fundamentals.main_half_width)
         outer_radius = float(fundamentals.bin_outer_radius)
         top_crop = float(core.top_crop)
         grid_size = float(fundamentals.x_grid_size)
@@ -647,7 +639,6 @@ class CombinedBaseplateParams(CombinedParams):
                 base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
                 base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
                 base_profile_top_crop=core.base_profile_top_crop,
-                clearance=core.clearance,
             ),
             fillers=BaseplateFillersParamsData(
                 left_enabled=size.filler_left_enabled,
@@ -721,7 +712,6 @@ class CombinedStackedBaseplateParams(CombinedParams):
                 base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
                 base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
                 base_profile_top_crop=core.base_profile_top_crop,
-                clearance=core.clearance,
             ),
             fillers=BaseplateFillersParamsData(
                 left_enabled=size.filler_left_enabled,

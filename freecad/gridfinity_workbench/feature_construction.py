@@ -1052,21 +1052,21 @@ def make_complex_bin_base_single_from_params(
     """Create one-cell complex shaped bin base centered at origin from baseplate params."""
     lower_enabled = bool(core.base_profile_lower_chamfer_enabled)
     lower_size = core.base_profile_lower_chamfer_size if lower_enabled else 0 * unitmm
-    upper_size = fundamentals.base_profile_main_half_width
-    total_height = fundamentals.base_profile_main_height + fundamentals.base_profile_main_half_width
-    bin_vertical_radius = fundamentals.bin_outer_radius - fundamentals.base_profile_main_half_width
+    upper_size = fundamentals.main_half_width
+    total_height = fundamentals.main_height + fundamentals.main_half_width
+    bin_vertical_radius = fundamentals.bin_outer_radius - fundamentals.main_half_width
     if bin_vertical_radius <= 0:
         raise ValueError(
             f"BinOuterRadius ({fundamentals.bin_outer_radius}) must be greater than "
-            f"BaseProfileMainHalfWidth ({fundamentals.base_profile_main_half_width})"
+            f"BaseProfileMainHalfWidth ({fundamentals.main_half_width})"
         )
 
-    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.base_profile_main_half_width
-    y_vert_width = fundamentals.y_grid_size - 2 * fundamentals.base_profile_main_half_width
+    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.main_half_width
+    y_vert_width = fundamentals.y_grid_size - 2 * fundamentals.main_half_width
 
     x_bt_cmf_width = x_vert_width - 2 * lower_size
     y_bt_cmf_width = y_vert_width - 2 * lower_size
-    vertical_section_height = fundamentals.base_profile_main_height - lower_size
+    vertical_section_height = fundamentals.main_height - lower_size
 
     if x_vert_width <= 0 or y_vert_width <= 0:
         return Part.Shape()
@@ -1135,7 +1135,7 @@ def make_baseplate_top_support(
 ) -> Part.Shape:
     """Create support body from per-cell slabs and optional center cutouts."""
     params = CombinedBaseplateParams().from_obj(obj).data()
-    main_half_width = params.fundamentals.base_profile_main_half_width
+    main_half_width = params.fundamentals.main_half_width
     top_half_width = params.core.base_profile_top_crop
     run = main_half_width + params.click_springs.click_offset - top_half_width
 
