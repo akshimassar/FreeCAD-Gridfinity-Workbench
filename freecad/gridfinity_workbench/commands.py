@@ -222,12 +222,8 @@ def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict
     return prefixed_controls
 
 
-def _build_baseplate_section(
-    layout: QVBoxLayout, *, include_clearance: bool, include_filler: bool
-) -> dict[str, QWidget]:
+def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     from .param import BaseplateCoreParams, ClickSpringParams, JunctionScrewParams, ClipParams
-    from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QCheckBox, QDoubleSpinBox
-    from PySide.QtCore import Qt
 
     # Create the core baseplate param group and build its UI
     core_params = BaseplateCoreParams()
@@ -240,9 +236,6 @@ def _build_baseplate_section(
     controls: dict[str, QWidget] = {}
     for param_name, control in core_controls.items():
         controls[f"core__{param_name}"] = control
-
-    # TODO: Clearance removed from baseplate params - not used for baseplates, only bins.
-    # The include_clearance parameter is now ignored.
 
     # Create and add snap springs section
     click_params = ClickSpringParams()
@@ -281,53 +274,6 @@ def _build_baseplate_section(
     # Add clip controls to main dict
     for param_name, control in clip_controls.items():
         controls[f"clip_cutouts__{param_name}"] = control
-
-    # Add filler section if needed
-    if include_filler:
-        layout.addWidget(_section_label("Filler strips", indent_px=20))
-        filler_form = QFormLayout()
-        filler_form.setContentsMargins(40, 0, 0, 0)
-
-        filler_top_enabled = QCheckBox()
-        filler_top_enabled.setChecked(False)
-        filler_form.addRow("Top", filler_top_enabled)
-        filler_top_width = _mm_spinbox(30.0, maximum=1000.0)
-        filler_form.addRow("Top width", filler_top_width)
-
-        filler_right_enabled = QCheckBox()
-        filler_right_enabled.setChecked(False)
-        filler_form.addRow("Right", filler_right_enabled)
-        filler_right_width = _mm_spinbox(30.0, maximum=1000.0)
-        filler_form.addRow("Right width", filler_right_width)
-
-        filler_bottom_enabled = QCheckBox()
-        filler_bottom_enabled.setChecked(False)
-        filler_form.addRow("Bottom", filler_bottom_enabled)
-        filler_bottom_width = _mm_spinbox(30.0, maximum=1000.0)
-        filler_form.addRow("Bottom width", filler_bottom_width)
-
-        filler_left_enabled = QCheckBox()
-        filler_left_enabled.setChecked(False)
-        filler_form.addRow("Left", filler_left_enabled)
-        filler_left_width = _mm_spinbox(30.0, maximum=1000.0)
-        filler_form.addRow("Left width", filler_left_width)
-
-        filler_container = QWidget()
-        filler_container.setLayout(filler_form)
-        layout.addWidget(filler_container)
-
-        controls.update(
-            {
-                "size__filler_right_enabled": filler_right_enabled,
-                "size__filler_right_width": filler_right_width,
-                "size__filler_left_enabled": filler_left_enabled,
-                "size__filler_left_width": filler_left_width,
-                "size__filler_top_enabled": filler_top_enabled,
-                "size__filler_top_width": filler_top_width,
-                "size__filler_bottom_enabled": filler_bottom_enabled,
-                "size__filler_bottom_width": filler_bottom_width,
-            }
-        )
 
     return controls
 
@@ -573,7 +519,7 @@ class CreateDrawerBaseplateTaskPanel:
         controls: dict[str, QWidget] = {}
         controls.update(_build_fundamentals_section(layout, show_note=False))
         controls.update(
-            _build_baseplate_section(layout, include_clearance=True, include_filler=False)
+            _build_baseplate_section(layout)
         )
         for key, widget in controls.items():
             setattr(self, key, widget)
@@ -944,7 +890,7 @@ class CreateBaseplateTaskPanel:
         controls.update(self._build_pre_sections(layout))
         controls.update(_build_fundamentals_section(layout, show_note=False))
         controls.update(
-            _build_baseplate_section(layout, include_clearance=True, include_filler=True)
+            _build_baseplate_section(layout)
         )
         controls.update(self._build_extra_sections(layout))
         for key, widget in controls.items():

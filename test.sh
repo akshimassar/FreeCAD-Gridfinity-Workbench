@@ -10,6 +10,11 @@ RUN_GUI=false
 RUN_INTEGRATION=false
 EXPLICIT=false
 TEST_NAME=""
+FREECAD_VERSION=""
+
+# Default FreeCAD paths (can be overridden by .env or env vars)
+DEFAULT_FREECAD_1_1_CMD="/home/akshi/opencode-tmp/freecad-1.1-rootfs/AppRun"
+DEFAULT_FREECAD_LINK_CMD="/home/akshi/opencode-tmp/freecad-link-root/AppRun"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -17,6 +22,20 @@ while [[ $# -gt 0 ]]; do
     --unit) RUN_UNIT=true; EXPLICIT=true; shift ;;
     --gui) RUN_GUI=true; EXPLICIT=true; shift ;;
     --integration) RUN_INTEGRATION=true; EXPLICIT=true; shift ;;
+    --freecad|-f)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --freecad requires a version argument (1.1, link, or all)" >&2
+        exit 1
+      fi
+      case "$2" in
+        1.1|link|all) FREECAD_VERSION="$2" ;;
+        *)
+          echo "Error: --freecad accepts: 1.1, link, or all" >&2
+          exit 1
+          ;;
+      esac
+      shift 2
+      ;;
     --test|-t)
       if [[ -z "${2:-}" ]]; then
         echo "Error: --test requires a test name argument" >&2
@@ -26,13 +45,21 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --help|-h)
-      echo "Usage: $0 [--lint] [--unit] [--gui] [--integration] [--test <name>]"
-      echo "  --lint              Run ruff and mypy checks"
-      echo "  --unit              Run unit tests"
-      echo "  --gui               Run GUI tests (requires FREECAD_GUI_CMD)"
-      echo "  --integration       Run integration tests (requires FREECAD_CMD/FREECAD_CMDS)"
-      echo "  --test|-t <name>    Run only the specified test method"
+      echo "Usage: $0 [--lint] [--unit] [--gui] [--integration] [--freecad <version>] [--test <name>]"
+      echo "  --lint                  Run ruff and mypy checks"
+      echo "  --unit                  Run unit tests"
+      echo "  --gui                   Run GUI tests (requires FreeCAD)"
+      echo "  --integration           Run integration tests (requires FreeCAD)"
+      echo "  --freecad|-f <version>  FreeCAD version: 1.1, link, or all"
+      echo "  --test|-t <name>        Run only the specified test method"
       echo "  No flags runs all tests."
+      echo ""
+      echo "Environment variables:"
+      echo "  FREECAD_1_1_CMD         Path to FreeCAD 1.1 AppRun"
+      echo "  FREECAD_LINK_CMD        Path to FreeCAD LinkBranch AppRun"
+      echo "  FREECAD_CMD             Legacy: single FreeCAD command"
+      echo "  FREECAD_GUI_CMD         Legacy: FreeCAD GUI command"
+      echo "  FREECAD_VERSION         Default version when --freecad not specified"
       exit 0
       ;;
     *)
@@ -54,6 +81,57 @@ if [[ -f .env ]]; then
   source .env
 fi
 
+# Resolve FreeCAD paths from env vars or defaults
+FREECAD_1_1_CMD="${FREECAD_1_1_CMD:-$DEFAULT_FREECAD_1_1_CMD}"
+FREECAD_LINK_CMD="${FREECAD_LINK_CMD:-$DEFAULT_FREECAD_LINK_CMD}"
+
+# Use FREECAD_VERSION from env if not set via flag
+if [[ -z "$FREECAD_VERSION" ]]; then
+  FREECAD_VERSION="${FREECAD_VERSION:-1.1}"
+fi
+
+# Helper to get FreeCAD command for a version
+get_freecad_cmd() {
+  local version="$1"
+  case "$version" in
+    1.1) echo "$FREECAD_1_1_CMD" ;;
+    link) echo "$FREECAD_LINK_CMD" ;;
+    *) echo "" ;;
+  esac
+}
+
+# Helper to get FreeCAD Mod directory for a version
+get_freecad_mod_dir() {
+  local version="$1"
+  case "$version" in
+    1.1) echo "$HOME/.local/share/FreeCAD/v1-1/Mod" ;;
+    link) echo "$HOME/.local/share/FreeCAD/link/Mod" ;;
+    *) echo "" ;;
+  esac
+}
+
+# Build list of versions to test
+get_versions_to_test() {
+  case "$FREECAD_VERSION" in
+    all) echo "1.1 link" ;;
+    *) echo "$FREECAD_VERSION" ;;
+  esac
+}
+
+# Ensure plugin is symlinked for a FreeCAD version
+ensure_plugin_symlink() {
+  local version="$1"
+  local mod_dir
+  mod_dir="$(get_freecad_mod_dir "$version")"
+  mkdir -p "$mod_dir"
+  local plugin_link="$mod_dir/Gridfinity"
+  if [[ ! -L "$plugin_link" ]] || [[ "$(readlink -f "$plugin_link")" != "$ROOT_DIR" ]]; then
+    rm -rf "$plugin_link"
+    ln -s "$ROOT_DIR" "$plugin_link"
+    echo "Symlinked plugin to $plugin_link"
+  fi
+}
+
 if [[ "$RUN_LINT" == "true" ]]; then
   echo "Running mypy..."
   uv run mypy freecad/gridfinity_workbench/
@@ -73,48 +151,71 @@ if [[ "$RUN_UNIT" == "true" ]]; then
 fi
 
 if [[ "$RUN_GUI" == "true" ]]; then
-  echo "Running GUI tests with xvfb..."
-  if [[ -z "${FREECAD_GUI_CMD:-}" ]]; then
-    echo "No FreeCAD GUI command configured. Set FREECAD_GUI_CMD in .env" >&2
-    exit 1
-  fi
+  for version in $(get_versions_to_test); do
+    freecad_cmd="$(get_freecad_cmd "$version")"
+    
+    # Fall back to legacy FREECAD_GUI_CMD if version command not available
+    if [[ ! -x "$freecad_cmd" ]] && [[ -n "${FREECAD_GUI_CMD:-}" ]]; then
+      freecad_cmd="$FREECAD_GUI_CMD"
+      echo "Running GUI tests with xvfb (legacy FREECAD_GUI_CMD)..."
+    else
+      echo "Running GUI tests with xvfb [FreeCAD $version]..."
+    fi
+    
+    if [[ ! -x "$freecad_cmd" ]]; then
+      echo "Skipping GUI tests for $version: $freecad_cmd not found or not executable" >&2
+      continue
+    fi
 
-  # Ensure plugin is symlinked to FreeCAD Mod directory
-  # FreeCAD needs package.xml to discover the module, so we symlink the repo root
-  FREECAD_MOD_DIR="$HOME/.local/share/FreeCAD/v1-1/Mod"
-  mkdir -p "$FREECAD_MOD_DIR"
-  PLUGIN_LINK="$FREECAD_MOD_DIR/Gridfinity"
-  if [[ ! -L "$PLUGIN_LINK" ]] || [[ "$(readlink -f "$PLUGIN_LINK")" != "$ROOT_DIR" ]]; then
-    rm -rf "$PLUGIN_LINK"
-    ln -s "$ROOT_DIR" "$PLUGIN_LINK"
-    echo "Symlinked plugin to $PLUGIN_LINK"
-  fi
-
-  xvfb-run "$FREECAD_GUI_CMD" -t freecad.gridfinity_workbench.test_gridfinity
+    ensure_plugin_symlink "$version"
+    xvfb-run "$freecad_cmd" -t freecad.gridfinity_workbench.test_gridfinity
+  done
 fi
 
 if [[ "$RUN_INTEGRATION" == "true" ]]; then
-  if [[ -z "${FREECAD_CMDS:-}" ]]; then
-    if [[ -n "${FREECAD_CMD:-}" ]]; then
-      FREECAD_CMDS="$FREECAD_CMD"
-    else
-      echo "No FreeCAD command configured. Set FREECAD_CMDS or FREECAD_CMD in .env" >&2
-      exit 1
-    fi
-  fi
-
-  for cmd in $FREECAD_CMDS; do
-    if [[ ! -x "$cmd" ]]; then
-      echo "Skipping missing FreeCAD command: $cmd"
+  ran_any=false
+  
+  for version in $(get_versions_to_test); do
+    freecad_cmd="$(get_freecad_cmd "$version")"
+    
+    if [[ ! -x "$freecad_cmd" ]]; then
+      echo "Skipping integration tests for $version: $freecad_cmd not found or not executable"
       continue
     fi
-    echo "Running integration test with: $cmd"
+    
+    echo "Running integration tests [FreeCAD $version]: $freecad_cmd"
     if [[ -n "$TEST_NAME" ]]; then
-      FREECAD_CMD="$cmd" python -m unittest "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
+      FREECAD_CMD="$freecad_cmd" python -m unittest "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
     else
-      FREECAD_CMD="$cmd" python -m unittest tests.test_integration_freecad_cmd
+      FREECAD_CMD="$freecad_cmd" python -m unittest tests.test_integration_freecad_cmd
     fi
+    ran_any=true
   done
+  
+  # Fall back to legacy FREECAD_CMDS/FREECAD_CMD if no version-specific commands worked
+  if [[ "$ran_any" == "false" ]]; then
+    if [[ -z "${FREECAD_CMDS:-}" ]]; then
+      if [[ -n "${FREECAD_CMD:-}" ]]; then
+        FREECAD_CMDS="$FREECAD_CMD"
+      else
+        echo "No FreeCAD command configured. Set FREECAD_1_1_CMD, FREECAD_LINK_CMD, or legacy FREECAD_CMD in .env" >&2
+        exit 1
+      fi
+    fi
+
+    for cmd in $FREECAD_CMDS; do
+      if [[ ! -x "$cmd" ]]; then
+        echo "Skipping missing FreeCAD command: $cmd"
+        continue
+      fi
+      echo "Running integration tests (legacy): $cmd"
+      if [[ -n "$TEST_NAME" ]]; then
+        FREECAD_CMD="$cmd" python -m unittest "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
+      else
+        FREECAD_CMD="$cmd" python -m unittest tests.test_integration_freecad_cmd
+      fi
+    done
+  fi
 fi
 
 echo "All tests finished."

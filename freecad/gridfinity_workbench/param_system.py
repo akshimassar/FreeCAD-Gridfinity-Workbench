@@ -800,9 +800,12 @@ class CombinedParams:
         for group_name, group_payload in payload.items():
             for param_name, value in group_payload.items():
                 control = getattr(owner, f"{group_name}__{param_name}", None)
-                if control is None or not hasattr(control, "setValue"):
+                if control is None:
                     continue
-                control.setValue(value)
+                if hasattr(control, "setChecked"):
+                    control.setChecked(bool(value))
+                elif hasattr(control, "setValue"):
+                    control.setValue(value)
 
     def update_from_ui_controls(self, controls_by_key: Dict[str, Any]) -> None:
         """Update parameters from controls keyed as `group__param`."""
@@ -813,9 +816,12 @@ class CombinedParams:
             group_payload: Dict[str, Any] = {}
             for param_name in group._parameters:
                 control = controls_by_key.get(f"{group_name}__{param_name}")
-                if control is None or not hasattr(control, "value"):
+                if control is None:
                     continue
-                group_payload[param_name] = control.value()
+                if hasattr(control, "isChecked"):
+                    group_payload[param_name] = control.isChecked()
+                elif hasattr(control, "value"):
+                    group_payload[param_name] = control.value()
             payload[group_name] = group_payload
         self.from_ui_payload(payload)
 
@@ -828,9 +834,12 @@ class CombinedParams:
             group_payload: Dict[str, Any] = {}
             for param_name in group._parameters:
                 control = getattr(owner, f"{group_name}__{param_name}", None)
-                if control is None or not hasattr(control, "value"):
+                if control is None:
                     continue
-                group_payload[param_name] = control.value()
+                if hasattr(control, "isChecked"):
+                    group_payload[param_name] = control.isChecked()
+                elif hasattr(control, "value"):
+                    group_payload[param_name] = control.value()
             payload[group_name] = group_payload
         self.from_ui_payload(payload)
 
