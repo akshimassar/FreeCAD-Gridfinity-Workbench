@@ -9,21 +9,35 @@ RUN_UNIT=false
 RUN_GUI=false
 RUN_INTEGRATION=false
 EXPLICIT=false
+TEST_NAME=""
 
-for arg in "$@"; do
-  case "$arg" in
-    --lint) RUN_LINT=true; EXPLICIT=true ;;
-    --unit) RUN_UNIT=true; EXPLICIT=true ;;
-    --gui) RUN_GUI=true; EXPLICIT=true ;;
-    --integration) RUN_INTEGRATION=true; EXPLICIT=true ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --lint) RUN_LINT=true; EXPLICIT=true; shift ;;
+    --unit) RUN_UNIT=true; EXPLICIT=true; shift ;;
+    --gui) RUN_GUI=true; EXPLICIT=true; shift ;;
+    --integration) RUN_INTEGRATION=true; EXPLICIT=true; shift ;;
+    --test|-t)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --test requires a test name argument" >&2
+        exit 1
+      fi
+      TEST_NAME="$2"
+      shift 2
+      ;;
     --help|-h)
-      echo "Usage: $0 [--lint] [--unit] [--gui] [--integration]"
-      echo "  --lint         Run ruff and mypy checks"
-      echo "  --unit         Run unit tests"
-      echo "  --gui          Run GUI tests (requires FREECAD_GUI_CMD)"
-      echo "  --integration  Run integration tests (requires FREECAD_CMD/FREECAD_CMDS)"
+      echo "Usage: $0 [--lint] [--unit] [--gui] [--integration] [--test <name>]"
+      echo "  --lint              Run ruff and mypy checks"
+      echo "  --unit              Run unit tests"
+      echo "  --gui               Run GUI tests (requires FREECAD_GUI_CMD)"
+      echo "  --integration       Run integration tests (requires FREECAD_CMD/FREECAD_CMDS)"
+      echo "  --test|-t <name>    Run only the specified test method"
       echo "  No flags runs all tests."
       exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
       ;;
   esac
 done
@@ -51,7 +65,11 @@ fi
 
 if [[ "$RUN_UNIT" == "true" ]]; then
   echo "Running unit tests..."
-  python -m unittest tests.test_unit_utils
+  if [[ -n "$TEST_NAME" ]]; then
+    python -m unittest "tests.test_unit_utils.TestUnitUtils.$TEST_NAME"
+  else
+    python -m unittest tests.test_unit_utils
+  fi
 fi
 
 if [[ "$RUN_GUI" == "true" ]]; then
@@ -60,6 +78,18 @@ if [[ "$RUN_GUI" == "true" ]]; then
     echo "No FreeCAD GUI command configured. Set FREECAD_GUI_CMD in .env" >&2
     exit 1
   fi
+
+  # Ensure plugin is symlinked to FreeCAD Mod directory
+  # FreeCAD needs package.xml to discover the module, so we symlink the repo root
+  FREECAD_MOD_DIR="$HOME/.local/share/FreeCAD/v1-1/Mod"
+  mkdir -p "$FREECAD_MOD_DIR"
+  PLUGIN_LINK="$FREECAD_MOD_DIR/Gridfinity"
+  if [[ ! -L "$PLUGIN_LINK" ]] || [[ "$(readlink -f "$PLUGIN_LINK")" != "$ROOT_DIR" ]]; then
+    rm -rf "$PLUGIN_LINK"
+    ln -s "$ROOT_DIR" "$PLUGIN_LINK"
+    echo "Symlinked plugin to $PLUGIN_LINK"
+  fi
+
   xvfb-run "$FREECAD_GUI_CMD" -t freecad.gridfinity_workbench.test_gridfinity
 fi
 
@@ -79,7 +109,11 @@ if [[ "$RUN_INTEGRATION" == "true" ]]; then
       continue
     fi
     echo "Running integration test with: $cmd"
-    FREECAD_CMD="$cmd" python -m unittest tests.test_integration_freecad_cmd
+    if [[ -n "$TEST_NAME" ]]; then
+      FREECAD_CMD="$cmd" python -m unittest "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
+    else
+      FREECAD_CMD="$cmd" python -m unittest tests.test_integration_freecad_cmd
+    fi
   done
 fi
 

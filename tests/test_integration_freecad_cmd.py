@@ -64,9 +64,6 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             import FreeCAD as fc  # noqa: N813
             import gridfinity_workbench.features as features
             from gridfinity_workbench.baseplate_builder import BaseplateBuildOptions
-            from gridfinity_workbench.baseplate_params import params_from_obj
-            from gridfinity_workbench.baseplate_builder import BaseplateBuildOptions
-            from gridfinity_workbench.baseplate_params import params_from_obj
 
             def build_case(name: str, click_springs: bool) -> dict[str, float | int | bool]:
                 doc = fc.newDocument(name)
@@ -404,7 +401,6 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             import FreeCAD as fc  # noqa: N813
             import gridfinity_workbench.features as features
             from gridfinity_workbench.baseplate_builder import BaseplateBuildOptions
-            from gridfinity_workbench.baseplate_params import params_from_obj
 
             doc = fc.newDocument("DrawerPreview")
             try:
@@ -669,7 +665,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             import FreeCAD as fc  # noqa: N813
             import gridfinity_workbench.features as features
             from gridfinity_workbench.baseplate_builder import BaseplateBuildOptions
-            from gridfinity_workbench.baseplate_params import params_from_obj
+            from gridfinity_workbench.param import CombinedBaseplateParams
 
             doc = fc.newDocument("BasePreviewFill2")
             try:
@@ -683,7 +679,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 obj.FillerTopEnabled = False
                 obj.FillerBottomEnabled = False
                 layout = features.grid_initial_layout.make_rectangle_layout(obj)
-                params = params_from_obj(obj)
+                params = CombinedBaseplateParams().from_obj(obj).data()
                 shape = features.baseplate_builder.build_simple_baseplate_from_params(
                     params,
                     layout,

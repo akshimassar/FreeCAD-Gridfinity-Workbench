@@ -8,8 +8,6 @@ import FreeCADGui as fcg  # noqa: N813
 TEMPDIR = Path(gettempdir())
 DOC_NAME = "GridfinityDocument"
 
-fcg.activateWorkbench("GridfinityWorkbench")
-
 
 class TestWithDocument(unittest.TestCase):
     """Base class for test that do everything on an open document.
@@ -18,6 +16,7 @@ class TestWithDocument(unittest.TestCase):
     """
 
     def setUp(self) -> None:
+        fcg.activateWorkbench("GridfinityWorkbench")
         self.doc = fc.newDocument(DOC_NAME)
         self.filepath = f"{TEMPDIR / self.__class__.__name__!s}_{self._testMethodName}.FCStd"
 
@@ -43,6 +42,29 @@ class TestConnectingClipTaskPanel(TestWithDocument):
         self.assertEqual(len(self.doc.Objects), 1)
         obj = self.doc.Objects[0]
         self.assertEqual(obj.Label, "ConnectingClip")
+
+        # Verify shape is valid
+        self.assertTrue(obj.Shape.isValid())
+        self.assertGreater(obj.Shape.Volume, 0)
+
+
+class TestBaseplateTaskPanel(TestWithDocument):
+    """Test creating a baseplate through the task panel dialog."""
+
+    def test_create_simple_baseplate_via_dialog(self) -> None:
+        from .commands import CreateBaseplateTaskPanel, ICONDIR
+
+        # Open the task panel dialog
+        panel = CreateBaseplateTaskPanel(ICONDIR / "baseplate-obj.svg")
+        fcg.Control.showDialog(panel)
+
+        # Accept the dialog to create the object (simulates OK button press)
+        panel.accept()
+
+        # Verify object was created
+        self.assertEqual(len(self.doc.Objects), 1)
+        obj = self.doc.Objects[0]
+        self.assertIn("Baseplate", obj.Label)
 
         # Verify shape is valid
         self.assertTrue(obj.Shape.isValid())
