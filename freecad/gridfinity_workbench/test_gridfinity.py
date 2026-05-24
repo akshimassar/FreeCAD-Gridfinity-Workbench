@@ -8,6 +8,12 @@ import FreeCADGui as fcg  # noqa: N813
 TEMPDIR = Path(gettempdir())
 DOC_NAME = "GridfinityDocument"
 
+# Enable FreeCAD console output to stderr so test failures are visible
+fc.Console.SetStatus("Console", "Log", True)
+fc.Console.SetStatus("Console", "Msg", True)
+fc.Console.SetStatus("Console", "Wrn", True)
+fc.Console.SetStatus("Console", "Err", True)
+
 
 class TestWithDocument(unittest.TestCase):
     """Base class for test that do everything on an open document.
@@ -69,3 +75,6 @@ class TestBaseplateTaskPanel(TestWithDocument):
         # Verify shape is valid
         self.assertTrue(obj.Shape.isValid())
         self.assertGreater(obj.Shape.Volume, 0)
+
+
+
