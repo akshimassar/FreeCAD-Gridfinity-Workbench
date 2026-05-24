@@ -12,7 +12,7 @@ from . import utils
 from .baseplate_full_layout import BoolMatrix2x2, ShapeMatrix2x2, expand_seed_to_shape_matrix
 
 if TYPE_CHECKING:
-    from .param import BaseplateCoreLayoutParamsData, ClickSpringParamsData, FundamentalsParamsData
+    from .param import BaseplateCoreParamsData, ClickSpringParamsData, FundamentalsParamsData
 
 unitmm = fc.Units.Quantity("1 mm")
 
@@ -250,7 +250,7 @@ def make_click_spring_prototype_negative(
 def apply_click_spring_slots_to_cell(
     shape: Part.Shape,
     _fundamentals: FundamentalsParamsData,
-    _core: BaseplateCoreLayoutParamsData,
+    _core: BaseplateCoreParamsData,
     _click_springs: ClickSpringParamsData,
     negative_slots: SpringShapeSlots,
     positive_slots: SpringShapeSlots,

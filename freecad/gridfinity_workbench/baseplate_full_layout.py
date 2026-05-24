@@ -281,27 +281,27 @@ def build_full_layout(  # noqa: C901, PLR0912
     # Determine grid dimensions from layout, falling back to params
     layout_nx = len(layout)
     layout_ny = len(layout[0]) if layout_nx > 0 and len(layout[0]) > 0 else 0
-    nx = layout_nx if layout_nx > 0 else int(params.core.x_grid_count)
-    ny = layout_ny if layout_ny > 0 else int(params.core.y_grid_count)
+    nx = layout_nx if layout_nx > 0 else int(params.baseplate_size.x_grid_count)
+    ny = layout_ny if layout_ny > 0 else int(params.baseplate_size.y_grid_count)
 
     left_w = (
-        params.fillers.filler_left_width
-        if params.fillers.filler_left_enabled
+        params.baseplate_size.filler_left_width
+        if params.baseplate_size.filler_left_enabled
         else 0 * params.fundamentals.grid_size
     )
     right_w = (
-        params.fillers.filler_right_width
-        if params.fillers.filler_right_enabled
+        params.baseplate_size.filler_right_width
+        if params.baseplate_size.filler_right_enabled
         else 0 * params.fundamentals.grid_size
     )
     bottom_w = (
-        params.fillers.filler_bottom_width
-        if params.fillers.filler_bottom_enabled
+        params.baseplate_size.filler_bottom_width
+        if params.baseplate_size.filler_bottom_enabled
         else 0 * params.fundamentals.grid_size
     )
     top_w = (
-        params.fillers.filler_top_width
-        if params.fillers.filler_top_enabled
+        params.baseplate_size.filler_top_width
+        if params.baseplate_size.filler_top_enabled
         else 0 * params.fundamentals.grid_size
     )
 

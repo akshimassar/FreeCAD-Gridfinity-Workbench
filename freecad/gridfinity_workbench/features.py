@@ -38,7 +38,7 @@ from .custom_shape_features import (
 from .drawer_split import split_axis_into_printable_chunks
 from .param import (
     CombinedBaseplateParams,
-    CombinedClipParams,
+    CombinedConnectingClipParams,
     CombinedDrawerBaseplateParams,
     CombinedStackedBaseplatesParams,
     CombinedSupportBaseplateParams,
@@ -369,10 +369,13 @@ class Baseplate(FoundationGridfinity):
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         params = CombinedBaseplateParams().from_obj(obj)
         data = params.data()
-        layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
+        layout = [
+            [True] * data.baseplate_size.y_grid_count
+            for _ in range(data.baseplate_size.x_grid_count)
+        ]
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=data.junction_screws.enabled,
-            include_clip_cutouts=data.clip_cutouts.enabled,
+            include_clip_cutouts=data.connecting_clip.enabled,
             include_snap_springs=data.click_springs.enabled,
         )
         return baseplate_builder.build_simple_baseplate_from_params(
@@ -415,7 +418,7 @@ class DrawerBaseplate(FoundationGridfinity):
         preview_mode = bool(getattr(obj, "PreviewBuildMode", False))
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=full_data.junction_screws.enabled,
-            include_clip_cutouts=full_data.clip_cutouts.enabled,
+            include_clip_cutouts=full_data.connecting_clip.enabled,
             include_snap_springs=full_data.click_springs.enabled,
         )
 
@@ -488,9 +491,10 @@ class DrawerBaseplate(FoundationGridfinity):
 
                 piece_params = replace(
                     baseplate_params,
-                    core=replace(baseplate_params.core, x_grid_count=x_units, y_grid_count=y_units),
-                    fillers=replace(
-                        baseplate_params.fillers,
+                    baseplate_size=replace(
+                        baseplate_params.baseplate_size,
+                        x_grid_count=x_units,
+                        y_grid_count=y_units,
                         filler_left_enabled=left_fill > 0,
                         filler_left_width=left_fill * unitmm,
                         filler_right_enabled=right_fill > 0,
@@ -551,7 +555,10 @@ class SupportBaseplate(FoundationGridfinity):
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         params = CombinedSupportBaseplateParams().from_obj(obj)
         data = params.data()
-        layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
+        layout = [
+            [True] * data.baseplate_size.y_grid_count
+            for _ in range(data.baseplate_size.x_grid_count)
+        ]
         return baseplate_builder.build_baseplate_support_cached(data, layout)
 
 
@@ -577,10 +584,13 @@ class StackedBaseplates(FoundationGridfinity):
         if bool(getattr(obj, "PreviewBuildMode", False)):
             params = CombinedStackedBaseplatesParams().from_obj(obj)
             data = params.data()
-            layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
+            layout = [
+                [True] * data.baseplate_size.y_grid_count
+                for _ in range(data.baseplate_size.x_grid_count)
+            ]
             options = baseplate_builder.BaseplateBuildOptions(
                 include_junction_screws=data.junction_screws.enabled,
-                include_clip_cutouts=data.clip_cutouts.enabled,
+                include_clip_cutouts=data.connecting_clip.enabled,
                 include_snap_springs=data.click_springs.enabled,
             )
             # Use baseplate-only data for the builder
@@ -616,7 +626,9 @@ def _stacked_support_prototype(obj: fc.DocumentObject) -> Part.Shape:
     """Build a single support layer for stacked baseplates."""
     params = CombinedStackedBaseplatesParams().from_obj(obj)
     data = params.data()
-    layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
+    layout = [
+        [True] * data.baseplate_size.y_grid_count for _ in range(data.baseplate_size.x_grid_count)
+    ]
     return baseplate_builder.build_baseplate_support_cached(data, layout)
 
 
@@ -633,7 +645,7 @@ def _build_corner_stitching_shape(
     outer_radius = float(data.fundamentals.outer_radius)
     if stitching_thickness >= outer_radius:
         return None
-    if stitching_thickness > float(data.core.top_crop):
+    if stitching_thickness > float(data.baseplate_core.top_crop):
         return None
 
     x_min = float(baseplates_bbox.XMin)
@@ -706,10 +718,12 @@ def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
     # Build a single baseplate using params
     params = CombinedStackedBaseplatesParams().from_obj(obj)
     data = params.data()
-    layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
+    layout = [
+        [True] * data.baseplate_size.y_grid_count for _ in range(data.baseplate_size.x_grid_count)
+    ]
     options = baseplate_builder.BaseplateBuildOptions(
         include_junction_screws=data.junction_screws.enabled,
-        include_clip_cutouts=data.clip_cutouts.enabled,
+        include_clip_cutouts=data.connecting_clip.enabled,
         include_snap_springs=data.click_springs.enabled,
     )
     baseplate_data = CombinedBaseplateParams().from_obj(obj).data()
@@ -1435,7 +1449,7 @@ class StandaloneLabelShelf:
 
 
 class ConnectingClip(FoundationGridfinity):
-    def __init__(self, obj: fc.DocumentObject, params: CombinedClipParams) -> None:
+    def __init__(self, obj: fc.DocumentObject, params: CombinedConnectingClipParams) -> None:
         super().__init__(obj)
 
         # Use the generic parameter-driven property addition
@@ -1443,7 +1457,7 @@ class ConnectingClip(FoundationGridfinity):
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         # Create param group and extract values from object
-        params = CombinedClipParams().from_obj(obj)
+        params = CombinedConnectingClipParams().from_obj(obj)
 
         # Get frozen data object with all parameter values
         data = params.data()
@@ -1452,8 +1466,8 @@ class ConnectingClip(FoundationGridfinity):
         # Use the fundamentals for profile dimensions and clip-specific for geometry parameters
         half_width_value = data.fundamentals.main_half_width
         height_value = data.fundamentals.main_height
-        tolerance_value = data.clip.tolerance
-        clip_length_value = data.clip.clip_length
+        tolerance_value = data.connecting_clip.tolerance
+        clip_length_value = data.connecting_clip.clip_length
 
         wire = clip_profiles.build_clip_profile_wire(
             half_width_value,

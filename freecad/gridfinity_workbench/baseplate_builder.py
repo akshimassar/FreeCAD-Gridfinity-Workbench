@@ -136,7 +136,7 @@ def build_baseplate_support_cached(
         z_start = (
             float(params.fundamentals.main_height)
             + float(params.fundamentals.main_half_width)
-            - float(params.core.top_crop)
+            - float(params.baseplate_core.top_crop)
         )
         z_matrix = fc.Matrix()
         z_matrix.move(fc.Vector(0, 0, z_start))
@@ -156,7 +156,7 @@ def build_baseplate_support_cached(
 def _layout_dims(layout: GridfinityLayout, params: CombinedBaseplateParamsData) -> tuple[int, int]:
     nx = len(layout)
     if nx == 0:
-        return 0, max(0, int(params.core.y_grid_count))
+        return 0, max(0, int(params.baseplate_size.y_grid_count))
     return nx, len(layout[0])
 
 
@@ -216,7 +216,7 @@ def baseplate_cell_top_crop(
     y_size_override: float | None = None,
 ) -> Part.Shape:
     """Crop the top of a baseplate cell shape."""
-    top_crop = params.core.top_crop
+    top_crop = params.baseplate_core.top_crop
     half_width = params.fundamentals.main_half_width
     if top_crop >= half_width:
         raise ValueError(
@@ -264,7 +264,7 @@ def build_single_cell_baseplate_core(
     solid_shape = face.extrude(fc.Vector(0, 0, total_height))
     bin_base_shape = feat.make_complex_bin_base_single_from_params(
         params.fundamentals,
-        params.core,
+        params.baseplate_core,
         x_size_override=x_size_override,
         y_size_override=y_size_override,
     )
@@ -304,7 +304,7 @@ def build_single_cell_baseplate_core_cached(
     shape = baseplate_cell_cache.get_or_build(key, _build)
     tiny_cell = feat.make_complex_bin_base_single_from_params(
         params.fundamentals,
-        params.core,
+        params.baseplate_core,
         x_size_override=x_size_override,
         y_size_override=y_size_override,
     ).isNull()
@@ -408,12 +408,12 @@ def add_filler_strips(
         return shape, expanded
 
     if not shape.isNull():
-        left_w = params.fillers.filler_left_width
-        left_on = params.fillers.filler_left_enabled and float(left_w) > 0
+        left_w = params.baseplate_size.filler_left_width
+        left_on = params.baseplate_size.filler_left_enabled and float(left_w) > 0
         x_core_shift = left_w if left_on else 0 * params.fundamentals.grid_size
 
-        bottom_w = params.fillers.filler_bottom_width
-        bottom_on = params.fillers.filler_bottom_enabled and float(bottom_w) > 0
+        bottom_w = params.baseplate_size.filler_bottom_width
+        bottom_on = params.baseplate_size.filler_bottom_enabled and float(bottom_w) > 0
         y_core_shift = bottom_w if bottom_on else 0 * params.fundamentals.grid_size
         shape.translate(fc.Vector(float(x_core_shift), float(y_core_shift), 0))
 
@@ -469,7 +469,7 @@ def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
     nx = nx_exp - 2
     ny = ny_exp - 2
 
-    f = params.fillers
+    f = params.baseplate_size
     left_on = f.filler_left_enabled and float(f.filler_left_width) > 0
     right_on = f.filler_right_enabled and float(f.filler_right_width) > 0
     bottom_on = f.filler_bottom_enabled and float(f.filler_bottom_width) > 0
@@ -508,7 +508,7 @@ def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
             cell = click_springs.apply_click_spring_slots_to_cell(
                 cell,
                 params.fundamentals,
-                params.core,
+                params.baseplate_core,
                 params.click_springs,
                 negative_slots,
                 positive_slots,
@@ -672,7 +672,7 @@ def _apply_layout_corner_roundover(
     apex = float(
         params.fundamentals.main_height + params.fundamentals.main_half_width,
     )
-    top_crop = float(params.core.top_crop)
+    top_crop = float(params.baseplate_core.top_crop)
     roundover_height = apex - top_crop
     return baseplate_corner_roundover.apply_layout_corner_roundover(
         shape,
@@ -715,13 +715,13 @@ def make_post_replication_cutter(
             cutters.append(junction_holes)
 
     if options.include_clip_cutouts:
-        clip_cutouts = baseplate_feat.make_clip_cutouts_from_params(
+        connecting_clip_cutouts = baseplate_feat.make_clip_cutouts_from_params(
             params.fundamentals,
-            params.clip_cutouts,
+            params.connecting_clip,
             geometry=geometry,
         )
-        if clip_cutouts is not None:
-            cutters.append(clip_cutouts)
+        if connecting_clip_cutouts is not None:
+            cutters.append(connecting_clip_cutouts)
 
     if not cutters:
         return None
@@ -760,7 +760,7 @@ def apply_snap_springs(
     return click_springs.apply_click_spring_slots_to_cell(
         shape,
         params.fundamentals,
-        params.core,
+        params.baseplate_core,
         params.click_springs,
         negative_slots,
         positive_slots,
@@ -814,10 +814,10 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
     """Build a simple baseplate from params."""
     timing_on = _timing_enabled()
     t_total = time.perf_counter() if timing_on else 0.0
-    nx = max(0, int(params.core.x_grid_count))
-    ny = max(0, int(params.core.y_grid_count))
+    nx = max(0, int(params.baseplate_size.x_grid_count))
+    ny = max(0, int(params.baseplate_size.y_grid_count))
 
-    f = params.fillers
+    f = params.baseplate_size
     left_fill_present = f.filler_left_enabled and float(f.filler_left_width) > 0
     right_fill_present = f.filler_right_enabled and float(f.filler_right_width) > 0
     top_fill_present = f.filler_top_enabled and float(f.filler_top_width) > 0

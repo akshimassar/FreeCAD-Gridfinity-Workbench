@@ -47,7 +47,7 @@ def _standard_buttons_ok_cancel() -> int:
 if TYPE_CHECKING:
     import Part
 
-    from .param import CombinedClipParams
+    from .param import CombinedConnectingClipParams
     from .param_system import CombinedParams
 
 ICONDIR = Path(__file__).parent / "icons"
@@ -229,7 +229,12 @@ def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict
 
 
 def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
-    from .param import BaseplateCoreParams, ClickSpringParams, ClipParams, JunctionScrewParams
+    from .param import (
+        BaseplateCoreParams,
+        ClickSpringParams,
+        ConnectingClipParams,
+        JunctionScrewParams,
+    )
 
     # Create the core baseplate param group and build its UI
     core_params = BaseplateCoreParams()
@@ -276,7 +281,7 @@ def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
         controls[f"junction_screws__{param_name}"] = control
 
     # Create and add connecting clips section
-    clip_params = ClipParams()
+    clip_params = ConnectingClipParams()
     clip_controls, clip_widget = clip_params.build_ui(
         None,
         "",
@@ -289,7 +294,7 @@ def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
 
     # Add clip controls to main dict
     for param_name, control in clip_controls.items():
-        controls[f"clip_cutouts__{param_name}"] = control
+        controls[f"connecting_clip__{param_name}"] = control
 
     return controls
 
@@ -687,7 +692,7 @@ class CreateDrawerBaseplateTaskPanel:
                 if hasattr(self, "screw_stubs__clearance")
                 else {}
             ),
-            "clip_length": self.clip_cutouts__clip_length,
+            "clip_length": self.connecting_clip__clip_length,
         }
         for key, widget in mapping.items():
             if key in errors:
@@ -796,7 +801,7 @@ class CreateDrawerBaseplateTaskPanel:
         if preview_mode:
             params.click_springs.set_value("enabled", value=False)
             params.junction_screws.set_value("enabled", value=False)
-            params.clip_cutouts.set_value("enabled", value=False)
+            params.connecting_clip.set_value("enabled", value=False)
         return params
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
@@ -1106,10 +1111,13 @@ class CreateBaseplateTaskPanel:
         start = time.perf_counter()
         # Directly build preview shape instead of relying on recompute
         data = params.data()
-        layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
+        layout = [
+            [True] * data.baseplate_size.y_grid_count
+            for _ in range(data.baseplate_size.x_grid_count)
+        ]
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=data.junction_screws.enabled,
-            include_clip_cutouts=data.clip_cutouts.enabled,
+            include_clip_cutouts=data.connecting_clip.enabled,
             include_snap_springs=data.click_springs.enabled,
         )
         shape = baseplate_builder.build_simple_baseplate_from_params(
@@ -1153,8 +1161,8 @@ class CreateBaseplateTaskPanel:
         output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
         params.to_obj(output_obj)
         output_obj.Label = self._format_simple_baseplate_label(
-            int(params.size.get_value("x_grid_count")),
-            int(params.size.get_value("y_grid_count")),
+            int(params.baseplate_size.get_value("x_grid_count")),
+            int(params.baseplate_size.get_value("y_grid_count")),
         )
         if self._edit_obj is not None and self._created_preview_obj:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
@@ -1293,8 +1301,8 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
         params.to_obj(base_obj)
 
         base_label = self._format_simple_baseplate_label(
-            int(params.size.x_grid_count),
-            int(params.size.y_grid_count),
+            int(params.baseplate_size.x_grid_count),
+            int(params.baseplate_size.y_grid_count),
         )
         base_obj.Label = base_label
 
@@ -1372,9 +1380,9 @@ class CreateConnectingClipTaskPanel:
         )
         layout = QVBoxLayout(self.form)
 
-        from .param import CombinedClipParams
+        from .param import CombinedConnectingClipParams
 
-        params = CombinedClipParams()
+        params = CombinedConnectingClipParams()
         self._controls_by_key = self._build_connecting_clip_controls(layout, params)
 
         # Create preview object
@@ -1405,15 +1413,15 @@ class CreateConnectingClipTaskPanel:
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         """Load values from an existing connecting clip object."""
-        from .param import CombinedClipParams
+        from .param import CombinedConnectingClipParams
 
-        params = CombinedClipParams().from_obj(obj)
+        params = CombinedConnectingClipParams().from_obj(obj)
         params.apply_to_ui_owner(self)
 
     def _build_connecting_clip_controls(
         self,
         layout: QVBoxLayout,
-        params: CombinedClipParams,
+        params: CombinedConnectingClipParams,
     ) -> dict[str, QWidget]:
         controls: dict[str, QWidget] = {}
 
@@ -1465,10 +1473,10 @@ class CreateConnectingClipTaskPanel:
             return
 
         # Apply values to the preview object using the new param system
-        from .param import CombinedClipParams
+        from .param import CombinedConnectingClipParams
 
         # Create param object using values from controls
-        params = CombinedClipParams()
+        params = CombinedConnectingClipParams()
 
         params.update_from_ui_owner(self)
 
@@ -1527,10 +1535,10 @@ class CreateConnectingClipTaskPanel:
             return False
 
         # Apply final values to the target object using the new param system
-        from .param import CombinedClipParams
+        from .param import CombinedConnectingClipParams
 
         # Create param object using values from controls
-        params = CombinedClipParams()
+        params = CombinedConnectingClipParams()
 
         params.update_from_ui_owner(self)
 
@@ -1599,7 +1607,7 @@ class GridfinitySettingsTaskPanel:
         from .param import (
             BaseplateCoreParams,
             ClickSpringParams,
-            ClipParams,
+            ConnectingClipParams,
             FundamentalsParams,
             JunctionScrewParams,
             PluginSettingsParams,
@@ -1615,7 +1623,7 @@ class GridfinitySettingsTaskPanel:
             BaseplateCoreParams(),
             ClickSpringParams(),
             JunctionScrewParams(),
-            ClipParams(),
+            ConnectingClipParams(),
             PluginSettingsParams(),
         ]
 

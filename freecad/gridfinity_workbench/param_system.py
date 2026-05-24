@@ -1287,7 +1287,7 @@ class ParamSystemRouter:
         # Returns CombinedBaseplateParams populated from the object
 
     Supported object types:
-    - ConnectingClip -> CombinedClipParams
+    - ConnectingClip -> CombinedConnectingClipParams
     - Baseplate -> CombinedBaseplateParams
     - StackedBaseplates -> CombinedStackedBaseplatesParams
     - Default fallback -> FundamentalsParams
@@ -1299,7 +1299,7 @@ class ParamSystemRouter:
         """Route to appropriate param conversion based on object type."""
         from .param import (
             CombinedBaseplateParams,
-            CombinedClipParams,
+            CombinedConnectingClipParams,
             CombinedStackedBaseplatesParams,
             FundamentalsParams,
         )
@@ -1310,7 +1310,7 @@ class ParamSystemRouter:
             class_name = proxy.__class__.__name__
 
             if class_name == "ConnectingClip":
-                return CombinedClipParams().from_obj(obj)
+                return CombinedConnectingClipParams().from_obj(obj)
             if class_name == "Baseplate":
                 return CombinedBaseplateParams().from_obj(obj)
             if class_name == "StackedBaseplates":

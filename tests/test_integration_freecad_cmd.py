@@ -82,7 +82,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             import FreeCAD as fc
             from gridfinity_workbench.param import (
                 CombinedBaseplateParams, FundamentalsParams, BaseplateSizeParams,
-                ClickSpringParams, JunctionScrewParams, ClipParams,
+                ClickSpringParams, JunctionScrewParams, ConnectingClipParams,
             )
             from gridfinity_workbench.baseplate_builder import (
                 build_simple_baseplate_from_params, BaseplateBuildOptions,
@@ -94,10 +94,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                         grid_size=fc.Units.Quantity("3.5 mm"),
                         outer_radius=fc.Units.Quantity("3 mm"),
                     ),
-                    size=BaseplateSizeParams(x_grid_count=1, y_grid_count=1),
+                    baseplate_size=BaseplateSizeParams(x_grid_count=1, y_grid_count=1),
                     click_springs=ClickSpringParams(enabled=click_springs),
                     junction_screws=JunctionScrewParams(enabled=False),
-                    clip_cutouts=ClipParams(enabled=False),
+                    connecting_clip=ConnectingClipParams(enabled=False),
                 )
                 layout = [[True]]
                 options = BaseplateBuildOptions(
@@ -172,7 +172,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             def build_case(click_springs: bool) -> dict[str, float | int | str | bool]:
                 params = CombinedBaseplateParams(
-                    size=BaseplateSizeParams(
+                    baseplate_size=BaseplateSizeParams(
                         x_grid_count=2, y_grid_count=2,
                         filler_top_enabled=True, filler_top_width=fc.Units.Quantity("10 mm"),
                         filler_right_enabled=True, filler_right_width=fc.Units.Quantity("10 mm"),
@@ -473,7 +473,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             # 2x2 baseplate with all features enabled (defaults), no fillers
             params = CombinedBaseplateParams(
-                size=BaseplateSizeParams(x_grid_count=2, y_grid_count=2),
+                baseplate_size=BaseplateSizeParams(x_grid_count=2, y_grid_count=2),
             )
             layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions()  # all features enabled by default
@@ -550,7 +550,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             import FreeCAD as fc
             from gridfinity_workbench.param import (
                 CombinedBaseplateParams, BaseplateSizeParams,
-                ClickSpringParams, JunctionScrewParams, ClipParams,
+                ClickSpringParams, JunctionScrewParams, ConnectingClipParams,
             )
             from gridfinity_workbench.baseplate_builder import (
                 build_simple_baseplate_from_params, BaseplateBuildOptions,
@@ -558,13 +558,13 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             # 0x2 baseplate with right filler only, no features
             params = CombinedBaseplateParams(
-                size=BaseplateSizeParams(
+                baseplate_size=BaseplateSizeParams(
                     x_grid_count=0, y_grid_count=2,
                     filler_right_enabled=True, filler_right_width=fc.Units.Quantity("3 mm"),
                 ),
                 click_springs=ClickSpringParams(enabled=False),
                 junction_screws=JunctionScrewParams(enabled=False),
-                clip_cutouts=ClipParams(enabled=False),
+                connecting_clip=ConnectingClipParams(enabled=False),
             )
             layout = [[], []]  # 0 columns, 2 rows
             options = BaseplateBuildOptions(
@@ -623,7 +623,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             # 2x2 baseplate with right filler in preview mode
             params = CombinedBaseplateParams(
-                size=BaseplateSizeParams(
+                baseplate_size=BaseplateSizeParams(
                     x_grid_count=2, y_grid_count=2,
                     filler_right_enabled=True, filler_right_width=fc.Units.Quantity("2 mm"),
                 ),
@@ -750,7 +750,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             import FreeCAD as fc
             from gridfinity_workbench.param import (
                 CombinedBaseplateParams, FundamentalsParams, BaseplateSizeParams,
-                ClickSpringParams, JunctionScrewParams, ClipParams,
+                ClickSpringParams, JunctionScrewParams, ConnectingClipParams,
             )
             from gridfinity_workbench.baseplate_builder import (
                 build_simple_baseplate_from_params, BaseplateBuildOptions,
@@ -759,13 +759,13 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             # 2x2 baseplate with outer_radius=2 and right filler 5.1mm - should be rejected
             params = CombinedBaseplateParams(
                 fundamentals=FundamentalsParams(outer_radius=fc.Units.Quantity("2 mm")),
-                size=BaseplateSizeParams(
+                baseplate_size=BaseplateSizeParams(
                     x_grid_count=2, y_grid_count=2,
                     filler_right_enabled=True, filler_right_width=fc.Units.Quantity("5.1 mm"),
                 ),
                 click_springs=ClickSpringParams(enabled=False),
                 junction_screws=JunctionScrewParams(enabled=False),
-                clip_cutouts=ClipParams(enabled=False),
+                connecting_clip=ConnectingClipParams(enabled=False),
             )
             layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions(
@@ -816,7 +816,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             # Default baseplate with right filler 2mm
             params = CombinedBaseplateParams(
-                size=BaseplateSizeParams(
+                baseplate_size=BaseplateSizeParams(
                     filler_right_enabled=True, filler_right_width=fc.Units.Quantity("2 mm"),
                 ),
             )
@@ -941,7 +941,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             import FreeCAD as fc
             from gridfinity_workbench.param import (
-                CombinedBaseplateParams, BaseplateSizeParams, ClipParams,
+                CombinedBaseplateParams, BaseplateSizeParams, ConnectingClipParams,
             )
             from gridfinity_workbench.baseplate_builder import (
                 build_simple_baseplate_from_params, BaseplateBuildOptions,
@@ -950,12 +950,12 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             def build_case(with_right_filler: bool) -> dict[str, float | int | bool]:
                 filler_width = "3 mm" if with_right_filler else "30 mm"
                 params = CombinedBaseplateParams(
-                    size=BaseplateSizeParams(
+                    baseplate_size=BaseplateSizeParams(
                         x_grid_count=2, y_grid_count=2,
                         filler_right_enabled=with_right_filler,
                         filler_right_width=fc.Units.Quantity(filler_width),
                     ),
-                    clip_cutouts=ClipParams(enabled=False),
+                    connecting_clip=ConnectingClipParams(enabled=False),
                 )
                 layout = [[True, True], [True, True]]
                 options = BaseplateBuildOptions(include_clip_cutouts=False)
@@ -963,9 +963,9 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 data = params.data()
                 h = float(data.fundamentals.main_height)
                 w = float(data.fundamentals.main_half_width)
-                c = float(data.core.top_crop)
+                c = float(data.baseplate_core.top_crop)
                 effective_height = h + w - c
-                span = float(data.fundamentals.grid_size) * data.core.y_grid_count
+                span = float(data.fundamentals.grid_size) * data.baseplate_size.y_grid_count
                 return {{
                     "volume": float(shape.Volume),
                     "solids": int(len(shape.Solids)),

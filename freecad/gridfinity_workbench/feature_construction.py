@@ -20,7 +20,7 @@ from . import baseplate_click_springs as click_springs
 from . import label_shelf as label_shelf_module
 from . import magnet_hole as magnet_hole_module
 from .param import (
-    BaseplateCoreLayoutParamsData,
+    BaseplateCoreParamsData,
     CombinedBaseplateParamsData,
     CombinedStackedBaseplatesParamsData,
     CombinedSupportBaseplateParamsData,
@@ -1054,7 +1054,7 @@ def make_complex_bin_base_single(
 
 def make_complex_bin_base_single_from_params(
     fundamentals: FundamentalsParamsData,
-    core: BaseplateCoreLayoutParamsData,
+    core: BaseplateCoreParamsData,
     *,
     x_size_override: float | None = None,
     y_size_override: float | None = None,
@@ -1063,7 +1063,7 @@ def make_complex_bin_base_single_from_params(
 
     Args:
         fundamentals: Fundamental dimensions with grid_size as standard cell size.
-        core: Core layout parameters.
+        core: Core parameters.
         x_size_override: Optional override for cell X dimension (for filler cells).
         y_size_override: Optional override for cell Y dimension (for filler cells).
 
@@ -1159,7 +1159,7 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
     main_half_width = params.fundamentals.main_half_width
     outer_radius = params.fundamentals.outer_radius
     bin_vertical_radius = float(outer_radius) - float(main_half_width)
-    top_half_width = params.core.top_crop
+    top_half_width = params.baseplate_core.top_crop
     run = main_half_width + params.click_springs.click_offset - top_half_width
 
     if run <= 0:
@@ -1176,15 +1176,15 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
     # CombinedSupportBaseplateParamsData doesn't have these
     junction_screws_data = getattr(params, "junction_screws", None)
     screw_stubs_data = getattr(params, "screw_stubs", None)
-    clip_cutouts_data = getattr(params, "clip_cutouts", None)
+    connecting_clip_data = getattr(params, "connecting_clip", None)
 
     # Build a CombinedBaseplateParamsData for build_full_layout
-    from .param import ClipParamsData, JunctionScrewParamsData, ScrewStubParamsData
+    from .param import ConnectingClipParamsData, JunctionScrewParamsData, ScrewStubParamsData
 
     baseplate_params = CombinedBaseplateParamsData(
         fundamentals=params.fundamentals,
-        core=params.core,
-        fillers=params.fillers,
+        baseplate_size=params.baseplate_size,
+        baseplate_core=params.baseplate_core,
         click_springs=params.click_springs,
         junction_screws=junction_screws_data
         or JunctionScrewParamsData(
@@ -1194,8 +1194,8 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
             counterbore_depth=zeromm,
         ),
         screw_stubs=screw_stubs_data or ScrewStubParamsData(enabled=False, clearance=zeromm),
-        clip_cutouts=clip_cutouts_data
-        or ClipParamsData(enabled=False, tolerance=zeromm, clip_length=zeromm),
+        connecting_clip=connecting_clip_data
+        or ConnectingClipParamsData(enabled=False, tolerance=zeromm, clip_length=zeromm),
     )
 
     geometry = baseplate_full_layout.build_full_layout(

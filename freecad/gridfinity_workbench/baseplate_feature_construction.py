@@ -17,8 +17,8 @@ from . import magnet_hole as magnet_hole_module
 from .param import (
     BaseplateCoreParams,
     ClickSpringParams,
-    ClipParams,
-    ClipParamsData,
+    ConnectingClipParams,
+    ConnectingClipParamsData,
     FundamentalsParams,
     FundamentalsParamsData,
     JunctionScrewParams,
@@ -49,8 +49,8 @@ _junction_screws.load_saved_defaults()
 _screw_stubs = ScrewStubParams()
 _screw_stubs.load_saved_defaults()
 
-_clip = ClipParams()
-_clip.load_saved_defaults()
+_connecting_clip = ConnectingClipParams()
+_connecting_clip.load_saved_defaults()
 
 
 def magnet_holes_properties(obj: fc.DocumentObject) -> None:
@@ -390,14 +390,14 @@ def clip_cutouts_properties(obj: fc.DocumentObject) -> None:
         "ClipCutoutsEnabled",
         "GridfinityNonStandard",
         "Toggle clip connector cutouts",
-    ).ClipCutoutsEnabled = _clip.get_value("enabled")
+    ).ClipCutoutsEnabled = _connecting_clip.get_value("enabled")
 
     obj.addProperty(
         "App::PropertyLength",
         "ClipLength",
         "GridfinityNonStandard",
         "Length of clip cutout along X <br> <br> default = 3 mm",
-    ).ClipLength = _clip.get_value("clip_length")
+    ).ClipLength = _connecting_clip.get_value("clip_length")
 
     obj.addProperty(
         "App::PropertyBool",
@@ -561,7 +561,7 @@ def make_clip_cutouts(  # noqa: C901, PLR0912, PLR0915
 
 def make_clip_cutouts_from_params(
     fundamentals: FundamentalsParamsData,
-    clip_cutouts: ClipParamsData,
+    connecting_clip: ConnectingClipParamsData,
     *,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
@@ -569,9 +569,9 @@ def make_clip_cutouts_from_params(
     unitmm = fc.Units.Quantity("1 mm")
 
     max_clip_length = 2 * fundamentals.main_half_width
-    if clip_cutouts.clip_length >= max_clip_length:
+    if connecting_clip.clip_length >= max_clip_length:
         raise ValueError(
-            f"ClipLength ({clip_cutouts.clip_length}) must be smaller than "
+            f"ClipLength ({connecting_clip.clip_length}) must be smaller than "
             f"2*BaseProfileMainHalfWidth ({max_clip_length})",
         )
 
@@ -586,7 +586,7 @@ def make_clip_cutouts_from_params(
             f"Clip cutout top Z after scaling ({clip_cutout_top_z}) must be greater than "
             f"BaseProfileMainHeight + BaseProfileMainHalfWidth ({max_clip_cutout_top_z})",
         )
-    clip_x = _profile_wire_to_centered_x_solid(clip_wire, float(clip_cutouts.clip_length))
+    clip_x = _profile_wire_to_centered_x_solid(clip_wire, float(connecting_clip.clip_length))
 
     clip_y = clip_x.copy()
     clip_y.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)

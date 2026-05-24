@@ -44,8 +44,8 @@ class FundamentalsParamsData:
 
 
 @dataclass(frozen=True)
-class ClipParamsData:
-    """Immutable data container for clip cutout parameters."""
+class ConnectingClipParamsData:
+    """Immutable data container for connecting clip cutout parameters."""
 
     enabled: bool
     tolerance: fc.Units.Quantity
@@ -53,11 +53,11 @@ class ClipParamsData:
 
 
 @dataclass(frozen=True)
-class CombinedClipParamsData:
-    """Immutable combined data for clip geometry generation."""
+class CombinedConnectingClipParamsData:
+    """Immutable combined data for connecting clip geometry generation."""
 
     fundamentals: FundamentalsParamsData
-    clip: ClipParamsData
+    connecting_clip: ConnectingClipParamsData
 
 
 @dataclass(frozen=True)
@@ -83,31 +83,6 @@ class BaseplateCoreParamsData:
     lower_chamfer_enabled: bool
     lower_chamfer_size: fc.Units.Quantity
     top_crop: fc.Units.Quantity
-
-
-@dataclass(frozen=True)
-class BaseplateCoreLayoutParamsData:
-    """Immutable data container combining core params with grid layout."""
-
-    x_grid_count: int
-    y_grid_count: int
-    lower_chamfer_enabled: bool
-    lower_chamfer_size: fc.Units.Quantity
-    top_crop: fc.Units.Quantity
-
-
-@dataclass(frozen=True)
-class BaseplateFillersParamsData:
-    """Immutable data container for filler strip parameters."""
-
-    filler_left_enabled: bool
-    filler_left_width: fc.Units.Quantity
-    filler_right_enabled: bool
-    filler_right_width: fc.Units.Quantity
-    filler_top_enabled: bool
-    filler_top_width: fc.Units.Quantity
-    filler_bottom_enabled: bool
-    filler_bottom_width: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
@@ -159,8 +134,8 @@ class CombinedSupportBaseplateParamsData:
     """Immutable combined data for support baseplate geometry generation."""
 
     fundamentals: FundamentalsParamsData
-    core: BaseplateCoreLayoutParamsData
-    fillers: BaseplateFillersParamsData
+    baseplate_size: BaseplateSizeParamsData
+    baseplate_core: BaseplateCoreParamsData
     click_springs: ClickSpringParamsData
     support: SupportParamsData
 
@@ -170,12 +145,12 @@ class CombinedBaseplateParamsData:
     """Immutable combined data for baseplate geometry generation."""
 
     fundamentals: FundamentalsParamsData
-    core: BaseplateCoreLayoutParamsData
-    fillers: BaseplateFillersParamsData
+    baseplate_size: BaseplateSizeParamsData
+    baseplate_core: BaseplateCoreParamsData
     click_springs: ClickSpringParamsData
     junction_screws: JunctionScrewParamsData
     screw_stubs: ScrewStubParamsData
-    clip_cutouts: ClipParamsData
+    connecting_clip: ConnectingClipParamsData
 
 
 @dataclass(frozen=True)
@@ -183,14 +158,14 @@ class CombinedStackedBaseplatesParamsData:
     """Immutable combined data for stacked baseplates geometry generation."""
 
     fundamentals: FundamentalsParamsData
-    core: BaseplateCoreLayoutParamsData
-    fillers: BaseplateFillersParamsData
+    baseplate_size: BaseplateSizeParamsData
+    baseplate_core: BaseplateCoreParamsData
     click_springs: ClickSpringParamsData
     junction_screws: JunctionScrewParamsData
     screw_stubs: ScrewStubParamsData
     support: SupportParamsData
     stacking: StackingParamsData
-    clip_cutouts: ClipParamsData
+    connecting_clip: ConnectingClipParamsData
 
 
 class FundamentalsParams(ParameterGroup):
@@ -244,11 +219,11 @@ class FundamentalsParams(ParameterGroup):
         )
 
 
-class ClipParams(ParameterGroup):
-    """Parameters for clip cutout features on baseplates."""
+class ConnectingClipParams(ParameterGroup):
+    """Parameters for connecting clip cutout features on baseplates."""
 
-    _category = "Gridfinity_Clip"
-    _section_title = "Clip Cutouts"
+    _category = "Gridfinity_ConnectingClip"
+    _section_title = "Connecting Clip Cutouts"
 
     def __init__(self, **kwargs) -> None:
         """Initialize with clip enabled state, tolerance, and length."""
@@ -269,54 +244,54 @@ class ClipParams(ParameterGroup):
         super().__init__(parameters)
         self.set_all_values(kwargs)
 
-    def data(self) -> ClipParamsData:
+    def data(self) -> ConnectingClipParamsData:
         """Return validated immutable data container."""
         errors = self.validate()
         if errors:
             raise ParameterValidationError(errors)
-        return ClipParamsData(
+        return ConnectingClipParamsData(
             enabled=self.get_value("enabled"),
             tolerance=self.get_value("tolerance"),
             clip_length=self.get_value("clip_length"),
         )
 
 
-class CombinedClipParams(CombinedParams):
-    """Combined parameters for clip geometry (fundamentals + clip settings)."""
+class CombinedConnectingClipParams(CombinedParams):
+    """Combined parameters for connecting clip geometry (fundamentals + clip settings)."""
 
     def __init__(
         self,
         fundamentals: FundamentalsParams = None,
-        clip: ClipParams = None,
+        connecting_clip: ConnectingClipParams = None,
     ) -> None:
-        """Initialize with fundamentals and clip parameter groups."""
+        """Initialize with fundamentals and connecting clip parameter groups."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
-            clip=clip or ClipParams(),
+            connecting_clip=connecting_clip or ConnectingClipParams(),
         )
 
     def validate(self) -> dict[str, str]:
         """Validate cross-group constraints."""
         errors = super().validate()
         try:
-            tolerance_val = float(self.clip.get_value("tolerance"))
-            clip_length_val = float(self.clip.get_value("clip_length"))
+            tolerance_val = float(self.connecting_clip.get_value("tolerance"))
+            clip_length_val = float(self.connecting_clip.get_value("clip_length"))
             if clip_length_val <= 2 * tolerance_val:
-                errors["clip.clip_length"] = (
+                errors["connecting_clip.clip_length"] = (
                     f"Clip length ({clip_length_val}) must be > 2 * tolerance ({2 * tolerance_val})"
                 )
         except (AttributeError, KeyError, TypeError, ValueError):
             pass
         return errors
 
-    def data(self) -> CombinedClipParamsData:
+    def data(self) -> CombinedConnectingClipParamsData:
         """Return validated immutable combined data container."""
         errors = self.validate()
         if errors:
             raise ParameterValidationError(errors)
-        return CombinedClipParamsData(
+        return CombinedConnectingClipParamsData(
             fundamentals=self.fundamentals.data(),
-            clip=self.clip.data(),
+            connecting_clip=self.connecting_clip.data(),
         )
 
 
@@ -624,31 +599,31 @@ class CombinedBaseplateParams(CombinedParams):
     def __init__(  # noqa: PLR0913
         self,
         fundamentals: FundamentalsParams = None,
-        size: BaseplateSizeParams = None,
-        core: BaseplateCoreParams = None,
+        baseplate_size: BaseplateSizeParams = None,
+        baseplate_core: BaseplateCoreParams = None,
         click_springs: ClickSpringParams = None,
         junction_screws: JunctionScrewParams = None,
-        clip_cutouts: ClipParams = None,
+        connecting_clip: ConnectingClipParams = None,
     ) -> None:
         """Initialize with all baseplate parameter groups."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
-            size=size or BaseplateSizeParams(),
-            core=core or BaseplateCoreParams(),
+            baseplate_size=baseplate_size or BaseplateSizeParams(),
+            baseplate_core=baseplate_core or BaseplateCoreParams(),
             click_springs=click_springs or ClickSpringParams(),
             junction_screws=junction_screws or JunctionScrewParams(),
-            clip_cutouts=clip_cutouts or ClipParams(),
+            connecting_clip=connecting_clip or ConnectingClipParams(),
         )
 
     def validate(self) -> dict[str, str]:  # noqa: C901, PLR0912, PLR0915
         """Validate cross-group constraints."""
         errors = super().validate()
         fundamentals = self.fundamentals.data()
-        size = self.size.data()
-        core = self.core.data()
+        size = self.baseplate_size.data()
+        core = self.baseplate_core.data()
         click = self.click_springs.data()
         junction = self.junction_screws.data()
-        clip = self.clip_cutouts.data()
+        clip = self.connecting_clip.data()
 
         half_width = float(fundamentals.main_half_width)
         outer_radius = float(fundamentals.outer_radius)
@@ -656,7 +631,7 @@ class CombinedBaseplateParams(CombinedParams):
         grid_size = float(fundamentals.grid_size)
 
         if not top_crop < half_width:
-            errors["core.top_crop"] = "Top crop must be less than main profile half width"
+            errors["baseplate_core.top_crop"] = "Top crop must be less than main profile half width"
         if not outer_radius > half_width:
             errors["fundamentals.outer_radius"] = (
                 "Outer radius must be greater than main profile half width"
@@ -698,13 +673,13 @@ class CombinedBaseplateParams(CombinedParams):
             clip_tolerance = float(clip.tolerance)
             max_clip = 2 * half_width
             if not clip_length > 0:
-                errors["clip_cutouts.clip_length"] = "Clip length must be greater than 0"
+                errors["connecting_clip.clip_length"] = "Clip length must be greater than 0"
             if not clip_length < max_clip:
-                errors["clip_cutouts.clip_length"] = (
+                errors["connecting_clip.clip_length"] = (
                     "Clip length must be less than 2 * main profile half width"
                 )
             if not clip_tolerance >= 0:
-                errors["clip_cutouts.tolerance"] = (
+                errors["connecting_clip.tolerance"] = (
                     "Clip tolerance must be greater than or equal to 0"
                 )
 
@@ -716,21 +691,33 @@ class CombinedBaseplateParams(CombinedParams):
         bottom_present = size.filler_bottom_enabled and float(size.filler_bottom_width) > 0
 
         if x_units == 0 and not (left_present or right_present):
-            errors["size.x_grid_count"] = "X grid count 0 requires left or right filler"
+            errors["baseplate_size.x_grid_count"] = "X grid count 0 requires left or right filler"
         if y_units == 0 and not (top_present or bottom_present):
-            errors["size.y_grid_count"] = "Y grid count 0 requires top or bottom filler"
+            errors["baseplate_size.y_grid_count"] = "Y grid count 0 requires top or bottom filler"
         if x_units == 0 and y_units == 0:
-            errors["size.x_grid_count"] = "X and Y grid count cannot both be 0"
-            errors["size.y_grid_count"] = "X and Y grid count cannot both be 0"
+            errors["baseplate_size.x_grid_count"] = "X and Y grid count cannot both be 0"
+            errors["baseplate_size.y_grid_count"] = "X and Y grid count cannot both be 0"
 
         filler_checks = [
-            (size.filler_left_enabled, float(size.filler_left_width), "size.filler_left_width"),
-            (size.filler_right_enabled, float(size.filler_right_width), "size.filler_right_width"),
-            (size.filler_top_enabled, float(size.filler_top_width), "size.filler_top_width"),
+            (
+                size.filler_left_enabled,
+                float(size.filler_left_width),
+                "baseplate_size.filler_left_width",
+            ),
+            (
+                size.filler_right_enabled,
+                float(size.filler_right_width),
+                "baseplate_size.filler_right_width",
+            ),
+            (
+                size.filler_top_enabled,
+                float(size.filler_top_width),
+                "baseplate_size.filler_top_width",
+            ),
             (
                 size.filler_bottom_enabled,
                 float(size.filler_bottom_width),
-                "size.filler_bottom_width",
+                "baseplate_size.filler_bottom_width",
             ),
         ]
         for enabled, width, key in filler_checks:
@@ -743,7 +730,7 @@ class CombinedBaseplateParams(CombinedParams):
             and x_units == 0
             and not float(size.filler_left_width) > two_radius
         ):
-            errors["size.filler_left_width"] = (
+            errors["baseplate_size.filler_left_width"] = (
                 "With x grid count 0, left filler width must be greater than 2 * outer radius"
             )
         if (
@@ -751,7 +738,7 @@ class CombinedBaseplateParams(CombinedParams):
             and x_units == 0
             and not float(size.filler_right_width) > two_radius
         ):
-            errors["size.filler_right_width"] = (
+            errors["baseplate_size.filler_right_width"] = (
                 "With x grid count 0, right filler width must be greater than 2 * outer radius"
             )
         if (
@@ -759,7 +746,7 @@ class CombinedBaseplateParams(CombinedParams):
             and y_units == 0
             and not float(size.filler_top_width) > two_radius
         ):
-            errors["size.filler_top_width"] = (
+            errors["baseplate_size.filler_top_width"] = (
                 "With y grid count 0, top filler width must be greater than 2 * outer radius"
             )
         if (
@@ -767,7 +754,7 @@ class CombinedBaseplateParams(CombinedParams):
             and y_units == 0
             and not float(size.filler_bottom_width) > two_radius
         ):
-            errors["size.filler_bottom_width"] = (
+            errors["baseplate_size.filler_bottom_width"] = (
                 "With y grid count 0, bottom filler width must be greater than 2 * outer radius"
             )
 
@@ -775,31 +762,14 @@ class CombinedBaseplateParams(CombinedParams):
 
     def data(self) -> CombinedBaseplateParamsData:
         """Return validated immutable combined data container."""
-        size = self.size.data()
-        core = self.core.data()
         return CombinedBaseplateParamsData(
             fundamentals=self.fundamentals.data(),
-            core=BaseplateCoreLayoutParamsData(
-                x_grid_count=size.x_grid_count,
-                y_grid_count=size.y_grid_count,
-                lower_chamfer_enabled=core.lower_chamfer_enabled,
-                lower_chamfer_size=core.lower_chamfer_size,
-                top_crop=core.top_crop,
-            ),
-            fillers=BaseplateFillersParamsData(
-                filler_left_enabled=size.filler_left_enabled,
-                filler_left_width=size.filler_left_width,
-                filler_right_enabled=size.filler_right_enabled,
-                filler_right_width=size.filler_right_width,
-                filler_top_enabled=size.filler_top_enabled,
-                filler_top_width=size.filler_top_width,
-                filler_bottom_enabled=size.filler_bottom_enabled,
-                filler_bottom_width=size.filler_bottom_width,
-            ),
+            baseplate_size=self.baseplate_size.data(),
+            baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
             screw_stubs=ScrewStubParamsData(enabled=False, clearance=fc.Units.Quantity("0.15 mm")),
-            clip_cutouts=self.clip_cutouts.data(),
+            connecting_clip=self.connecting_clip.data(),
         )
 
 
@@ -809,16 +779,16 @@ class CombinedSupportBaseplateParams(CombinedParams):
     def __init__(
         self,
         fundamentals: FundamentalsParams = None,
-        size: BaseplateSizeParams = None,
-        core: BaseplateCoreParams = None,
+        baseplate_size: BaseplateSizeParams = None,
+        baseplate_core: BaseplateCoreParams = None,
         click_springs: ClickSpringParams = None,
         support: SupportParams = None,
     ) -> None:
         """Initialize with fundamentals, size, core, click springs, and support."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
-            size=size or BaseplateSizeParams(),
-            core=core or BaseplateCoreParams(),
+            baseplate_size=baseplate_size or BaseplateSizeParams(),
+            baseplate_core=baseplate_core or BaseplateCoreParams(),
             click_springs=click_springs or ClickSpringParams(),
             support=support or SupportParams(),
         )
@@ -827,13 +797,13 @@ class CombinedSupportBaseplateParams(CombinedParams):
         """Validate cross-group constraints."""
         errors = super().validate()
         fundamentals = self.fundamentals.data()
-        core = self.core.data()
+        core = self.baseplate_core.data()
         half_width = float(fundamentals.main_half_width)
         outer_radius = float(fundamentals.outer_radius)
         top_crop = float(core.top_crop)
 
         if not top_crop < half_width:
-            errors["core.top_crop"] = "Top crop must be less than main profile half width"
+            errors["baseplate_core.top_crop"] = "Top crop must be less than main profile half width"
         if not outer_radius > half_width:
             errors["fundamentals.outer_radius"] = (
                 "Outer radius must be greater than main profile half width"
@@ -842,27 +812,10 @@ class CombinedSupportBaseplateParams(CombinedParams):
 
     def data(self) -> CombinedSupportBaseplateParamsData:
         """Return validated immutable combined data container."""
-        size = self.size.data()
-        core = self.core.data()
         return CombinedSupportBaseplateParamsData(
             fundamentals=self.fundamentals.data(),
-            core=BaseplateCoreLayoutParamsData(
-                x_grid_count=size.x_grid_count,
-                y_grid_count=size.y_grid_count,
-                lower_chamfer_enabled=core.lower_chamfer_enabled,
-                lower_chamfer_size=core.lower_chamfer_size,
-                top_crop=core.top_crop,
-            ),
-            fillers=BaseplateFillersParamsData(
-                filler_left_enabled=size.filler_left_enabled,
-                filler_left_width=size.filler_left_width,
-                filler_right_enabled=size.filler_right_enabled,
-                filler_right_width=size.filler_right_width,
-                filler_top_enabled=size.filler_top_enabled,
-                filler_top_width=size.filler_top_width,
-                filler_bottom_enabled=size.filler_bottom_enabled,
-                filler_bottom_width=size.filler_bottom_width,
-            ),
+            baseplate_size=self.baseplate_size.data(),
+            baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             support=self.support.data(),
         )
@@ -874,37 +827,37 @@ class CombinedStackedBaseplatesParams(CombinedParams):
     def __init__(  # noqa: PLR0913
         self,
         fundamentals: FundamentalsParams = None,
-        size: BaseplateSizeParams = None,
-        core: BaseplateCoreParams = None,
+        baseplate_size: BaseplateSizeParams = None,
+        baseplate_core: BaseplateCoreParams = None,
         click_springs: ClickSpringParams = None,
         junction_screws: JunctionScrewParams = None,
         screw_stubs: ScrewStubParams = None,
         support: SupportParams = None,
         stacking: StackingParams = None,
-        clip_cutouts: ClipParams = None,
+        connecting_clip: ConnectingClipParams = None,
     ) -> None:
         """Initialize with all stacked baseplates parameter groups."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
-            size=size or BaseplateSizeParams(),
-            core=core or BaseplateCoreParams(),
+            baseplate_size=baseplate_size or BaseplateSizeParams(),
+            baseplate_core=baseplate_core or BaseplateCoreParams(),
             click_springs=click_springs or ClickSpringParams(),
             junction_screws=junction_screws or JunctionScrewParams(),
             screw_stubs=screw_stubs or ScrewStubParams(),
             support=support or SupportParams(),
             stacking=stacking or StackingParams(),
-            clip_cutouts=clip_cutouts or ClipParams(),
+            connecting_clip=connecting_clip or ConnectingClipParams(),
         )
 
     def validate(self) -> dict[str, str]:
         """Validate cross-group constraints."""
         errors = CombinedBaseplateParams(
             fundamentals=self.fundamentals,
-            size=self.size,
-            core=self.core,
+            baseplate_size=self.baseplate_size,
+            baseplate_core=self.baseplate_core,
             click_springs=self.click_springs,
             junction_screws=self.junction_screws,
-            clip_cutouts=self.clip_cutouts,
+            connecting_clip=self.connecting_clip,
         ).validate()
         screw_stubs = self.screw_stubs.data()
         junction = self.junction_screws.data()
@@ -920,33 +873,16 @@ class CombinedStackedBaseplatesParams(CombinedParams):
 
     def data(self) -> CombinedStackedBaseplatesParamsData:
         """Return validated immutable combined data container."""
-        size = self.size.data()
-        core = self.core.data()
         return CombinedStackedBaseplatesParamsData(
             fundamentals=self.fundamentals.data(),
-            core=BaseplateCoreLayoutParamsData(
-                x_grid_count=size.x_grid_count,
-                y_grid_count=size.y_grid_count,
-                lower_chamfer_enabled=core.lower_chamfer_enabled,
-                lower_chamfer_size=core.lower_chamfer_size,
-                top_crop=core.top_crop,
-            ),
-            fillers=BaseplateFillersParamsData(
-                filler_left_enabled=size.filler_left_enabled,
-                filler_left_width=size.filler_left_width,
-                filler_right_enabled=size.filler_right_enabled,
-                filler_right_width=size.filler_right_width,
-                filler_top_enabled=size.filler_top_enabled,
-                filler_top_width=size.filler_top_width,
-                filler_bottom_enabled=size.filler_bottom_enabled,
-                filler_bottom_width=size.filler_bottom_width,
-            ),
+            baseplate_size=self.baseplate_size.data(),
+            baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
             screw_stubs=self.screw_stubs.data(),
             support=self.support.data(),
             stacking=self.stacking.data(),
-            clip_cutouts=self.clip_cutouts.data(),
+            connecting_clip=self.connecting_clip.data(),
         )
 
 
@@ -968,11 +904,11 @@ class CombinedDrawerBaseplateParamsData:
     """Immutable combined data for drawer baseplate geometry generation."""
 
     fundamentals: FundamentalsParamsData
-    core: BaseplateCoreLayoutParamsData
-    fillers: BaseplateFillersParamsData
+    baseplate_size: BaseplateSizeParamsData
+    baseplate_core: BaseplateCoreParamsData
     click_springs: ClickSpringParamsData
     junction_screws: JunctionScrewParamsData
-    clip_cutouts: ClipParamsData
+    connecting_clip: ConnectingClipParamsData
     drawer: DrawerParamsData
 
 
@@ -1056,21 +992,21 @@ class CombinedDrawerBaseplateParams(CombinedParams):
     def __init__(  # noqa: PLR0913
         self,
         fundamentals: FundamentalsParams = None,
-        size: BaseplateSizeParams = None,
-        core: BaseplateCoreParams = None,
+        baseplate_size: BaseplateSizeParams = None,
+        baseplate_core: BaseplateCoreParams = None,
         click_springs: ClickSpringParams = None,
         junction_screws: JunctionScrewParams = None,
-        clip_cutouts: ClipParams = None,
+        connecting_clip: ConnectingClipParams = None,
         drawer: DrawerParams = None,
     ) -> None:
         """Initialize with all drawer baseplate parameter groups."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
-            size=size or BaseplateSizeParams(),
-            core=core or BaseplateCoreParams(),
+            baseplate_size=baseplate_size or BaseplateSizeParams(),
+            baseplate_core=baseplate_core or BaseplateCoreParams(),
             click_springs=click_springs or ClickSpringParams(),
             junction_screws=junction_screws or JunctionScrewParams(),
-            clip_cutouts=clip_cutouts or ClipParams(),
+            connecting_clip=connecting_clip or ConnectingClipParams(),
             drawer=drawer or DrawerParams(),
         )
 
@@ -1078,11 +1014,11 @@ class CombinedDrawerBaseplateParams(CombinedParams):
         """Validate cross-group constraints."""
         errors = CombinedBaseplateParams(
             fundamentals=self.fundamentals,
-            size=self.size,
-            core=self.core,
+            baseplate_size=self.baseplate_size,
+            baseplate_core=self.baseplate_core,
             click_springs=self.click_springs,
             junction_screws=self.junction_screws,
-            clip_cutouts=self.clip_cutouts,
+            connecting_clip=self.connecting_clip,
         ).validate()
         drawer = self.drawer.data()
         if float(drawer.drawer_width) <= 0:
@@ -1097,59 +1033,25 @@ class CombinedDrawerBaseplateParams(CombinedParams):
 
     def baseplate_data(self) -> CombinedBaseplateParamsData:
         """Return baseplate-only data container for builder compatibility."""
-        size = self.size.data()
-        core = self.core.data()
         return CombinedBaseplateParamsData(
             fundamentals=self.fundamentals.data(),
-            core=BaseplateCoreLayoutParamsData(
-                x_grid_count=size.x_grid_count,
-                y_grid_count=size.y_grid_count,
-                lower_chamfer_enabled=core.lower_chamfer_enabled,
-                lower_chamfer_size=core.lower_chamfer_size,
-                top_crop=core.top_crop,
-            ),
-            fillers=BaseplateFillersParamsData(
-                filler_left_enabled=size.filler_left_enabled,
-                filler_left_width=size.filler_left_width,
-                filler_right_enabled=size.filler_right_enabled,
-                filler_right_width=size.filler_right_width,
-                filler_top_enabled=size.filler_top_enabled,
-                filler_top_width=size.filler_top_width,
-                filler_bottom_enabled=size.filler_bottom_enabled,
-                filler_bottom_width=size.filler_bottom_width,
-            ),
+            baseplate_size=self.baseplate_size.data(),
+            baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
             screw_stubs=ScrewStubParamsData(enabled=False, clearance=fc.Units.Quantity("0.15 mm")),
-            clip_cutouts=self.clip_cutouts.data(),
+            connecting_clip=self.connecting_clip.data(),
         )
 
     def data(self) -> CombinedDrawerBaseplateParamsData:
         """Return validated immutable combined data container."""
-        size = self.size.data()
-        core = self.core.data()
         return CombinedDrawerBaseplateParamsData(
             fundamentals=self.fundamentals.data(),
-            core=BaseplateCoreLayoutParamsData(
-                x_grid_count=size.x_grid_count,
-                y_grid_count=size.y_grid_count,
-                lower_chamfer_enabled=core.lower_chamfer_enabled,
-                lower_chamfer_size=core.lower_chamfer_size,
-                top_crop=core.top_crop,
-            ),
-            fillers=BaseplateFillersParamsData(
-                filler_left_enabled=size.filler_left_enabled,
-                filler_left_width=size.filler_left_width,
-                filler_right_enabled=size.filler_right_enabled,
-                filler_right_width=size.filler_right_width,
-                filler_top_enabled=size.filler_top_enabled,
-                filler_top_width=size.filler_top_width,
-                filler_bottom_enabled=size.filler_bottom_enabled,
-                filler_bottom_width=size.filler_bottom_width,
-            ),
+            baseplate_size=self.baseplate_size.data(),
+            baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
-            clip_cutouts=self.clip_cutouts.data(),
+            connecting_clip=self.connecting_clip.data(),
             drawer=self.drawer.data(),
         )
 
