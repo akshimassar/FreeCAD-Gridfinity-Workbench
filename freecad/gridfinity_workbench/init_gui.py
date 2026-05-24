@@ -66,8 +66,7 @@ class GridfinityWorkbench(Workbench):
                 ("CreateBaseplate", commands.CreateBaseplate()),
                 ("CreateStackedBaseplates", commands.CreateStackedBaseplates()),
                 ("CreateDrawerBaseplate", commands.CreateDrawerBaseplate()),
-                ("CreateMagnetBaseplate", commands.CreateMagnetBaseplate()),
-                ("CreateScrewTogetherBaseplate", commands.CreateScrewTogetherBaseplate()),
+
                 ("CreateConnectingClip", commands.CreateConnectingClip()),
                 ("CreateCustomBin", commands.DrawBin()),
                 ("CreateCustomBaseplate", commands.DrawBaseplate()),

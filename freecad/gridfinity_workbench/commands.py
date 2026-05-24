@@ -1345,24 +1345,6 @@ class CreateStackedBaseplates(CreateCommand):
         fcg.Control.showDialog(CreateStackedBaseplatesTaskPanel(self.pixmap))
 
 
-class CreateMagnetBaseplate(CreateCommand):
-    def __init__(self) -> None:
-        super().__init__(
-            name="MagnetBaseplate",
-            gridfinity_function=features.MagnetBaseplate,
-            pixmap=ICONDIR / "magnet_baseplate.svg",
-        )
-
-
-class CreateScrewTogetherBaseplate(CreateCommand):
-    def __init__(self) -> None:
-        super().__init__(
-            name="ScrewTogetherBaseplate",
-            gridfinity_function=features.ScrewTogetherBaseplate,
-            pixmap=ICONDIR / "screw_together_baseplate.svg",
-        )
-
-
 class CreateConnectingClipTaskPanel:
     """Task panel for creating a connecting clip with custom parameters."""
 
@@ -1744,12 +1726,10 @@ class DrawBaseplate(DrawCommand):
             name="CustomBaseplate",
             pixmap=ICONDIR / "CustomBaseplate.svg",
             menu_text="Custom Baseplate",
-            tooltip="Draw a custom baseplate of any type.",
+            tooltip="Draw a custom baseplate.",
             gridfinity_functions=OrderedDict(
                 [
                     ("Simple Baseplate", features.CustomBaseplate),
-                    ("Magnet Baseplate", features.CustomMagnetBaseplate),
-                    ("Screw Together Baseplate", features.CustomScrewTogetherBaseplate),
                 ],
             ),
         )
