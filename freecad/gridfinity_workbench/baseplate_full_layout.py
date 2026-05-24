@@ -285,37 +285,37 @@ def build_full_layout(  # noqa: C901, PLR0912
     ny = layout_ny if layout_ny > 0 else int(params.core.y_grid_count)
 
     left_w = (
-        params.fillers.left_width
-        if params.fillers.left_enabled
-        else 0 * params.fundamentals.x_grid_size
+        params.fillers.filler_left_width
+        if params.fillers.filler_left_enabled
+        else 0 * params.fundamentals.grid_size
     )
     right_w = (
-        params.fillers.right_width
-        if params.fillers.right_enabled
-        else 0 * params.fundamentals.x_grid_size
+        params.fillers.filler_right_width
+        if params.fillers.filler_right_enabled
+        else 0 * params.fundamentals.grid_size
     )
     bottom_w = (
-        params.fillers.bottom_width
-        if params.fillers.bottom_enabled
-        else 0 * params.fundamentals.y_grid_size
+        params.fillers.filler_bottom_width
+        if params.fillers.filler_bottom_enabled
+        else 0 * params.fundamentals.grid_size
     )
     top_w = (
-        params.fillers.top_width
-        if params.fillers.top_enabled
-        else 0 * params.fundamentals.y_grid_size
+        params.fillers.filler_top_width
+        if params.fillers.filler_top_enabled
+        else 0 * params.fundamentals.grid_size
     )
 
     use_fillers = any(float(v) > 0 for v in (left_w, right_w, bottom_w, top_w))
     if not use_fillers:
         base = [[bool(layout[ix][iy]) for iy in range(ny)] for ix in range(nx)] if nx > 0 else []
-        x_sizes = [float(params.fundamentals.x_grid_size)] * nx
-        y_sizes = [float(params.fundamentals.y_grid_size)] * ny
+        x_sizes = [float(params.fundamentals.grid_size)] * nx
+        y_sizes = [float(params.fundamentals.grid_size)] * ny
         return GridfinityLayoutGeometry(
             cells=_build_cells(base, x_sizes, y_sizes, include_spring_masks, params),
         )
 
-    x_sizes = [left_w] + [params.fundamentals.x_grid_size] * nx + [right_w]
-    y_sizes = [bottom_w] + [params.fundamentals.y_grid_size] * ny + [top_w]
+    x_sizes = [left_w] + [params.fundamentals.grid_size] * nx + [right_w]
+    y_sizes = [bottom_w] + [params.fundamentals.grid_size] * ny + [top_w]
 
     expanded: GridfinityLayout = [[False for _ in range(ny + 2)] for _ in range(nx + 2)]
     # Only copy from layout if it has actual cells (use actual layout dimensions)
@@ -372,8 +372,8 @@ def _build_cells(
             width = x_sizes[ix]
             height = y_sizes[iy]
             is_tiny = (
-                width < float(params.fundamentals.x_grid_size) / 2
-                or height < float(params.fundamentals.y_grid_size) / 2
+                width < float(params.fundamentals.grid_size) / 2
+                or height < float(params.fundamentals.grid_size) / 2
             )
             kind = "Core"
             if (
@@ -453,8 +453,8 @@ def _filler_spring_mask(  # noqa: PLR0913
         mask = mask.with_horizontal_disabled(side_mask)
 
     if (
-        target_cell_width < float(params.fundamentals.x_grid_size) / 2
-        or target_cell_height < float(params.fundamentals.y_grid_size) / 2
+        target_cell_width < float(params.fundamentals.grid_size) / 2
+        or target_cell_height < float(params.fundamentals.grid_size) / 2
     ):
         mask = mask.with_all_horizontal_disabled().with_all_vertical_disabled()
 
@@ -473,8 +473,8 @@ def _alignment_shift(  # noqa: PLR0913
 ) -> tuple[float, float]:
     sx = -1 if leftmost else (1 if rightmost else 0)
     sy = -1 if bottommost else (1 if topmost else 0)
-    grid_half_x = float(params.fundamentals.x_grid_size) / 2
-    grid_half_y = float(params.fundamentals.y_grid_size) / 2
+    grid_half_x = float(params.fundamentals.grid_size) / 2
+    grid_half_y = float(params.fundamentals.grid_size) / 2
     cell_half_x = target_cell_width / 2
     cell_half_y = target_cell_height / 2
     return sx * (cell_half_x - grid_half_x), sy * (cell_half_y - grid_half_y)

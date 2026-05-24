@@ -1055,25 +1055,38 @@ def make_complex_bin_base_single(
 def make_complex_bin_base_single_from_params(
     fundamentals: FundamentalsParamsData,
     core: BaseplateCoreLayoutParamsData,
+    *,
+    x_size_override: float | None = None,
+    y_size_override: float | None = None,
 ) -> Part.Shape:
-    """Create one-cell complex shaped bin base centered at origin from baseplate params."""
-    lower_enabled = bool(core.base_profile_lower_chamfer_enabled)
-    lower_size = core.base_profile_lower_chamfer_size if lower_enabled else 0 * unitmm
-    upper_size = fundamentals.main_half_width
-    total_height = fundamentals.main_height + fundamentals.main_half_width
-    bin_vertical_radius = fundamentals.bin_outer_radius - fundamentals.main_half_width
+    """Create one-cell complex shaped bin base centered at origin from baseplate params.
+
+    Args:
+        fundamentals: Fundamental dimensions with grid_size as standard cell size.
+        core: Core layout parameters.
+        x_size_override: Optional override for cell X dimension (for filler cells).
+        y_size_override: Optional override for cell Y dimension (for filler cells).
+
+    """
+    x_size = x_size_override if x_size_override is not None else float(fundamentals.grid_size)
+    y_size = y_size_override if y_size_override is not None else float(fundamentals.grid_size)
+
+    lower_enabled = bool(core.lower_chamfer_enabled)
+    lower_size = float(core.lower_chamfer_size) if lower_enabled else 0.0
+    upper_size = float(fundamentals.main_half_width)
+    total_height = float(fundamentals.main_height) + float(fundamentals.main_half_width)
+    bin_vertical_radius = float(fundamentals.outer_radius) - float(fundamentals.main_half_width)
     if bin_vertical_radius <= 0:
         raise ValueError(
-            f"BinOuterRadius ({fundamentals.bin_outer_radius}) must be greater than "
+            f"BinOuterRadius ({fundamentals.outer_radius}) must be greater than "
             f"BaseProfileMainHalfWidth ({fundamentals.main_half_width})",
         )
 
-    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.main_half_width
-    y_vert_width = fundamentals.y_grid_size - 2 * fundamentals.main_half_width
-
+    x_vert_width = x_size - 2 * float(fundamentals.main_half_width)
+    y_vert_width = y_size - 2 * float(fundamentals.main_half_width)
     x_bt_cmf_width = x_vert_width - 2 * lower_size
     y_bt_cmf_width = y_vert_width - 2 * lower_size
-    vertical_section_height = fundamentals.main_height - lower_size
+    vertical_section_height = float(fundamentals.main_height) - lower_size
 
     if x_vert_width <= 0 or y_vert_width <= 0:
         return Part.Shape()
@@ -1081,33 +1094,33 @@ def make_complex_bin_base_single_from_params(
         return Part.Shape()
 
     vertical_section = utils.rounded_rectangle_extrude(
-        float(x_vert_width),
-        float(y_vert_width),
-        float(-total_height + lower_size),
-        float(vertical_section_height),
-        float(bin_vertical_radius),
+        x_vert_width,
+        y_vert_width,
+        -total_height + lower_size,
+        vertical_section_height,
+        bin_vertical_radius,
     )
 
     if lower_enabled:
         bottom_chamfer = utils.rounded_rectangle_chamfer(
-            float(x_bt_cmf_width),
-            float(y_bt_cmf_width),
-            float(-total_height),
-            float(lower_size),
-            float(bin_vertical_radius - lower_size),
-            float(bin_vertical_radius),
+            x_bt_cmf_width,
+            y_bt_cmf_width,
+            -total_height,
+            lower_size,
+            bin_vertical_radius - lower_size,
+            bin_vertical_radius,
         )
         assembly = bottom_chamfer.fuse(vertical_section)
     else:
         assembly = vertical_section
 
     top_chamfer = utils.rounded_rectangle_chamfer(
-        float(x_vert_width),
-        float(y_vert_width),
-        float(-total_height + lower_size + vertical_section_height),
-        float(upper_size),
-        float(bin_vertical_radius),
-        float(fundamentals.bin_outer_radius),
+        x_vert_width,
+        y_vert_width,
+        -total_height + lower_size + vertical_section_height,
+        upper_size,
+        bin_vertical_radius,
+        float(fundamentals.outer_radius),
     )
 
     if lower_enabled:
@@ -1144,9 +1157,9 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
 ) -> Part.Shape:
     """Create support body from per-cell slabs and optional center cutouts."""
     main_half_width = params.fundamentals.main_half_width
-    outer_radius = params.fundamentals.bin_outer_radius
+    outer_radius = params.fundamentals.outer_radius
     bin_vertical_radius = float(outer_radius) - float(main_half_width)
-    top_half_width = params.core.base_profile_top_crop
+    top_half_width = params.core.top_crop
     run = main_half_width + params.click_springs.click_offset - top_half_width
 
     if run <= 0:
@@ -1182,7 +1195,7 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
         ),
         screw_stubs=screw_stubs_data or ScrewStubParamsData(enabled=False, clearance=zeromm),
         clip_cutouts=clip_cutouts_data
-        or ClipParamsData(enabled=False, clip_tolerance=zeromm, clip_length=zeromm),
+        or ClipParamsData(enabled=False, tolerance=zeromm, clip_length=zeromm),
     )
 
     geometry = baseplate_full_layout.build_full_layout(

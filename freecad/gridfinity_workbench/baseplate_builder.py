@@ -6,7 +6,7 @@ import json
 import os
 import time
 from collections import OrderedDict
-from dataclasses import dataclass, is_dataclass, replace
+from dataclasses import dataclass, is_dataclass
 from dataclasses import fields as dataclass_fields
 from typing import TYPE_CHECKING
 
@@ -136,7 +136,7 @@ def build_baseplate_support_cached(
         z_start = (
             float(params.fundamentals.main_height)
             + float(params.fundamentals.main_half_width)
-            - float(params.core.base_profile_top_crop)
+            - float(params.core.top_crop)
         )
         z_matrix = fc.Matrix()
         z_matrix.move(fc.Vector(0, 0, z_start))
@@ -208,9 +208,15 @@ def _base_apex_height(params: CombinedBaseplateParamsData) -> fc.Units.Quantity:
     return params.fundamentals.main_height + params.fundamentals.main_half_width
 
 
-def baseplate_cell_top_crop(shape: Part.Shape, params: CombinedBaseplateParamsData) -> Part.Shape:
+def baseplate_cell_top_crop(
+    shape: Part.Shape,
+    params: CombinedBaseplateParamsData,
+    *,
+    x_size_override: float | None = None,
+    y_size_override: float | None = None,
+) -> Part.Shape:
     """Crop the top of a baseplate cell shape."""
-    top_crop = params.core.base_profile_top_crop
+    top_crop = params.core.top_crop
     half_width = params.fundamentals.main_half_width
     if top_crop >= half_width:
         raise ValueError(
@@ -218,12 +224,16 @@ def baseplate_cell_top_crop(shape: Part.Shape, params: CombinedBaseplateParamsDa
             f"BaseProfileMainHalfWidth ({half_width})",
         )
 
+    grid_size = float(params.fundamentals.grid_size)
+    x_size = x_size_override if x_size_override is not None else grid_size
+    y_size = y_size_override if y_size_override is not None else grid_size
+
     apex = _base_apex_height(params)
     margin = 0.1 * fc.Units.Quantity("1 mm")
     crop_slab = _make_centered_box(
-        params.fundamentals.x_grid_size + margin,
-        params.fundamentals.y_grid_size + margin,
-        top_crop + margin,
+        x_size + float(margin),
+        y_size + float(margin),
+        float(top_crop + margin),
         z_min=float(apex - top_crop),
     )
     return shape.cut(crop_slab)
@@ -232,16 +242,32 @@ def baseplate_cell_top_crop(shape: Part.Shape, params: CombinedBaseplateParamsDa
 def build_single_cell_baseplate_core(
     params: CombinedBaseplateParamsData,
     _options: BaseplateBuildOptions,
+    *,
+    x_size_override: float | None = None,
+    y_size_override: float | None = None,
 ) -> CoreCellBuildResult:
-    """Build a single core cell for a baseplate."""
-    baseplate_outside_shape = _create_rectangle_wire(
-        float(params.fundamentals.x_grid_size),
-        float(params.fundamentals.y_grid_size),
-    )
+    """Build a single core cell for a baseplate.
+
+    Args:
+        params: Combined baseplate parameters with fundamentals.grid_size as standard size.
+        _options: Build options.
+        x_size_override: Optional override for cell X dimension (for filler cells).
+        y_size_override: Optional override for cell Y dimension (for filler cells).
+
+    """
+    grid_size = float(params.fundamentals.grid_size)
+    x_size = x_size_override if x_size_override is not None else grid_size
+    y_size = y_size_override if y_size_override is not None else grid_size
+    baseplate_outside_shape = _create_rectangle_wire(x_size, y_size)
     total_height = _base_apex_height(params)
     face = Part.Face(baseplate_outside_shape)
     solid_shape = face.extrude(fc.Vector(0, 0, total_height))
-    bin_base_shape = feat.make_complex_bin_base_single_from_params(params.fundamentals, params.core)
+    bin_base_shape = feat.make_complex_bin_base_single_from_params(
+        params.fundamentals,
+        params.core,
+        x_size_override=x_size_override,
+        y_size_override=y_size_override,
+    )
     tiny_cell = bin_base_shape.isNull()
     if tiny_cell:
         return CoreCellBuildResult(shape=solid_shape, is_tiny=True)
@@ -252,6 +278,9 @@ def build_single_cell_baseplate_core(
 def build_single_cell_baseplate_core_cached(
     params: CombinedBaseplateParamsData,
     options: BaseplateBuildOptions,
+    *,
+    x_size_override: float | None = None,
+    y_size_override: float | None = None,
 ) -> CoreCellBuildResult:
     """Build a single core cell for a baseplate with caching."""
     key = baseplate_cell_cache.make_key(
@@ -259,27 +288,40 @@ def build_single_cell_baseplate_core_cached(
             "kind": "baseplate_core_cell",
             "params": params,
             "options": options,
+            "x_size_override": x_size_override,
+            "y_size_override": y_size_override,
         },
     )
 
     def _build() -> Part.Shape:
-        return build_single_cell_baseplate_core(params, options).shape
+        return build_single_cell_baseplate_core(
+            params,
+            options,
+            x_size_override=x_size_override,
+            y_size_override=y_size_override,
+        ).shape
 
     shape = baseplate_cell_cache.get_or_build(key, _build)
     tiny_cell = feat.make_complex_bin_base_single_from_params(
         params.fundamentals,
         params.core,
+        x_size_override=x_size_override,
+        y_size_override=y_size_override,
     ).isNull()
     return CoreCellBuildResult(shape=shape, is_tiny=tiny_cell)
 
 
 def build_preview_single_cell_baseplate_core(
     params: CombinedBaseplateParamsData,
+    *,
+    x_size_override: float | None = None,
+    y_size_override: float | None = None,
 ) -> CoreCellBuildResult:
     """Build a simplified preview of a single core cell."""
     margin = 0.1
-    x_grid_size = float(params.fundamentals.x_grid_size)
-    y_grid_size = float(params.fundamentals.y_grid_size)
+    grid_size = float(params.fundamentals.grid_size)
+    x_grid_size = x_size_override if x_size_override is not None else grid_size
+    y_grid_size = y_size_override if y_size_override is not None else grid_size
     main_height = float(params.fundamentals.main_height)
     main_half_width = float(params.fundamentals.main_half_width)
 
@@ -297,17 +339,26 @@ def build_preview_single_cell_baseplate_core(
 
 def build_preview_single_cell_baseplate_core_cached(
     params: CombinedBaseplateParamsData,
+    *,
+    x_size_override: float | None = None,
+    y_size_override: float | None = None,
 ) -> CoreCellBuildResult:
     """Build a simplified preview of a single core cell with caching."""
     key = baseplate_cell_cache.make_key(
         {
             "kind": "baseplate_preview_core_cell",
             "params": params,
+            "x_size_override": x_size_override,
+            "y_size_override": y_size_override,
         },
     )
 
     def _build() -> Part.Shape:
-        return build_preview_single_cell_baseplate_core(params).shape
+        return build_preview_single_cell_baseplate_core(
+            params,
+            x_size_override=x_size_override,
+            y_size_override=y_size_override,
+        ).shape
 
     return CoreCellBuildResult(shape=baseplate_cell_cache.get_or_build(key, _build), is_tiny=False)
 
@@ -321,16 +372,16 @@ def replicate_layout(
     base_cell = shape.copy()
     base_cell.translate(
         fc.Vector(
-            params.fundamentals.x_grid_size / 2,
-            params.fundamentals.y_grid_size / 2,
+            params.fundamentals.grid_size / 2,
+            params.fundamentals.grid_size / 2,
             0,
         ),
     )
     return utils.copy_in_layout(
         base_cell,
         layout,
-        params.fundamentals.x_grid_size,
-        params.fundamentals.y_grid_size,
+        params.fundamentals.grid_size,
+        params.fundamentals.grid_size,
     )
 
 
@@ -357,16 +408,13 @@ def add_filler_strips(
         return shape, expanded
 
     if not shape.isNull():
-        x_core_shift = (
-            params.fillers.left_width
-            if params.fillers.left_enabled and float(params.fillers.left_width) > 0
-            else 0 * params.fundamentals.x_grid_size
-        )
-        y_core_shift = (
-            params.fillers.bottom_width
-            if params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
-            else 0 * params.fundamentals.y_grid_size
-        )
+        left_w = params.fillers.filler_left_width
+        left_on = params.fillers.filler_left_enabled and float(left_w) > 0
+        x_core_shift = left_w if left_on else 0 * params.fundamentals.grid_size
+
+        bottom_w = params.fillers.filler_bottom_width
+        bottom_on = params.fillers.filler_bottom_enabled and float(bottom_w) > 0
+        y_core_shift = bottom_w if bottom_on else 0 * params.fundamentals.grid_size
         shape.translate(fc.Vector(float(x_core_shift), float(y_core_shift), 0))
 
     filler_shape = _build_filler_ring_shape(params, expanded, options, preview=preview)
@@ -393,18 +441,18 @@ def _build_filler_cell_shape(
     *,
     preview: bool = False,
 ) -> CoreCellBuildResult:
-    unitmm = fc.Units.Quantity("1 mm")
-    filler_params = replace(
-        params,
-        fundamentals=replace(
-            params.fundamentals,
-            x_grid_size=target_cell_width * unitmm,
-            y_grid_size=target_cell_height * unitmm,
-        ),
-    )
     if preview:
-        return build_preview_single_cell_baseplate_core_cached(filler_params)
-    return build_single_cell_baseplate_core_cached(filler_params, options)
+        return build_preview_single_cell_baseplate_core_cached(
+            params,
+            x_size_override=target_cell_width,
+            y_size_override=target_cell_height,
+        )
+    return build_single_cell_baseplate_core_cached(
+        params,
+        options,
+        x_size_override=target_cell_width,
+        y_size_override=target_cell_height,
+    )
 
 
 def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
@@ -421,10 +469,11 @@ def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
     nx = nx_exp - 2
     ny = ny_exp - 2
 
-    left_on = params.fillers.left_enabled and float(params.fillers.left_width) > 0
-    right_on = params.fillers.right_enabled and float(params.fillers.right_width) > 0
-    bottom_on = params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
-    top_on = params.fillers.top_enabled and float(params.fillers.top_width) > 0
+    f = params.fillers
+    left_on = f.filler_left_enabled and float(f.filler_left_width) > 0
+    right_on = f.filler_right_enabled and float(f.filler_right_width) > 0
+    bottom_on = f.filler_bottom_enabled and float(f.filler_bottom_width) > 0
+    top_on = f.filler_top_enabled and float(f.filler_top_width) > 0
 
     negative_slots: click_springs.SpringShapeSlots | None = None
     positive_slots: click_springs.SpringShapeSlots | None = None
@@ -466,16 +515,12 @@ def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
                 mask,
             )
             cell.translate(fc.Vector(-align_shift.x, -align_shift.y, 0))
-        unitmm = fc.Units.Quantity("1 mm")
-        filler_params = replace(
+        cell = baseplate_cell_top_crop(
+            cell,
             params,
-            fundamentals=replace(
-                params.fundamentals,
-                x_grid_size=width * unitmm,
-                y_grid_size=height * unitmm,
-            ),
+            x_size_override=width,
+            y_size_override=height,
         )
-        cell = baseplate_cell_top_crop(cell, filler_params)
         return CoreCellBuildResult(shape=cell, is_tiny=filler_result.is_tiny)
 
     def center(ix: int, iy: int) -> fc.Vector:
@@ -627,12 +672,12 @@ def _apply_layout_corner_roundover(
     apex = float(
         params.fundamentals.main_height + params.fundamentals.main_half_width,
     )
-    top_crop = float(params.core.base_profile_top_crop)
+    top_crop = float(params.core.top_crop)
     roundover_height = apex - top_crop
     return baseplate_corner_roundover.apply_layout_corner_roundover(
         shape,
         geometry=geometry,
-        outside_radius=float(params.fundamentals.bin_outer_radius),
+        outside_radius=float(params.fundamentals.outer_radius),
         height=roundover_height,
     )
 
@@ -772,10 +817,11 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
     nx = max(0, int(params.core.x_grid_count))
     ny = max(0, int(params.core.y_grid_count))
 
-    left_fill_present = params.fillers.left_enabled and float(params.fillers.left_width) > 0
-    right_fill_present = params.fillers.right_enabled and float(params.fillers.right_width) > 0
-    top_fill_present = params.fillers.top_enabled and float(params.fillers.top_width) > 0
-    bottom_fill_present = params.fillers.bottom_enabled and float(params.fillers.bottom_width) > 0
+    f = params.fillers
+    left_fill_present = f.filler_left_enabled and float(f.filler_left_width) > 0
+    right_fill_present = f.filler_right_enabled and float(f.filler_right_width) > 0
+    top_fill_present = f.filler_top_enabled and float(f.filler_top_width) > 0
+    bottom_fill_present = f.filler_bottom_enabled and float(f.filler_bottom_width) > 0
 
     if nx == 0 and ny == 0:
         raise ValueError("X and Y grid units cannot both be 0")

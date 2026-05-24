@@ -963,9 +963,9 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 data = params.data()
                 h = float(data.fundamentals.main_height)
                 w = float(data.fundamentals.main_half_width)
-                c = float(data.core.base_profile_top_crop)
+                c = float(data.core.top_crop)
                 effective_height = h + w - c
-                span = float(data.fundamentals.y_grid_size) * data.core.y_grid_count
+                span = float(data.fundamentals.grid_size) * data.core.y_grid_count
                 return {{
                     "volume": float(shape.Volume),
                     "solids": int(len(shape.Solids)),

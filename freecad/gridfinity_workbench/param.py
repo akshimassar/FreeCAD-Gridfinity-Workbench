@@ -7,6 +7,12 @@ are resolved for all parameters in the group:
 - DefaultType.VALUE: Hardcoded defaults (most groups use this)
 - DefaultType.MEM: Remember last used values within session (BaseplateSizeParams)
 - DefaultType.SAVED: Persist to FreeCAD preferences (PluginSettingsParams)
+
+CANONICAL DATA CLASS REQUIREMENT:
+All *ParamsData dataclasses must use field names that exactly match the
+corresponding ParameterGroup's parameter names. This 1:1 mapping ensures
+consistency between UI parameters and data containers. Do not rename, prefix,
+or transform field names in data classes.
 """
 
 from __future__ import annotations
@@ -31,9 +37,8 @@ from .param_system import (
 class FundamentalsParamsData:
     """Immutable data container for fundamental Gridfinity dimensions."""
 
-    x_grid_size: fc.Units.Quantity
-    y_grid_size: fc.Units.Quantity
-    bin_outer_radius: fc.Units.Quantity
+    grid_size: fc.Units.Quantity
+    outer_radius: fc.Units.Quantity
     main_half_width: fc.Units.Quantity
     main_height: fc.Units.Quantity
 
@@ -43,7 +48,7 @@ class ClipParamsData:
     """Immutable data container for clip cutout parameters."""
 
     enabled: bool
-    clip_tolerance: fc.Units.Quantity
+    tolerance: fc.Units.Quantity
     clip_length: fc.Units.Quantity
 
 
@@ -75,9 +80,9 @@ class BaseplateSizeParamsData:
 class BaseplateCoreParamsData:
     """Immutable data container for baseplate core profile parameters."""
 
-    base_profile_lower_chamfer_enabled: bool
-    base_profile_lower_chamfer_size: fc.Units.Quantity
-    base_profile_top_crop: fc.Units.Quantity
+    lower_chamfer_enabled: bool
+    lower_chamfer_size: fc.Units.Quantity
+    top_crop: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
@@ -86,23 +91,23 @@ class BaseplateCoreLayoutParamsData:
 
     x_grid_count: int
     y_grid_count: int
-    base_profile_lower_chamfer_enabled: bool
-    base_profile_lower_chamfer_size: fc.Units.Quantity
-    base_profile_top_crop: fc.Units.Quantity
+    lower_chamfer_enabled: bool
+    lower_chamfer_size: fc.Units.Quantity
+    top_crop: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
 class BaseplateFillersParamsData:
     """Immutable data container for filler strip parameters."""
 
-    left_enabled: bool
-    left_width: fc.Units.Quantity
-    right_enabled: bool
-    right_width: fc.Units.Quantity
-    top_enabled: bool
-    top_width: fc.Units.Quantity
-    bottom_enabled: bool
-    bottom_width: fc.Units.Quantity
+    filler_left_enabled: bool
+    filler_left_width: fc.Units.Quantity
+    filler_right_enabled: bool
+    filler_right_width: fc.Units.Quantity
+    filler_top_enabled: bool
+    filler_top_width: fc.Units.Quantity
+    filler_bottom_enabled: bool
+    filler_bottom_width: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
@@ -232,9 +237,8 @@ class FundamentalsParams(ParameterGroup):
         if errors:
             raise ParameterValidationError(errors)
         return FundamentalsParamsData(
-            x_grid_size=self.get_value("grid_size"),
-            y_grid_size=self.get_value("grid_size"),
-            bin_outer_radius=self.get_value("outer_radius"),
+            grid_size=self.get_value("grid_size"),
+            outer_radius=self.get_value("outer_radius"),
             main_half_width=self.get_value("main_half_width"),
             main_height=self.get_value("main_height"),
         )
@@ -272,7 +276,7 @@ class ClipParams(ParameterGroup):
             raise ParameterValidationError(errors)
         return ClipParamsData(
             enabled=self.get_value("enabled"),
-            clip_tolerance=self.get_value("tolerance"),
+            tolerance=self.get_value("tolerance"),
             clip_length=self.get_value("clip_length"),
         )
 
@@ -423,9 +427,9 @@ class BaseplateCoreParams(ParameterGroup):
     def data(self) -> BaseplateCoreParamsData:
         """Return immutable data container."""
         return BaseplateCoreParamsData(
-            base_profile_lower_chamfer_enabled=self.get_value("lower_chamfer_enabled"),
-            base_profile_lower_chamfer_size=self.get_value("lower_chamfer_size"),
-            base_profile_top_crop=self.get_value("top_crop"),
+            lower_chamfer_enabled=self.get_value("lower_chamfer_enabled"),
+            lower_chamfer_size=self.get_value("lower_chamfer_size"),
+            top_crop=self.get_value("top_crop"),
         )
 
 
@@ -647,14 +651,12 @@ class CombinedBaseplateParams(CombinedParams):
         clip = self.clip_cutouts.data()
 
         half_width = float(fundamentals.main_half_width)
-        outer_radius = float(fundamentals.bin_outer_radius)
-        top_crop = float(core.base_profile_top_crop)
-        grid_size = float(fundamentals.x_grid_size)
+        outer_radius = float(fundamentals.outer_radius)
+        top_crop = float(core.top_crop)
+        grid_size = float(fundamentals.grid_size)
 
         if not top_crop < half_width:
-            errors["core.base_profile_top_crop"] = (
-                "Top crop must be less than main profile half width"
-            )
+            errors["core.top_crop"] = "Top crop must be less than main profile half width"
         if not outer_radius > half_width:
             errors["fundamentals.outer_radius"] = (
                 "Outer radius must be greater than main profile half width"
@@ -693,7 +695,7 @@ class CombinedBaseplateParams(CombinedParams):
 
         if clip.enabled:
             clip_length = float(clip.clip_length)
-            clip_tolerance = float(clip.clip_tolerance)
+            clip_tolerance = float(clip.tolerance)
             max_clip = 2 * half_width
             if not clip_length > 0:
                 errors["clip_cutouts.clip_length"] = "Clip length must be greater than 0"
@@ -780,19 +782,19 @@ class CombinedBaseplateParams(CombinedParams):
             core=BaseplateCoreLayoutParamsData(
                 x_grid_count=size.x_grid_count,
                 y_grid_count=size.y_grid_count,
-                base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
-                base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
-                base_profile_top_crop=core.base_profile_top_crop,
+                lower_chamfer_enabled=core.lower_chamfer_enabled,
+                lower_chamfer_size=core.lower_chamfer_size,
+                top_crop=core.top_crop,
             ),
             fillers=BaseplateFillersParamsData(
-                left_enabled=size.filler_left_enabled,
-                left_width=size.filler_left_width,
-                right_enabled=size.filler_right_enabled,
-                right_width=size.filler_right_width,
-                top_enabled=size.filler_top_enabled,
-                top_width=size.filler_top_width,
-                bottom_enabled=size.filler_bottom_enabled,
-                bottom_width=size.filler_bottom_width,
+                filler_left_enabled=size.filler_left_enabled,
+                filler_left_width=size.filler_left_width,
+                filler_right_enabled=size.filler_right_enabled,
+                filler_right_width=size.filler_right_width,
+                filler_top_enabled=size.filler_top_enabled,
+                filler_top_width=size.filler_top_width,
+                filler_bottom_enabled=size.filler_bottom_enabled,
+                filler_bottom_width=size.filler_bottom_width,
             ),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
@@ -827,13 +829,11 @@ class CombinedSupportBaseplateParams(CombinedParams):
         fundamentals = self.fundamentals.data()
         core = self.core.data()
         half_width = float(fundamentals.main_half_width)
-        outer_radius = float(fundamentals.bin_outer_radius)
-        top_crop = float(core.base_profile_top_crop)
+        outer_radius = float(fundamentals.outer_radius)
+        top_crop = float(core.top_crop)
 
         if not top_crop < half_width:
-            errors["core.base_profile_top_crop"] = (
-                "Top crop must be less than main profile half width"
-            )
+            errors["core.top_crop"] = "Top crop must be less than main profile half width"
         if not outer_radius > half_width:
             errors["fundamentals.outer_radius"] = (
                 "Outer radius must be greater than main profile half width"
@@ -849,19 +849,19 @@ class CombinedSupportBaseplateParams(CombinedParams):
             core=BaseplateCoreLayoutParamsData(
                 x_grid_count=size.x_grid_count,
                 y_grid_count=size.y_grid_count,
-                base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
-                base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
-                base_profile_top_crop=core.base_profile_top_crop,
+                lower_chamfer_enabled=core.lower_chamfer_enabled,
+                lower_chamfer_size=core.lower_chamfer_size,
+                top_crop=core.top_crop,
             ),
             fillers=BaseplateFillersParamsData(
-                left_enabled=size.filler_left_enabled,
-                left_width=size.filler_left_width,
-                right_enabled=size.filler_right_enabled,
-                right_width=size.filler_right_width,
-                top_enabled=size.filler_top_enabled,
-                top_width=size.filler_top_width,
-                bottom_enabled=size.filler_bottom_enabled,
-                bottom_width=size.filler_bottom_width,
+                filler_left_enabled=size.filler_left_enabled,
+                filler_left_width=size.filler_left_width,
+                filler_right_enabled=size.filler_right_enabled,
+                filler_right_width=size.filler_right_width,
+                filler_top_enabled=size.filler_top_enabled,
+                filler_top_width=size.filler_top_width,
+                filler_bottom_enabled=size.filler_bottom_enabled,
+                filler_bottom_width=size.filler_bottom_width,
             ),
             click_springs=self.click_springs.data(),
             support=self.support.data(),
@@ -927,19 +927,19 @@ class CombinedStackedBaseplatesParams(CombinedParams):
             core=BaseplateCoreLayoutParamsData(
                 x_grid_count=size.x_grid_count,
                 y_grid_count=size.y_grid_count,
-                base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
-                base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
-                base_profile_top_crop=core.base_profile_top_crop,
+                lower_chamfer_enabled=core.lower_chamfer_enabled,
+                lower_chamfer_size=core.lower_chamfer_size,
+                top_crop=core.top_crop,
             ),
             fillers=BaseplateFillersParamsData(
-                left_enabled=size.filler_left_enabled,
-                left_width=size.filler_left_width,
-                right_enabled=size.filler_right_enabled,
-                right_width=size.filler_right_width,
-                top_enabled=size.filler_top_enabled,
-                top_width=size.filler_top_width,
-                bottom_enabled=size.filler_bottom_enabled,
-                bottom_width=size.filler_bottom_width,
+                filler_left_enabled=size.filler_left_enabled,
+                filler_left_width=size.filler_left_width,
+                filler_right_enabled=size.filler_right_enabled,
+                filler_right_width=size.filler_right_width,
+                filler_top_enabled=size.filler_top_enabled,
+                filler_top_width=size.filler_top_width,
+                filler_bottom_enabled=size.filler_bottom_enabled,
+                filler_bottom_width=size.filler_bottom_width,
             ),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
@@ -1104,19 +1104,19 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             core=BaseplateCoreLayoutParamsData(
                 x_grid_count=size.x_grid_count,
                 y_grid_count=size.y_grid_count,
-                base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
-                base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
-                base_profile_top_crop=core.base_profile_top_crop,
+                lower_chamfer_enabled=core.lower_chamfer_enabled,
+                lower_chamfer_size=core.lower_chamfer_size,
+                top_crop=core.top_crop,
             ),
             fillers=BaseplateFillersParamsData(
-                left_enabled=size.filler_left_enabled,
-                left_width=size.filler_left_width,
-                right_enabled=size.filler_right_enabled,
-                right_width=size.filler_right_width,
-                top_enabled=size.filler_top_enabled,
-                top_width=size.filler_top_width,
-                bottom_enabled=size.filler_bottom_enabled,
-                bottom_width=size.filler_bottom_width,
+                filler_left_enabled=size.filler_left_enabled,
+                filler_left_width=size.filler_left_width,
+                filler_right_enabled=size.filler_right_enabled,
+                filler_right_width=size.filler_right_width,
+                filler_top_enabled=size.filler_top_enabled,
+                filler_top_width=size.filler_top_width,
+                filler_bottom_enabled=size.filler_bottom_enabled,
+                filler_bottom_width=size.filler_bottom_width,
             ),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
@@ -1133,19 +1133,19 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             core=BaseplateCoreLayoutParamsData(
                 x_grid_count=size.x_grid_count,
                 y_grid_count=size.y_grid_count,
-                base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
-                base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
-                base_profile_top_crop=core.base_profile_top_crop,
+                lower_chamfer_enabled=core.lower_chamfer_enabled,
+                lower_chamfer_size=core.lower_chamfer_size,
+                top_crop=core.top_crop,
             ),
             fillers=BaseplateFillersParamsData(
-                left_enabled=size.filler_left_enabled,
-                left_width=size.filler_left_width,
-                right_enabled=size.filler_right_enabled,
-                right_width=size.filler_right_width,
-                top_enabled=size.filler_top_enabled,
-                top_width=size.filler_top_width,
-                bottom_enabled=size.filler_bottom_enabled,
-                bottom_width=size.filler_bottom_width,
+                filler_left_enabled=size.filler_left_enabled,
+                filler_left_width=size.filler_left_width,
+                filler_right_enabled=size.filler_right_enabled,
+                filler_right_width=size.filler_right_width,
+                filler_top_enabled=size.filler_top_enabled,
+                filler_top_width=size.filler_top_width,
+                filler_bottom_enabled=size.filler_bottom_enabled,
+                filler_bottom_width=size.filler_bottom_width,
             ),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),

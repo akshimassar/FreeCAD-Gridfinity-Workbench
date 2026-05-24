@@ -419,7 +419,7 @@ class DrawerBaseplate(FoundationGridfinity):
             include_snap_springs=full_data.click_springs.enabled,
         )
 
-        grid_mm = float(full_data.fundamentals.x_grid_size)
+        grid_mm = float(full_data.fundamentals.grid_size)
         split_algorithm = "greedy" if full_data.drawer.split_algorithm == "Greedy" else "balanced"
         x_axis_chunks = split_axis_into_printable_chunks(
             length_mm=float(full_data.drawer.drawer_width),
@@ -491,14 +491,14 @@ class DrawerBaseplate(FoundationGridfinity):
                     core=replace(baseplate_params.core, x_grid_count=x_units, y_grid_count=y_units),
                     fillers=replace(
                         baseplate_params.fillers,
-                        left_enabled=left_fill > 0,
-                        left_width=left_fill * unitmm,
-                        right_enabled=right_fill > 0,
-                        right_width=right_fill * unitmm,
-                        bottom_enabled=bottom_fill > 0,
-                        bottom_width=bottom_fill * unitmm,
-                        top_enabled=top_fill > 0,
-                        top_width=top_fill * unitmm,
+                        filler_left_enabled=left_fill > 0,
+                        filler_left_width=left_fill * unitmm,
+                        filler_right_enabled=right_fill > 0,
+                        filler_right_width=right_fill * unitmm,
+                        filler_bottom_enabled=bottom_fill > 0,
+                        filler_bottom_width=bottom_fill * unitmm,
+                        filler_top_enabled=top_fill > 0,
+                        filler_top_width=top_fill * unitmm,
                     ),
                 )
 
@@ -630,10 +630,10 @@ def _build_corner_stitching_shape(
     if not data.stacking.corner_stitching or stitching_thickness <= 0:
         return None
 
-    outer_radius = float(data.fundamentals.bin_outer_radius)
+    outer_radius = float(data.fundamentals.outer_radius)
     if stitching_thickness >= outer_radius:
         return None
-    if stitching_thickness > float(data.core.base_profile_top_crop):
+    if stitching_thickness > float(data.core.top_crop):
         return None
 
     x_min = float(baseplates_bbox.XMin)
@@ -1452,7 +1452,7 @@ class ConnectingClip(FoundationGridfinity):
         # Use the fundamentals for profile dimensions and clip-specific for geometry parameters
         half_width_value = data.fundamentals.main_half_width
         height_value = data.fundamentals.main_height
-        tolerance_value = data.clip.clip_tolerance
+        tolerance_value = data.clip.tolerance
         clip_length_value = data.clip.clip_length
 
         wire = clip_profiles.build_clip_profile_wire(

@@ -115,9 +115,9 @@ def make_click_spring_seed_positive(
     click_springs: ClickSpringParamsData,
 ) -> Part.Shape:
     """Build the positive seed shape for a click spring."""
-    x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.main_half_width
+    x_vert_width = fundamentals.grid_size - 2 * fundamentals.main_half_width
     click_length = click_springs.click_length
-    click_center_y = fundamentals.y_grid_size / 4
+    click_center_y = fundamentals.grid_size / 4
     click_top_y = click_center_y + click_length / 2
 
     step = click_length / 3
@@ -159,13 +159,13 @@ def make_click_spring_seed_negative(
 ) -> Part.Shape:
     """Build the negative seed shape for a click spring."""
     total_height = float(fundamentals.main_height + fundamentals.main_half_width)
-    x_vert_width = float(fundamentals.x_grid_size - 2 * fundamentals.main_half_width)
+    x_vert_width = float(fundamentals.grid_size - 2 * fundamentals.main_half_width)
     x0 = x_vert_width / 2
     click_offset = float(click_springs.click_offset)
     x_min = x0 - click_offset
     click_width_x = click_offset + float(click_springs.click_thickness)
     click_length = float(click_springs.click_length)
-    click_center_y = float(fundamentals.y_grid_size) / 4
+    click_center_y = float(fundamentals.grid_size) / 4
     return Part.makeBox(
         click_width_x,
         click_length,
@@ -216,9 +216,9 @@ def _validate_click_spring_geometry(
         )
 
     half_len = click_springs.click_length / 2
-    bin_vertical_radius = fundamentals.bin_outer_radius - fundamentals.main_half_width
-    x_limit = fundamentals.x_grid_size / 4 - bin_vertical_radius
-    y_limit = fundamentals.y_grid_size / 4 - bin_vertical_radius
+    bin_vertical_radius = fundamentals.outer_radius - fundamentals.main_half_width
+    x_limit = fundamentals.grid_size / 4 - bin_vertical_radius
+    y_limit = fundamentals.grid_size / 4 - bin_vertical_radius
 
     if half_len >= x_limit or half_len >= y_limit:
         raise ValueError(
