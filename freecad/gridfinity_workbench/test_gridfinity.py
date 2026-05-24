@@ -29,7 +29,7 @@ class TestConnectingClipTaskPanel(TestWithDocument):
     """Test creating a connecting clip through the task panel dialog."""
 
     def test_create_connecting_clip_via_dialog(self) -> None:
-        from .commands import CreateConnectingClipTaskPanel, ICONDIR
+        from .commands import ICONDIR, CreateConnectingClipTaskPanel
 
         # Open the task panel dialog
         panel = CreateConnectingClipTaskPanel(ICONDIR / "connecting-clip.svg")
@@ -52,7 +52,7 @@ class TestBaseplateTaskPanel(TestWithDocument):
     """Test creating a baseplate through the task panel dialog."""
 
     def test_create_simple_baseplate_via_dialog(self) -> None:
-        from .commands import CreateBaseplateTaskPanel, ICONDIR
+        from .commands import ICONDIR, CreateBaseplateTaskPanel
 
         # Open the task panel dialog
         panel = CreateBaseplateTaskPanel(ICONDIR / "baseplate-obj.svg")

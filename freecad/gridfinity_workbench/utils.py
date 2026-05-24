@@ -215,7 +215,7 @@ def create_rounded_rectangle(
     return Part.Wire(s1.Edges)
 
 
-def rounded_rectangle_chamfer(
+def rounded_rectangle_chamfer(  # noqa: PLR0913
     xwidth: float,
     ywidth: float,
     zsketchplane: float,
@@ -246,7 +246,7 @@ def rounded_rectangle_chamfer(
     )
     # Compatibility: older FreeCAD/LinkStable builds often reject keyword args for OCC bindings.
     try:
-        return Part.makeLoft([w1, w2], True)
+        return Part.makeLoft([w1, w2], True)  # noqa: FBT003
     except TypeError:
         return Part.makeLoft([w1, w2], solid=True)
 
@@ -293,7 +293,8 @@ def loop(lst: list[fc.Vector]) -> list[Part.LineSegment]:
     """Get a closed loop consisting of LineSegments from consecutive points."""
     if len(lst) < 3:  # noqa: PLR2004
         raise ValueError("List has to be of length at least 3")
-    return [Part.LineSegment(p1, p2) for p1, p2 in zip(lst, lst[1:] + lst[:1]) if p1 != p2]
+    pairs = zip(lst, lst[1:] + lst[:1], strict=False)
+    return [Part.LineSegment(p1, p2) for p1, p2 in pairs if p1 != p2]
 
 
 def corners(x: float, y: float, z: float = 0) -> list[fc.Vector]:

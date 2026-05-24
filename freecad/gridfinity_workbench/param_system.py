@@ -54,15 +54,21 @@ Usage pattern:
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from enum import Enum
-import re
-from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
-
-if TYPE_CHECKING:
-    from PySide.QtWidgets import QWidget
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 import FreeCAD as fc  # noqa: N813
+
+# Type alias for parameter values - using Any to avoid strict type narrowing
+# since parameter values can be bool, int, float, str, or fc.Units.Quantity
+ParamValue = Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from PySide.QtWidgets import QLayout, QWidget
 
 
 class DefaultType(Enum):
@@ -81,6 +87,7 @@ class DefaultType(Enum):
     Example:
         class MySizeParams(ParameterGroup):
             _default_type = DefaultType.MEM  # Remember last values
+
     """
 
     VALUE = "Value"  # Hardcoded default
@@ -110,26 +117,33 @@ class ParamDefaultResolver:
     """
 
     _prefs_path = "User parameter:BaseApp/Preferences/Mod/GridfinityWorkbench"
-    _runtime_cache: Dict[str, Any] = {}  # Class-level session memory for MEM defaults
+    # Class-level session memory for MEM defaults
+    _runtime_cache: ClassVar[dict[str, ParamValue]] = {}
 
     def _make_key(self, group_name: str, param_name: str) -> str:
         return f"{group_name}.{param_name}"
 
-    def get_saved(self, group_name: str, param_name: str, fallback: Any, value_type: type) -> Any:
+    def get_saved(
+        self,
+        group_name: str,
+        param_name: str,
+        fallback: ParamValue,
+        value_type: type,
+    ) -> ParamValue:
         """Load from FreeCAD prefs by type."""
         prefs = fc.ParamGet(self._prefs_path)
         key = self._make_key(group_name, param_name)
-        if value_type == bool:
+        if value_type is bool:
             return prefs.GetBool(key, fallback)
-        elif value_type == int:
+        if value_type is int:
             return prefs.GetInt(key, fallback)
-        elif value_type == float:
+        if value_type is float:
             return prefs.GetFloat(key, fallback)
-        elif value_type == str:
+        if value_type is str:
             return prefs.GetString(key, fallback)
         return fallback
 
-    def set_saved(self, group_name: str, param_name: str, value: Any) -> None:
+    def set_saved(self, group_name: str, param_name: str, value: ParamValue) -> None:
         """Persist to FreeCAD prefs."""
         prefs = fc.ParamGet(self._prefs_path)
         key = self._make_key(group_name, param_name)
@@ -142,12 +156,12 @@ class ParamDefaultResolver:
         elif isinstance(value, str):
             prefs.SetString(key, value)
 
-    def get_runtime(self, group_name: str, param_name: str, fallback: Any) -> Any:
+    def get_runtime(self, group_name: str, param_name: str, fallback: ParamValue) -> ParamValue:
         """Get from session memory."""
         key = self._make_key(group_name, param_name)
         return self._runtime_cache.get(key, fallback)
 
-    def set_runtime(self, group_name: str, param_name: str, value: Any) -> None:
+    def set_runtime(self, group_name: str, param_name: str, value: ParamValue) -> None:
         """Store in session memory."""
         key = self._make_key(group_name, param_name)
         self._runtime_cache[key] = value
@@ -183,7 +197,8 @@ class BaseParam:
         display_name: str,
         freecad_property_type: str = "App::PropertyFloat",
         description: str = "",
-    ):
+    ) -> None:
+        """Initialize a base parameter with name, display name, and property type."""
         self.name = name
         self.display_name = display_name
         self.freecad_property_type = (
@@ -197,15 +212,15 @@ class BaseParam:
         group_snake = re.sub(r"(?<!^)(?=[A-Z])", "_", group_name).lower()
         return f"{group_snake}_{self.name}"
 
-    def default(self) -> Any:
+    def default(self) -> ParamValue:
         """Return the actual default value."""
-        return None
+        return 0  # Subclasses should override this
 
     def default_value_type(self) -> type:
         """Return the Python type of the default value for resolver lookups."""
         return type(self.default())
 
-    def validate(self, value: Any) -> bool:
+    def validate(self, value: ParamValue) -> bool:  # noqa: ARG002
         """Validate the given value."""
         return True
 
@@ -224,10 +239,11 @@ class BooleanParam(BaseParam):
         self,
         name: str,
         display_name: str,
-        default_value: bool = False,
+        default_value: bool = False,  # noqa: FBT001, FBT002
         freecad_property_type: str = "App::PropertyBool",
         description: str = "",
-    ):
+    ) -> None:
+        """Initialize a boolean parameter."""
         super().__init__(
             name,
             display_name,
@@ -237,9 +253,10 @@ class BooleanParam(BaseParam):
         self.default_value = default_value
 
     def default(self) -> bool:
+        """Return the default boolean value."""
         return self.default_value
 
-    def validate(self, value: Any) -> bool:
+    def validate(self, value: ParamValue) -> bool:
         """Validate value is boolean."""
         return isinstance(value, bool)
 
@@ -259,17 +276,18 @@ class FloatParam(BaseParam):
         FloatParam("height", "Height", default_value=fc.Units.Quantity("42 mm"))
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         name: str,
         display_name: str,
         default_value: fc.Units.Quantity,
-        min_value: Optional[fc.Units.Quantity] = None,
-        max_value: Optional[fc.Units.Quantity] = None,
+        min_value: fc.Units.Quantity | None = None,
+        max_value: fc.Units.Quantity | None = None,
         freecad_property_type: str = "App::PropertyLength",  # Default to Length for measurements
         description: str = "",
-        positive_only: bool = False,  # Whether this parameter should be positive only
-    ):
+        positive_only: bool = False,  # noqa: FBT001, FBT002 - Whether this param should be positive
+    ) -> None:
+        """Initialize a float/quantity parameter with optional bounds."""
         super().__init__(
             name,
             display_name,
@@ -282,9 +300,10 @@ class FloatParam(BaseParam):
         self.positive_only = positive_only
 
     def default(self) -> fc.Units.Quantity:
+        """Return the default quantity value."""
         return self.default_value
 
-    def validate(self, value: fc.Units.Quantity) -> bool:
+    def validate(self, value: ParamValue) -> bool:
         """Validate number is within bounds if specified and is numeric."""
         try:
             float_val = float(value)
@@ -292,11 +311,10 @@ class FloatParam(BaseParam):
                 return False
             if self.max_value is not None and float_val > float(self.max_value):
                 return False
-            if self.positive_only and float_val <= 0:
-                return False
-            return True
         except (TypeError, ValueError):
             return False
+        else:
+            return not (self.positive_only and float_val <= 0)
 
 
 class LiteralParam(BaseParam):
@@ -310,15 +328,16 @@ class LiteralParam(BaseParam):
         LiteralParam("mode", "Mode", default_value="auto", choices=["auto", "manual"])
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         name: str,
         display_name: str,
         default_value: str,
-        choices: Optional[list[str]] = None,
+        choices: list[str] | None = None,
         freecad_property_type: str = "App::PropertyString",
         description: str = "",
-    ):
+    ) -> None:
+        """Initialize a literal/string parameter with optional choices."""
         super().__init__(
             name,
             display_name,
@@ -329,15 +348,14 @@ class LiteralParam(BaseParam):
         self.choices = choices
 
     def default(self) -> str:
+        """Return the default string value."""
         return self.default_value
 
-    def validate(self, value: Any) -> bool:
+    def validate(self, value: ParamValue) -> bool:
         """Validate string is in choices if specified and is a string."""
         if not isinstance(value, str):
             return False
-        if self.choices is not None and value not in self.choices:
-            return False
-        return True
+        return not (self.choices is not None and value not in self.choices)
 
 
 class IntParam(BaseParam):
@@ -355,17 +373,18 @@ class IntParam(BaseParam):
         IntParam("grid_units_x", "Grid Units X", default_value=3, min_value=1)
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         name: str,
         display_name: str,
         default_value: int,
-        min_value: Optional[int] = None,
-        max_value: Optional[int] = None,
+        min_value: int | None = None,
+        max_value: int | None = None,
         freecad_property_type: str = "App::PropertyInteger",
         description: str = "",
-        positive_only: bool = False,
-    ):
+        positive_only: bool = False,  # noqa: FBT001, FBT002
+    ) -> None:
+        """Initialize an integer parameter with optional bounds."""
         super().__init__(
             name,
             display_name,
@@ -378,9 +397,11 @@ class IntParam(BaseParam):
         self.positive_only = positive_only
 
     def default(self) -> int:
+        """Return the default integer value."""
         return self.default_value
 
-    def validate(self, value: Any) -> bool:
+    def validate(self, value: ParamValue) -> bool:
+        """Validate integer is within bounds if specified."""
         if isinstance(value, bool):
             return False
         if not isinstance(value, int):
@@ -389,9 +410,7 @@ class IntParam(BaseParam):
             return False
         if self.max_value is not None and value > self.max_value:
             return False
-        if self.positive_only and value <= 0:
-            return False
-        return True
+        return not (self.positive_only and value <= 0)
 
 
 class ParameterGroup(ABC):
@@ -444,13 +463,14 @@ class ParameterGroup(ABC):
 
     def __init__(
         self,
-        parameters: Optional[list[Union[BooleanParam, FloatParam, IntParam, LiteralParam]]] = None,
-        resolver: Optional[ParamDefaultResolver] = None,
-    ):
-        self._parameters: Dict[str, BaseParam] = (
+        parameters: Sequence[BaseParam] | None = None,
+        resolver: ParamDefaultResolver | None = None,
+    ) -> None:
+        """Initialize a parameter group with optional parameters and resolver."""
+        self._parameters: dict[str, BaseParam] = (
             {param.name: param for param in parameters} if parameters else {}
         )
-        self._values: Dict[str, Any] = {}
+        self._values: dict[str, ParamValue] = {}
         self._resolver = resolver if resolver is not None else default_resolver
         self._group_name = self._compute_group_name()
 
@@ -460,8 +480,8 @@ class ParameterGroup(ABC):
             method_name = param_name.replace("_", "")
 
             # Create a closure that captures the param_name
-            def make_getter(pn):
-                def getter(self):
+            def make_getter(pn: str) -> Callable[[ParameterGroup], ParamValue]:
+                def getter(self: ParameterGroup) -> ParamValue:
                     return self.get_value(pn)
 
                 return getter
@@ -469,7 +489,7 @@ class ParameterGroup(ABC):
             # Add the method to the class
             setattr(self.__class__, method_name, make_getter(param_name))
 
-    def add_properties_to_object(self, obj: fc.DocumentObject):
+    def add_properties_to_object(self, obj: fc.DocumentObject) -> None:
         """Automatically add all parameter properties to the FreeCAD object."""
         for param_name, param in self._parameters.items():
             value = self.get_value(param_name)
@@ -488,7 +508,7 @@ class ParameterGroup(ABC):
             # Set the value appropriately based on property type
             setattr(obj, property_name, value)
 
-    def get_value(self, param_name: str) -> Any:
+    def get_value(self, param_name: str) -> ParamValue:
         """Get value for a specific parameter, handling default resolution."""
         if param_name in self._values:
             return self._values[param_name]
@@ -496,11 +516,12 @@ class ParameterGroup(ABC):
         param = self._parameters[param_name]
         return self._resolve_default(param)
 
-    def _resolve_default(self, param: BaseParam) -> Any:
+    def _resolve_default(self, param: BaseParam) -> ParamValue:
         """Resolve parameter default based on group's default_type.
 
         Args:
             param: The parameter to resolve the default for.
+
         """
         fallback = param.default()
         dt = self._default_type
@@ -513,7 +534,10 @@ class ParameterGroup(ABC):
 
         if dt == DefaultType.SAVED:
             return self._resolver.get_saved(
-                self._group_name, param.name, fallback, param.default_value_type()
+                self._group_name,
+                param.name,
+                fallback,
+                param.default_value_type(),
             )
 
         if dt == DefaultType.MEM:
@@ -521,12 +545,12 @@ class ParameterGroup(ABC):
 
         return fallback
 
-    def set_value(self, param_name: str, value: Any):
+    def set_value(self, param_name: str, value: ParamValue) -> None:
         """Set value for a specific parameter."""
         if param_name in self._parameters:
             self._values[param_name] = value
 
-    def set_all_values(self, values: dict[str, Any]):
+    def set_all_values(self, values: dict[str, ParamValue]) -> None:
         """Set multiple parameter values at once."""
         for param_name, value in values.items():
             self.set_value(param_name, value)
@@ -562,7 +586,7 @@ class ParameterGroup(ABC):
 
     def save_as_defaults(self) -> None:
         """Save current values as SAVED defaults (for Edit Defaults command)."""
-        for param_name, param in self._parameters.items():
+        for param_name in self._parameters:
             value = self.get_value(param_name)
             # Convert Quantity to float for storage
             if hasattr(value, "Value"):
@@ -576,10 +600,13 @@ class ParameterGroup(ABC):
             # Convert Quantity to float for comparison
             fallback_for_lookup = float(fallback.Value) if hasattr(fallback, "Value") else fallback
             saved = self._resolver.get_saved(
-                self._group_name, param_name, fallback_for_lookup, param.default_value_type()
+                self._group_name,
+                param_name,
+                fallback_for_lookup,
+                param.default_value_type(),
             )
             # For FloatParams, convert back to Quantity if needed
-            if hasattr(fallback, "Value") and isinstance(saved, (int, float)):
+            if hasattr(fallback, "Value") and isinstance(saved, int | float):
                 saved = fc.Units.Quantity(saved, fallback.Unit)
             self._values[param_name] = saved
         return self
@@ -596,7 +623,7 @@ class ParameterGroup(ABC):
         group_name = self.__class__.__name__.replace("Params", "")
         return re.sub(r"(?<!^)(?=[A-Z])", "_", group_name).lower()
 
-    def validate(self) -> Dict[str, str]:
+    def validate(self) -> dict[str, str]:
         """Automatically validate all parameters in this group."""
         errors = {}
         for param_name, param in self._parameters.items():
@@ -605,14 +632,14 @@ class ParameterGroup(ABC):
                 errors[param_name] = f"Invalid value for {param.display_name}: {value}"
         return errors
 
-    def to_ui_payload(self) -> Dict[str, Any]:
+    def to_ui_payload(self) -> dict[str, Any]:
         """Return UI-friendly payload for this parameter group."""
-        payload: Dict[str, Any] = {}
+        payload: dict[str, Any] = {}
         for param_name, param in self._parameters.items():
             payload[param_name] = self._to_ui_value(param, self.get_value(param_name))
         return payload
 
-    def from_ui_payload(self, payload: Dict[str, Any]) -> None:
+    def from_ui_payload(self, payload: dict[str, Any]) -> None:
         """Apply UI payload values to this parameter group."""
         for param_name, ui_value in payload.items():
             if param_name not in self._parameters:
@@ -620,7 +647,7 @@ class ParameterGroup(ABC):
             param = self._parameters[param_name]
             self.set_value(param_name, self._from_ui_value(param, ui_value))
 
-    def ui_descriptors(self) -> Dict[str, UIField]:
+    def ui_descriptors(self) -> dict[str, UIField]:
         """Automatically generate UI configuration for all parameters."""
         descriptors = {}
         for param_name, param in self._parameters.items():
@@ -642,7 +669,7 @@ class ParameterGroup(ABC):
             return self._parameters[param_name]
         raise KeyError(f"Parameter '{param_name}' not found in group {self.__class__.__name__}")
 
-    def defaults(self) -> Dict[str, Any]:
+    def defaults(self) -> dict[str, Any]:
         """Automatically return all default values."""
         defaults = {}
         for param_name, param in self._parameters.items():
@@ -653,20 +680,20 @@ class ParameterGroup(ABC):
         """Determine UI control type based on parameter type."""
         if isinstance(param, BooleanParam):
             return "checkbox"
-        if isinstance(param, (FloatParam, IntParam)):
+        if isinstance(param, FloatParam | IntParam):
             return "spinbox"
         if isinstance(param, LiteralParam):
             return "combo" if param.choices else "textbox"
         return "textbox"
 
-    def _to_ui_value(self, param: BaseParam, value: Any) -> Any:
+    def _to_ui_value(self, param: BaseParam, value: ParamValue) -> ParamValue:
         if isinstance(param, IntParam):
             return int(value)
         if isinstance(param, FloatParam):
             return float(value)
         return value
 
-    def _from_ui_value(self, param: BaseParam, ui_value: Any) -> Any:
+    def _from_ui_value(self, param: BaseParam, ui_value: ParamValue) -> ParamValue:
         if isinstance(param, IntParam):
             return int(ui_value)
         if isinstance(param, FloatParam):
@@ -679,7 +706,7 @@ class ParameterGroup(ABC):
             return str(ui_value)
         return ui_value
 
-    def _get_saved_default(self, param_name: str, fallback: Any) -> Any:
+    def _get_saved_default(self, param_name: str, fallback: ParamValue) -> ParamValue:
         """Get default value from plugin config."""
         if param_name not in self._parameters:
             return fallback
@@ -687,10 +714,13 @@ class ParameterGroup(ABC):
             return fallback
         param = self._parameters[param_name]
         return self._resolver.get_saved(
-            self._group_name, param.name, fallback, param.default_value_type()
+            self._group_name,
+            param.name,
+            fallback,
+            param.default_value_type(),
         )
 
-    def _get_runtime_default(self, param_name: str, fallback: Any) -> Any:
+    def _get_runtime_default(self, param_name: str, fallback: ParamValue) -> ParamValue:
         """Get default value from runtime memory."""
         if param_name not in self._parameters:
             return fallback
@@ -699,18 +729,19 @@ class ParameterGroup(ABC):
         param = self._parameters[param_name]
         return self._resolver.get_runtime(self._group_name, param.name, fallback)
 
-    def data(self) -> Any:
+    @abstractmethod
+    def data(self) -> object:
         """Return a frozen data object with current parameter values."""
         # This will be overridden by subclasses to return specific data classes
         raise NotImplementedError("Subclasses must implement data() method")
 
-    def get_ui_controls(self):
+    def get_ui_controls(self) -> dict[str, object]:  # noqa: C901, PLR0912
         """Generate and return UI controls for all parameters in this group."""
         try:
             from PySide.QtWidgets import (
                 QCheckBox,
-                QDoubleSpinBox,
                 QComboBox,
+                QDoubleSpinBox,
             )
         except ImportError:
             # Fallback if GUI is not available
@@ -732,7 +763,7 @@ class ParameterGroup(ABC):
             elif ui_field.control_type == "spinbox":
                 control = QDoubleSpinBox()
                 # Handle min/max values safely for numeric params
-                if isinstance(param, (FloatParam, IntParam)):
+                if isinstance(param, FloatParam | IntParam):
                     if param.min_value is not None:
                         try:
                             control.setMinimum(float(param.min_value))
@@ -765,7 +796,7 @@ class ParameterGroup(ABC):
                 control = QDoubleSpinBox()
                 try:
                     control.setValue(
-                        float(default_value) if isinstance(default_value, (int, float)) else 0
+                        float(default_value) if isinstance(default_value, int | float) else 0,
                     )
                 except (TypeError, ValueError):
                     control.setValue(0.0)
@@ -774,14 +805,15 @@ class ParameterGroup(ABC):
 
         return controls
 
-    def update_from_ui_controls(self, controls: Dict[str, Any]) -> None:
+    def update_from_ui_controls(self, controls: dict[str, Any]) -> None:
         """Update parameter values from UI controls.
 
         Args:
             controls: Dict mapping param_name to Qt widget controls.
+
         """
         try:
-            from PySide.QtWidgets import QCheckBox, QDoubleSpinBox, QSpinBox, QComboBox
+            from PySide.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QSpinBox
         except ImportError:
             return
 
@@ -792,7 +824,7 @@ class ParameterGroup(ABC):
 
             if isinstance(control, QCheckBox):
                 value = control.isChecked()
-            elif isinstance(control, (QDoubleSpinBox, QSpinBox)):
+            elif isinstance(control, QDoubleSpinBox | QSpinBox):
                 raw_value = control.value()
                 # For FloatParam, convert to Quantity
                 if isinstance(param, FloatParam):
@@ -806,9 +838,13 @@ class ParameterGroup(ABC):
 
             self.set_value(param_name, value)
 
-    def build_ui(self, layout=None, section_title: str = "", show_description: bool = True):
-        """
-        Build UI for this parameter group.
+    def build_ui(
+        self,
+        layout: QLayout | None = None,
+        section_title: str = "",
+        show_description: bool = True,  # noqa: FBT001, FBT002
+    ) -> tuple[dict[str, object], QWidget | None]:
+        """Build UI for this parameter group.
 
         Args:
             layout: Optional layout to add the UI to
@@ -818,13 +854,15 @@ class ParameterGroup(ABC):
         Returns:
             tuple: (controls_dict, widget) where controls_dict maps parameter names to UI controls
                    and widget is the container widget
+
         """
         try:
-            from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QLabel
-            from PySide.QtCore import Qt
+            from PySide.QtWidgets import QFormLayout, QLabel, QVBoxLayout, QWidget
         except ImportError:
             # Fallback if GUI is not available
             return {}, None
+
+        _ = show_description  # Reserved for future use
 
         widget = QWidget()
         container_layout = QVBoxLayout(widget)
@@ -865,10 +903,11 @@ class ParameterValidationError(Exception):
     Useful for bubbling validation failures up to UI or logging.
     """
 
-    def __init__(self, errors: Dict[str, str]):
+    def __init__(self, errors: dict[str, str]) -> None:
+        """Initialize validation error with dict mapping param names to error messages."""
         self.errors = errors
         super().__init__(
-            f"{len(errors)} parameter validation error(s): {'; '.join(errors.values())}"
+            f"{len(errors)} parameter validation error(s): {'; '.join(errors.values())}",
         )
 
 
@@ -887,18 +926,20 @@ class UIField:
     - param_name: Internal parameter identifier
     - min_val/max_val/step: Optional numeric constraints
     - group: Logical grouping for layout organization
+
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         control_type: ControlType,
         label: str,
         param_name: str,
-        min_val: Optional[float] = None,
-        max_val: Optional[float] = None,
-        step: Optional[float] = None,
+        min_val: float | None = None,
+        max_val: float | None = None,
+        step: float | None = None,
         group: str = "general",
-    ):
+    ) -> None:
+        """Initialize UI field descriptor with control type and metadata."""
         self.control_type = control_type
         self.label = label
         self.param_name = param_name
@@ -937,13 +978,14 @@ class CombinedParams:
     Groups are accessible as attributes (e.g., combined.fundamentals.grid_units_x).
     """
 
-    def __init__(self, **param_groups):
+    def __init__(self, **param_groups: ParameterGroup) -> None:
+        """Initialize combined params with named parameter groups."""
         self._param_groups = param_groups
         # Dynamically add accessors for each group
         for name, group in param_groups.items():
             setattr(self, name, group)
 
-    def from_obj(self, obj: fc.DocumentObject) -> "CombinedParams":
+    def from_obj(self, obj: fc.DocumentObject) -> CombinedParams:
         """Extract all parameter groups from FreeCAD object."""
         new_groups = {}
         for name, group in self._param_groups.items():
@@ -959,7 +1001,7 @@ class CombinedParams:
             if hasattr(group, "to_obj"):
                 group.to_obj(obj)
 
-    def validate(self) -> Dict[str, str]:
+    def validate(self) -> dict[str, str]:
         """Validate all parameter groups with hierarchical validation."""
         errors = {}
         for group_name, group in self._param_groups.items():
@@ -970,7 +1012,7 @@ class CombinedParams:
                     errors[f"{group_name}.{param_name}"] = error
         return errors
 
-    def ui_descriptors(self) -> Dict[str, Dict[str, UIField]]:
+    def ui_descriptors(self) -> dict[str, dict[str, UIField]]:
         """Return UI descriptors for all parameter groups."""
         descriptors = {}
         for name, group in self._param_groups.items():
@@ -978,22 +1020,22 @@ class CombinedParams:
                 descriptors[name] = group.ui_descriptors()
         return descriptors
 
-    def to_ui_payload(self) -> Dict[str, Dict[str, Any]]:
+    def to_ui_payload(self) -> dict[str, dict[str, Any]]:
         """Return nested UI payload keyed by group names."""
-        payload: Dict[str, Dict[str, Any]] = {}
+        payload: dict[str, dict[str, Any]] = {}
         for group_name, group in self._param_groups.items():
             if hasattr(group, "to_ui_payload"):
                 payload[group_name] = group.to_ui_payload()
         return payload
 
-    def from_ui_payload(self, payload: Dict[str, Dict[str, Any]]) -> None:
+    def from_ui_payload(self, payload: dict[str, dict[str, Any]]) -> None:
         """Apply nested UI payload keyed by group names."""
         for group_name, group_payload in payload.items():
             group = self._param_groups.get(group_name)
             if group is not None and hasattr(group, "from_ui_payload"):
                 group.from_ui_payload(group_payload)
 
-    def apply_to_ui_controls(self, controls_by_key: Dict[str, Any]) -> None:
+    def apply_to_ui_controls(self, controls_by_key: dict[str, Any]) -> None:
         """Apply values to controls keyed as `group__param`."""
         payload = self.to_ui_payload()
         for group_name, group_payload in payload.items():
@@ -1003,7 +1045,7 @@ class CombinedParams:
                     continue
                 control.setValue(value)
 
-    def apply_to_ui_owner(self, owner: Any) -> None:
+    def apply_to_ui_owner(self, owner: object) -> None:
         """Apply values to UI owner attributes keyed as `group__param`."""
         payload = self.to_ui_payload()
         for group_name, group_payload in payload.items():
@@ -1016,14 +1058,14 @@ class CombinedParams:
                 elif hasattr(control, "setValue"):
                     control.setValue(value)
 
-    def update_from_ui_controls(self, controls_by_key: Dict[str, Any]) -> None:
+    def update_from_ui_controls(self, controls_by_key: dict[str, object]) -> None:
         """Update parameters from controls keyed as `group__param`."""
-        payload: Dict[str, Dict[str, Any]] = {}
+        payload: dict[str, dict[str, ParamValue]] = {}
         for group_name, group in self._param_groups.items():
             if not hasattr(group, "_parameters"):
                 continue
-            group_payload: Dict[str, Any] = {}
-            for param_name in group._parameters:
+            group_payload: dict[str, ParamValue] = {}
+            for param_name in group._parameters:  # noqa: SLF001
                 control = controls_by_key.get(f"{group_name}__{param_name}")
                 if control is None:
                     continue
@@ -1034,14 +1076,14 @@ class CombinedParams:
             payload[group_name] = group_payload
         self.from_ui_payload(payload)
 
-    def update_from_ui_owner(self, owner: Any) -> None:
+    def update_from_ui_owner(self, owner: object) -> None:
         """Update parameters from UI owner attributes keyed as `group__param`."""
-        payload: Dict[str, Dict[str, Any]] = {}
+        payload: dict[str, dict[str, ParamValue]] = {}
         for group_name, group in self._param_groups.items():
             if not hasattr(group, "_parameters"):
                 continue
-            group_payload: Dict[str, Any] = {}
-            for param_name in group._parameters:
+            group_payload: dict[str, ParamValue] = {}
+            for param_name in group._parameters:  # noqa: SLF001
                 control = getattr(owner, f"{group_name}__{param_name}", None)
                 if control is None:
                     continue
@@ -1052,22 +1094,22 @@ class CombinedParams:
             payload[group_name] = group_payload
         self.from_ui_payload(payload)
 
-    def get_all_values(self) -> Dict[str, Any]:
+    def get_all_values(self) -> dict[str, ParamValue]:
         """Get all values from all parameter groups."""
-        all_values = {}
+        all_values: dict[str, ParamValue] = {}
         for group_name, group in self._param_groups.items():
             if hasattr(group, "defaults"):
                 all_values.update({f"{group_name}.{k}": v for k, v in group.defaults().items()})
             # Also try getting actual values if available
             if hasattr(group, "_values"):
-                for param_name, value in group._values.items():
+                for param_name, value in group._values.items():  # noqa: SLF001
                     all_values[f"{group_name}.{param_name}"] = value
         return all_values
 
-    def get_value(self, param_name: str) -> Any:
+    def get_value(self, param_name: str) -> ParamValue:
         """Get value for a parameter by searching through all subgroups."""
-        for group_name, group in self._param_groups.items():
-            if hasattr(group, "_parameters") and param_name in group._parameters:
+        for group in self._param_groups.values():
+            if hasattr(group, "_parameters") and param_name in group._parameters:  # noqa: SLF001
                 return group.get_value(param_name)
 
         # If parameter not found in any subgroup, raise an exception
@@ -1075,17 +1117,17 @@ class CombinedParams:
         for group_name, group in self._param_groups.items():
             if hasattr(group, "_parameters"):
                 available_params.extend(
-                    [f"{group_name}.{pname}" for pname in group._parameters.keys()]
+                    [f"{group_name}.{pname}" for pname in group._parameters],  # noqa: SLF001
                 )
         raise KeyError(
             f"Parameter '{param_name}' not found in any subgroup. "
-            f"Available parameters: {available_params}"
+            f"Available parameters: {available_params}",
         )
 
-    def set_value(self, param_name: str, value: Any):
+    def set_value(self, param_name: str, value: ParamValue) -> None:
         """Set value for a parameter by searching through all subgroups."""
-        for group_name, group in self._param_groups.items():
-            if hasattr(group, "_parameters") and param_name in group._parameters:
+        for group in self._param_groups.values():
+            if hasattr(group, "_parameters") and param_name in group._parameters:  # noqa: SLF001
                 group.set_value(param_name, value)
                 return
 
@@ -1094,34 +1136,34 @@ class CombinedParams:
         for group_name, group in self._param_groups.items():
             if hasattr(group, "_parameters"):
                 available_params.extend(
-                    [f"{group_name}.{pname}" for pname in group._parameters.keys()]
+                    [f"{group_name}.{pname}" for pname in group._parameters],  # noqa: SLF001
                 )
         raise KeyError(
             f"Parameter '{param_name}' not found in any subgroup. "
-            f"Available parameters: {available_params}"
+            f"Available parameters: {available_params}",
         )
 
     def find_param_group(self, param_name: str) -> tuple[str, ParameterGroup]:
         """Find which group contains the specified parameter."""
         for group_name, group in self._param_groups.items():
-            if hasattr(group, "_parameters") and param_name in group._parameters:
+            if hasattr(group, "_parameters") and param_name in group._parameters:  # noqa: SLF001
                 return group_name, group
         raise KeyError(f"Parameter '{param_name}' not found in any subgroup")
 
     def param_exists(self, param_name: str) -> bool:
         """Check if a parameter exists in any subgroup."""
-        for group_name, group in self._param_groups.items():
-            if hasattr(group, "_parameters") and param_name in group._parameters:
+        for group in self._param_groups.values():
+            if hasattr(group, "_parameters") and param_name in group._parameters:  # noqa: SLF001
                 return True
         return False
 
-    def get_param_info(self) -> Dict[str, Dict[str, Any]]:
+    def get_param_info(self) -> dict[str, dict[str, object]]:
         """Get information about all parameters across all subgroups."""
-        param_info = {}
+        param_info: dict[str, dict[str, object]] = {}
         for group_name, group in self._param_groups.items():
             if hasattr(group, "_parameters"):
-                group_params = {}
-                for param_name, param_obj in group._parameters.items():
+                group_params: dict[str, object] = {}
+                for param_name, param_obj in group._parameters.items():  # noqa: SLF001
                     group_params[param_name] = {
                         "display_name": param_obj.display_name,
                         "default": param_obj.default(),
@@ -1131,17 +1173,21 @@ class CombinedParams:
                 param_info[group_name] = group_params
         return param_info
 
-    def add_all_properties_to_object(self, obj: fc.DocumentObject):
+    def add_all_properties_to_object(self, obj: fc.DocumentObject) -> None:
         """Add properties from all contained parameter groups to the FreeCAD object."""
         for group_name, group in self._param_groups.items():
             if hasattr(group, "add_properties_to_object"):
                 # Update the category to be specific to this group
-                group._category = f"Gridfinity_{group_name.title()}"
+                group._category = f"Gridfinity_{group_name.title()}"  # noqa: SLF001
                 group.add_properties_to_object(obj)
 
-    def build_ui(self, layout=None, section_title: str = "", show_description: bool = True):
-        """
-        Build UI controls for all parameter groups combined.
+    def build_ui(
+        self,
+        layout: QLayout | None = None,
+        section_title: str = "",
+        show_description: bool = True,  # noqa: FBT001, FBT002
+    ) -> tuple[dict[str, object], QWidget | None]:
+        """Build UI controls for all parameter groups combined.
 
         Args:
             layout: Optional layout to add the UI to
@@ -1151,10 +1197,10 @@ class CombinedParams:
         Returns:
             tuple: (controls_dict, widget) where controls_dict maps parameter names to UI controls
                    and widget is the container widget
+
         """
         try:
-            from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QLabel
-            from PySide.QtCore import Qt
+            from PySide.QtWidgets import QLabel, QVBoxLayout, QWidget
         except ImportError:
             # Fallback if GUI is not available
             return {}, None
@@ -1189,6 +1235,7 @@ class CombinedParams:
 
         return all_controls, widget
 
+
 class ParamConverter:
     """Utility class for converting between FreeCAD objects and parameter instances.
 
@@ -1201,25 +1248,27 @@ class ParamConverter:
     """
 
     @staticmethod
-    def obj_to_params(obj: fc.DocumentObject, param_class: type) -> Any:
+    def obj_to_params(obj: fc.DocumentObject, param_class: type) -> ParameterGroup:
         """Convert FreeCAD object to parameter class instance."""
         if hasattr(param_class, "from_obj"):
             return param_class().from_obj(obj)
-        else:
-            raise ValueError(f"Parameter class {param_class} does not have a from_obj method")
+        raise ValueError(f"Parameter class {param_class} does not have a from_obj method")
 
     @staticmethod
-    def params_to_obj(params_instance: Any, obj: fc.DocumentObject) -> None:
+    def params_to_obj(
+        params_instance: ParameterGroup | CombinedParams,
+        obj: fc.DocumentObject,
+    ) -> None:
         """Apply parameter instance values back to FreeCAD object."""
         if hasattr(params_instance, "to_obj"):
             params_instance.to_obj(obj)
         else:
             raise ValueError(
-                f"Parameter instance {type(params_instance)} does not have a to_obj method"
+                f"Parameter instance {type(params_instance)} does not have a to_obj method",
             )
 
     @staticmethod
-    def validate_params(params_instance: Any) -> Dict[str, str]:
+    def validate_params(params_instance: ParameterGroup | CombinedParams) -> dict[str, str]:
         """Validate parameter instance values."""
         if hasattr(params_instance, "validate"):
             return params_instance.validate()
@@ -1242,15 +1291,16 @@ class ParamSystemRouter:
     - Baseplate -> CombinedBaseplateParams
     - StackedBaseplates -> CombinedStackedBaseplatesParams
     - Default fallback -> FundamentalsParams
+
     """
 
     @staticmethod
-    def route_obj_to_params(obj: fc.DocumentObject) -> Any:
+    def route_obj_to_params(obj: fc.DocumentObject) -> ParameterGroup | CombinedParams:
         """Route to appropriate param conversion based on object type."""
         from .param import (
             CombinedBaseplateParams,
-            CombinedStackedBaseplatesParams,
             CombinedClipParams,
+            CombinedStackedBaseplatesParams,
             FundamentalsParams,
         )
 
@@ -1261,22 +1311,25 @@ class ParamSystemRouter:
 
             if class_name == "ConnectingClip":
                 return CombinedClipParams().from_obj(obj)
-            elif class_name == "Baseplate":
+            if class_name == "Baseplate":
                 return CombinedBaseplateParams().from_obj(obj)
-            elif class_name == "StackedBaseplates":
+            if class_name == "StackedBaseplates":
                 return CombinedStackedBaseplatesParams().from_obj(obj)
 
         # Default fallback - return fundamentals
         return FundamentalsParams().from_obj(obj)
 
     @staticmethod
-    def route_params_to_obj(params_instance: Any, obj: fc.DocumentObject) -> None:
+    def route_params_to_obj(
+        params_instance: ParameterGroup | CombinedParams,
+        obj: fc.DocumentObject,
+    ) -> None:
         """Route to appropriate param application based on param type."""
         if hasattr(params_instance, "to_obj"):
             params_instance.to_obj(obj)
 
 
-def get_current_param_system(obj: fc.DocumentObject) -> Any:
+def get_current_param_system(obj: fc.DocumentObject) -> ParameterGroup | CombinedParams:
     """Get parameters using appropriate system for the given object.
 
     Convenience function that routes through ParamSystemRouter.
@@ -1285,7 +1338,10 @@ def get_current_param_system(obj: fc.DocumentObject) -> Any:
     return ParamSystemRouter.route_obj_to_params(obj)
 
 
-def apply_param_system(params_instance: Any, obj: fc.DocumentObject) -> None:
+def apply_param_system(
+    params_instance: ParameterGroup | CombinedParams,
+    obj: fc.DocumentObject,
+) -> None:
     """Apply parameters using appropriate system for the given param instance.
 
     Convenience function that routes through ParamSystemRouter.

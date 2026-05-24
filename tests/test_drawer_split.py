@@ -1,20 +1,23 @@
 import unittest
 
-from freecad.gridfinity_workbench.drawer_split import split_axis_into_printable_chunks
+from freecad.gridfinity_workbench.drawer_split import (
+    PrintableChunk,
+    split_axis_into_printable_chunks,
+)
 
 
 class DrawerSplitTest(unittest.TestCase):
-    def _assert_invariants(
+    def _assert_invariants(  # noqa: PLR0913
         self,
         *,
-        pieces,
+        pieces: list[PrintableChunk],
         length_mm: float,
         grid_mm: float,
         bed_mm: float,
         low_fill_mm: float,
         high_fill_mm: float,
         assert_balanced: bool = True,
-    ):
+    ) -> None:
         cells_total = sum(p.cells for p in pieces)
         expected_cells = int(length_mm // grid_mm)
         self.assertEqual(cells_total, expected_cells)

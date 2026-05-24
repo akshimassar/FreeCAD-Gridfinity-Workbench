@@ -12,7 +12,6 @@ are resolved for all parameters in the group:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict
 
 import FreeCAD as fc  # noqa: N813
 
@@ -29,6 +28,8 @@ from .param_system import (
 
 @dataclass(frozen=True)
 class FundamentalsParamsData:
+    """Immutable data container for fundamental Gridfinity dimensions."""
+
     x_grid_size: fc.Units.Quantity
     y_grid_size: fc.Units.Quantity
     bin_outer_radius: fc.Units.Quantity
@@ -38,6 +39,8 @@ class FundamentalsParamsData:
 
 @dataclass(frozen=True)
 class ClipParamsData:
+    """Immutable data container for clip cutout parameters."""
+
     enabled: bool
     clip_tolerance: fc.Units.Quantity
     clip_length: fc.Units.Quantity
@@ -45,12 +48,16 @@ class ClipParamsData:
 
 @dataclass(frozen=True)
 class CombinedClipParamsData:
+    """Immutable combined data for clip geometry generation."""
+
     fundamentals: FundamentalsParamsData
     clip: ClipParamsData
 
 
 @dataclass(frozen=True)
 class BaseplateSizeParamsData:
+    """Immutable data container for baseplate size (grid counts, fillers)."""
+
     x_grid_count: int
     y_grid_count: int
     filler_left_enabled: bool
@@ -65,6 +72,8 @@ class BaseplateSizeParamsData:
 
 @dataclass(frozen=True)
 class BaseplateCoreParamsData:
+    """Immutable data container for baseplate core profile parameters."""
+
     base_profile_lower_chamfer_enabled: bool
     base_profile_lower_chamfer_size: fc.Units.Quantity
     base_profile_top_crop: fc.Units.Quantity
@@ -72,6 +81,8 @@ class BaseplateCoreParamsData:
 
 @dataclass(frozen=True)
 class BaseplateCoreLayoutParamsData:
+    """Immutable data container combining core params with grid layout."""
+
     x_grid_count: int
     y_grid_count: int
     base_profile_lower_chamfer_enabled: bool
@@ -81,6 +92,8 @@ class BaseplateCoreLayoutParamsData:
 
 @dataclass(frozen=True)
 class BaseplateFillersParamsData:
+    """Immutable data container for filler strip parameters."""
+
     left_enabled: bool
     left_width: fc.Units.Quantity
     right_enabled: bool
@@ -93,6 +106,8 @@ class BaseplateFillersParamsData:
 
 @dataclass(frozen=True)
 class ClickSpringParamsData:
+    """Immutable data container for click/snap spring parameters."""
+
     enabled: bool
     click_thickness: fc.Units.Quantity
     click_length: fc.Units.Quantity
@@ -101,6 +116,8 @@ class ClickSpringParamsData:
 
 @dataclass(frozen=True)
 class JunctionScrewParamsData:
+    """Immutable data container for junction screw parameters."""
+
     enabled: bool
     screw_diameter: fc.Units.Quantity
     counterbore_diameter: fc.Units.Quantity
@@ -109,17 +126,23 @@ class JunctionScrewParamsData:
 
 @dataclass(frozen=True)
 class ScrewStubParamsData:
+    """Immutable data container for screw stub parameters."""
+
     enabled: bool
     clearance: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
 class SupportParamsData:
+    """Immutable data container for overhang support parameters."""
+
     overhang_angle: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
 class StackingParamsData:
+    """Immutable data container for stacking/instancing parameters."""
+
     instance_count: int
     corner_stitching: bool
     stitching_thickness: fc.Units.Quantity
@@ -127,6 +150,8 @@ class StackingParamsData:
 
 @dataclass(frozen=True)
 class CombinedSupportBaseplateParamsData:
+    """Immutable combined data for support baseplate geometry generation."""
+
     fundamentals: FundamentalsParamsData
     core: BaseplateCoreLayoutParamsData
     fillers: BaseplateFillersParamsData
@@ -136,6 +161,8 @@ class CombinedSupportBaseplateParamsData:
 
 @dataclass(frozen=True)
 class CombinedBaseplateParamsData:
+    """Immutable combined data for baseplate geometry generation."""
+
     fundamentals: FundamentalsParamsData
     core: BaseplateCoreLayoutParamsData
     fillers: BaseplateFillersParamsData
@@ -147,6 +174,8 @@ class CombinedBaseplateParamsData:
 
 @dataclass(frozen=True)
 class CombinedStackedBaseplatesParamsData:
+    """Immutable combined data for stacked baseplates geometry generation."""
+
     fundamentals: FundamentalsParamsData
     core: BaseplateCoreLayoutParamsData
     fillers: BaseplateFillersParamsData
@@ -159,10 +188,13 @@ class CombinedStackedBaseplatesParamsData:
 
 
 class FundamentalsParams(ParameterGroup):
+    """Fundamental Gridfinity dimensions (grid size, radius, profile)."""
+
     _category = "Gridfinity_Fundamentals"
     _section_title = "Fundamentals"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """Initialize with grid size, outer radius, and profile dimensions."""
         parameters = [
             FloatParam(
                 "grid_size",
@@ -194,6 +226,7 @@ class FundamentalsParams(ParameterGroup):
         self.set_all_values(kwargs)
 
     def data(self) -> FundamentalsParamsData:
+        """Return validated immutable data container."""
         errors = self.validate()
         if errors:
             raise ParameterValidationError(errors)
@@ -207,10 +240,13 @@ class FundamentalsParams(ParameterGroup):
 
 
 class ClipParams(ParameterGroup):
+    """Parameters for clip cutout features on baseplates."""
+
     _category = "Gridfinity_Clip"
     _section_title = "Clip Cutouts"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """Initialize with clip enabled state, tolerance, and length."""
         parameters = [
             BooleanParam("enabled", "Enabled", default_value=True),
             FloatParam(
@@ -229,6 +265,7 @@ class ClipParams(ParameterGroup):
         self.set_all_values(kwargs)
 
     def data(self) -> ClipParamsData:
+        """Return validated immutable data container."""
         errors = self.validate()
         if errors:
             raise ParameterValidationError(errors)
@@ -240,30 +277,35 @@ class ClipParams(ParameterGroup):
 
 
 class CombinedClipParams(CombinedParams):
+    """Combined parameters for clip geometry (fundamentals + clip settings)."""
+
     def __init__(
         self,
         fundamentals: FundamentalsParams = None,
         clip: ClipParams = None,
-    ):
+    ) -> None:
+        """Initialize with fundamentals and clip parameter groups."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
             clip=clip or ClipParams(),
         )
 
-    def validate(self) -> Dict[str, str]:
+    def validate(self) -> dict[str, str]:
+        """Validate cross-group constraints."""
         errors = super().validate()
         try:
             tolerance_val = float(self.clip.get_value("tolerance"))
             clip_length_val = float(self.clip.get_value("clip_length"))
             if clip_length_val <= 2 * tolerance_val:
                 errors["clip.clip_length"] = (
-                    f"Clip length ({clip_length_val}) must be greater than 2 * tolerance ({2 * tolerance_val})"
+                    f"Clip length ({clip_length_val}) must be > 2 * tolerance ({2 * tolerance_val})"
                 )
         except (AttributeError, KeyError, TypeError, ValueError):
             pass
         return errors
 
     def data(self) -> CombinedClipParamsData:
+        """Return validated immutable combined data container."""
         errors = self.validate()
         if errors:
             raise ParameterValidationError(errors)
@@ -284,7 +326,8 @@ class BaseplateSizeParams(ParameterGroup):
     _section_title = "Size"
     _default_type = DefaultType.MEM
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """Initialize with grid counts and filler dimensions."""
         parameters = [
             IntParam(
                 "x_grid_count",
@@ -332,6 +375,7 @@ class BaseplateSizeParams(ParameterGroup):
         self.set_all_values(kwargs)
 
     def data(self) -> BaseplateSizeParamsData:
+        """Return immutable data container."""
         return BaseplateSizeParamsData(
             x_grid_count=self.get_value("x_grid_count"),
             y_grid_count=self.get_value("y_grid_count"),
@@ -347,10 +391,13 @@ class BaseplateSizeParams(ParameterGroup):
 
 
 class BaseplateCoreParams(ParameterGroup):
+    """Core baseplate profile parameters (chamfer, top crop)."""
+
     _category = "Gridfinity_Core"
     _section_title = "Baseplate"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """Initialize with chamfer and top crop settings."""
         parameters = [
             BooleanParam(
                 "lower_chamfer_enabled",
@@ -373,6 +420,7 @@ class BaseplateCoreParams(ParameterGroup):
         self.set_all_values(kwargs)
 
     def data(self) -> BaseplateCoreParamsData:
+        """Return immutable data container."""
         return BaseplateCoreParamsData(
             base_profile_lower_chamfer_enabled=self.get_value("lower_chamfer_enabled"),
             base_profile_lower_chamfer_size=self.get_value("lower_chamfer_size"),
@@ -381,10 +429,13 @@ class BaseplateCoreParams(ParameterGroup):
 
 
 class ClickSpringParams(ParameterGroup):
+    """Parameters for click/snap spring features."""
+
     _category = "Gridfinity_ClickSpring"
     _section_title = "Snap Springs"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """Initialize with spring thickness, length, and offset."""
         parameters = [
             BooleanParam(
                 "enabled",
@@ -412,6 +463,7 @@ class ClickSpringParams(ParameterGroup):
         self.set_all_values(kwargs)
 
     def data(self) -> ClickSpringParamsData:
+        """Return immutable data container."""
         return ClickSpringParamsData(
             enabled=self.get_value("enabled"),
             click_thickness=self.get_value("click_thickness"),
@@ -421,10 +473,13 @@ class ClickSpringParams(ParameterGroup):
 
 
 class JunctionScrewParams(ParameterGroup):
+    """Parameters for junction screw holes."""
+
     _category = "Gridfinity_JunctionScrew"
     _section_title = "Junction Screws"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """Initialize with screw diameter and counterbore settings."""
         parameters = [
             BooleanParam(
                 "enabled",
@@ -452,6 +507,7 @@ class JunctionScrewParams(ParameterGroup):
         self.set_all_values(kwargs)
 
     def data(self) -> JunctionScrewParamsData:
+        """Return immutable data container."""
         return JunctionScrewParamsData(
             enabled=self.get_value("enabled"),
             screw_diameter=self.get_value("screw_diameter"),
@@ -461,10 +517,13 @@ class JunctionScrewParams(ParameterGroup):
 
 
 class ScrewStubParams(ParameterGroup):
+    """Parameters for screw stubs (clearance settings)."""
+
     _category = "Gridfinity_ScrewStub"
     _section_title = "Screw Stubs"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """Initialize with screw stub enabled state and clearance."""
         parameters = [
             BooleanParam(
                 "enabled",
@@ -482,6 +541,7 @@ class ScrewStubParams(ParameterGroup):
         self.set_all_values(kwargs)
 
     def data(self) -> ScrewStubParamsData:
+        """Return immutable data container."""
         return ScrewStubParamsData(
             enabled=self.get_value("enabled"),
             clearance=self.get_value("clearance"),
@@ -489,10 +549,13 @@ class ScrewStubParams(ParameterGroup):
 
 
 class SupportParams(ParameterGroup):
+    """Parameters for overhang support generation."""
+
     _category = "Gridfinity_Support"
     _section_title = "Support"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """Initialize with overhang angle."""
         parameters = [
             FloatParam(
                 "overhang_angle",
@@ -505,14 +568,18 @@ class SupportParams(ParameterGroup):
         self.set_all_values(kwargs)
 
     def data(self) -> SupportParamsData:
+        """Return immutable data container."""
         return SupportParamsData(overhang_angle=self.get_value("overhang_angle"))
 
 
 class StackingParams(ParameterGroup):
+    """Parameters for stacking/instancing baseplates."""
+
     _category = "Gridfinity_Stacking"
     _section_title = "Stacking"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """Initialize with instance count and stitching settings."""
         parameters = [
             IntParam(
                 "instance_count",
@@ -537,6 +604,7 @@ class StackingParams(ParameterGroup):
         self.set_all_values(kwargs)
 
     def data(self) -> StackingParamsData:
+        """Return immutable data container."""
         return StackingParamsData(
             instance_count=self.get_value("instance_count"),
             corner_stitching=self.get_value("corner_stitching"),
@@ -545,7 +613,9 @@ class StackingParams(ParameterGroup):
 
 
 class CombinedBaseplateParams(CombinedParams):
-    def __init__(
+    """Combined parameters for full baseplate geometry generation."""
+
+    def __init__(  # noqa: PLR0913
         self,
         fundamentals: FundamentalsParams = None,
         size: BaseplateSizeParams = None,
@@ -553,7 +623,8 @@ class CombinedBaseplateParams(CombinedParams):
         click_springs: ClickSpringParams = None,
         junction_screws: JunctionScrewParams = None,
         clip_cutouts: ClipParams = None,
-    ):
+    ) -> None:
+        """Initialize with all baseplate parameter groups."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
             size=size or BaseplateSizeParams(),
@@ -563,7 +634,8 @@ class CombinedBaseplateParams(CombinedParams):
             clip_cutouts=clip_cutouts or ClipParams(),
         )
 
-    def validate(self) -> Dict[str, str]:
+    def validate(self) -> dict[str, str]:  # noqa: C901, PLR0912, PLR0915
+        """Validate cross-group constraints."""
         errors = super().validate()
         fundamentals = self.fundamentals.data()
         size = self.size.data()
@@ -578,7 +650,9 @@ class CombinedBaseplateParams(CombinedParams):
         grid_size = float(fundamentals.x_grid_size)
 
         if not top_crop < half_width:
-            errors["core.base_profile_top_crop"] = "Top crop must be less than main profile half width"
+            errors["core.base_profile_top_crop"] = (
+                "Top crop must be less than main profile half width"
+            )
         if not outer_radius > half_width:
             errors["fundamentals.outer_radius"] = (
                 "Outer radius must be greater than main profile half width"
@@ -696,6 +770,7 @@ class CombinedBaseplateParams(CombinedParams):
         return errors
 
     def data(self) -> CombinedBaseplateParamsData:
+        """Return validated immutable combined data container."""
         size = self.size.data()
         core = self.core.data()
         return CombinedBaseplateParamsData(
@@ -725,6 +800,8 @@ class CombinedBaseplateParams(CombinedParams):
 
 
 class CombinedSupportBaseplateParams(CombinedParams):
+    """Combined parameters for support baseplate geometry generation."""
+
     def __init__(
         self,
         fundamentals: FundamentalsParams = None,
@@ -732,7 +809,8 @@ class CombinedSupportBaseplateParams(CombinedParams):
         core: BaseplateCoreParams = None,
         click_springs: ClickSpringParams = None,
         support: SupportParams = None,
-    ):
+    ) -> None:
+        """Initialize with fundamentals, size, core, click springs, and support."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
             size=size or BaseplateSizeParams(),
@@ -741,7 +819,8 @@ class CombinedSupportBaseplateParams(CombinedParams):
             support=support or SupportParams(),
         )
 
-    def validate(self) -> Dict[str, str]:
+    def validate(self) -> dict[str, str]:
+        """Validate cross-group constraints."""
         errors = super().validate()
         fundamentals = self.fundamentals.data()
         core = self.core.data()
@@ -750,7 +829,9 @@ class CombinedSupportBaseplateParams(CombinedParams):
         top_crop = float(core.base_profile_top_crop)
 
         if not top_crop < half_width:
-            errors["core.base_profile_top_crop"] = "Top crop must be less than main profile half width"
+            errors["core.base_profile_top_crop"] = (
+                "Top crop must be less than main profile half width"
+            )
         if not outer_radius > half_width:
             errors["fundamentals.outer_radius"] = (
                 "Outer radius must be greater than main profile half width"
@@ -758,6 +839,7 @@ class CombinedSupportBaseplateParams(CombinedParams):
         return errors
 
     def data(self) -> CombinedSupportBaseplateParamsData:
+        """Return validated immutable combined data container."""
         size = self.size.data()
         core = self.core.data()
         return CombinedSupportBaseplateParamsData(
@@ -785,7 +867,9 @@ class CombinedSupportBaseplateParams(CombinedParams):
 
 
 class CombinedStackedBaseplatesParams(CombinedParams):
-    def __init__(
+    """Combined parameters for stacked baseplates geometry generation."""
+
+    def __init__(  # noqa: PLR0913
         self,
         fundamentals: FundamentalsParams = None,
         size: BaseplateSizeParams = None,
@@ -796,7 +880,8 @@ class CombinedStackedBaseplatesParams(CombinedParams):
         support: SupportParams = None,
         stacking: StackingParams = None,
         clip_cutouts: ClipParams = None,
-    ):
+    ) -> None:
+        """Initialize with all stacked baseplates parameter groups."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
             size=size or BaseplateSizeParams(),
@@ -809,7 +894,8 @@ class CombinedStackedBaseplatesParams(CombinedParams):
             clip_cutouts=clip_cutouts or ClipParams(),
         )
 
-    def validate(self) -> Dict[str, str]:
+    def validate(self) -> dict[str, str]:
+        """Validate cross-group constraints."""
         errors = CombinedBaseplateParams(
             fundamentals=self.fundamentals,
             size=self.size,
@@ -831,6 +917,7 @@ class CombinedStackedBaseplatesParams(CombinedParams):
         return errors
 
     def data(self) -> CombinedStackedBaseplatesParamsData:
+        """Return validated immutable combined data container."""
         size = self.size.data()
         core = self.core.data()
         return CombinedStackedBaseplatesParamsData(
@@ -872,7 +959,8 @@ class PluginSettingsParams(ParameterGroup):
     _section_title = "Performance"
     _default_type = DefaultType.SAVED
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
+        """Initialize with cache size settings."""
         parameters = [
             IntParam(
                 "baseplate_cache_size",
@@ -893,11 +981,14 @@ class PluginSettingsParams(ParameterGroup):
         super().__init__(parameters)
         self.set_all_values(kwargs)
 
+    def data(self) -> None:
+        """Plugin settings don't have a data object - they apply directly to system."""
+
     def apply_to_system(self) -> None:
         """Apply cache settings to the baseplate builder."""
         from . import baseplate_builder
 
         baseplate_builder.set_baseplate_shape_cache_max_entries(
-            self.get_value("baseplate_cache_size")
+            int(self.get_value("baseplate_cache_size")),
         )
-        baseplate_builder.set_cell_shape_cache_max_entries(self.get_value("cell_cache_size"))
+        baseplate_builder.set_cell_shape_cache_max_entries(int(self.get_value("cell_cache_size")))

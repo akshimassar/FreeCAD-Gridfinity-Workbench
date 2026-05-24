@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PrintableAxisChunk:
+    """A single printable chunk along one axis."""
+
     cells: int
     low_fill_mm: float
     high_fill_mm: float
@@ -43,7 +45,7 @@ def _build_greedy_chunk_cell_counts(total: int, cap_cells: int) -> list[int]:
     return sizes
 
 
-def split_axis_into_printable_chunks(
+def split_axis_into_printable_chunks(  # noqa: C901, PLR0912, PLR0915
     *,
     length_mm: float,
     grid_mm: float,
@@ -51,6 +53,7 @@ def split_axis_into_printable_chunks(
     alignment: str,
     algorithm: str = "balanced",
 ) -> list[PrintableAxisChunk]:
+    """Split an axis into printable chunks based on bed and grid constraints."""
     if grid_mm <= 0 or bed_mm <= 0 or length_mm <= 0:
         raise ValueError("length, grid and bed must be > 0")
     if bed_mm < grid_mm:

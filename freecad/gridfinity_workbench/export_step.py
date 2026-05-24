@@ -12,7 +12,7 @@ from . import features, utils
 
 
 def export_rect_baseplates_step(
-    output_root: str = "/tmp/gridfinity-clickbase-printable",
+    output_root: str = "/tmp/gridfinity-clickbase-printable",  # noqa: S108
     *,
     x_max: int = 5,
     y_max: int = 6,

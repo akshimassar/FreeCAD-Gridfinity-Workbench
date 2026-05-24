@@ -7,7 +7,8 @@ import Part
 
 
 def _profile_scales(
-    half_width: fc.Units.Quantity, height: fc.Units.Quantity
+    half_width: fc.Units.Quantity,
+    height: fc.Units.Quantity,
 ) -> tuple[float, float]:
     scale_y = half_width / (2.15 * fc.Units.Quantity("1 mm"))
     scale_z = height / (2.5 * fc.Units.Quantity("1 mm"))

@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import FreeCAD as fc  # noqa: N813
 import Part
 
-from .baseplate_full_layout import GridfinityLayoutGeometry
-from .param import JunctionScrewParamsData, ScrewStubParamsData
+if TYPE_CHECKING:
+    from .baseplate_full_layout import GridfinityLayoutGeometry
+    from .param import JunctionScrewParamsData, ScrewStubParamsData
+
+_JUNCTION_FULL_NEIGHBORS = 4
 
 
 def iter_supported_junctions(geometry: GridfinityLayoutGeometry) -> list[tuple[float, float]]:
+    """Iterate over junction coordinates where screw holes are supported."""
     nx, ny = geometry.size()
     points: list[tuple[float, float]] = []
     for ix in range(1, nx):
         for iy in range(1, ny):
             neighbours = geometry.junction_neighbours(ix, iy)
-            if neighbours.count_true() != 4:
+            if neighbours.count_true() != _JUNCTION_FULL_NEIGHBORS:
                 continue
             if neighbours.has_tiny():
                 continue
@@ -28,6 +34,7 @@ def holes_shape(
     top_z: fc.Units.Quantity,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
+    """Build junction screw hole shapes."""
     through_depth = float(top_z + 0.1 * fc.Units.Quantity("1 mm"))
     cutters: list[Part.Shape] = []
     for x, y in iter_supported_junctions(geometry):
@@ -44,7 +51,7 @@ def holes_shape(
             fc.Vector(0, 0, -1),
         )
         transition_height = float(
-            (junction_screws.counterbore_diameter - junction_screws.screw_diameter) / 2
+            (junction_screws.counterbore_diameter - junction_screws.screw_diameter) / 2,
         )
         transition = Part.makeCone(
             float(junction_screws.counterbore_diameter / 2),
@@ -65,6 +72,7 @@ def stubs_shape(
     bottom_z: fc.Units.Quantity,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
+    """Build junction screw stub shapes."""
     stub_diameter = float(junction_screws.screw_diameter - screw_stubs.clearance)
     counterbore_diameter = float(junction_screws.counterbore_diameter - screw_stubs.clearance)
     transition_height = (counterbore_diameter - stub_diameter) / 2

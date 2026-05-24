@@ -1,6 +1,7 @@
 """Feature modules contain bins an baseplate objects."""
 
 # ruff: noqa: D101, D102, D107
+from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import replace
@@ -13,13 +14,19 @@ try:
 except ImportError:  # pragma: no cover
     fcg = None
 
+import contextlib
+
+from . import (
+    baseplate_builder,
+    check_version,
+    clip_profiles,
+    const,
+    grid_initial_layout,
+    label_shelf,
+    utils,
+)
 from . import baseplate_feature_construction as baseplate_feat
-from . import baseplate_builder
-from . import clip_profiles
-from . import check_version, const, grid_initial_layout, label_shelf, utils
 from . import feature_construction as feat
-from .param import CombinedBaseplateParams, CombinedClipParams
-from .drawer_split import split_axis_into_printable_chunks
 from .custom_shape_features import (
     clean_up_layout,
     custom_shape_solid,
@@ -29,6 +36,8 @@ from .custom_shape_features import (
     vertical_edge_fillet,
     vertical_edge_fillet_with_concave_edges,
 )
+from .drawer_split import split_axis_into_printable_chunks
+from .param import CombinedBaseplateParams, CombinedClipParams
 from .version import __version__
 
 unitmm = fc.Units.Quantity("1 mm")
@@ -62,7 +71,7 @@ class FoundationGridfinity:
             try:
                 result_shape.transformShape(fp.Placement.inverse().toMatrix(), copy=True)
             except TypeError:
-                result_shape.transformShape(fp.Placement.inverse().toMatrix(), True)
+                result_shape.transformShape(fp.Placement.inverse().toMatrix(), True)  # noqa: FBT003
 
             fp.Shape = result_shape
 
@@ -445,7 +454,10 @@ class DrawerBaseplate(FoundationGridfinity):
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         return self.fit_drawer_with_printable_baseplates(obj)
 
-    def fit_drawer_with_printable_baseplates(self, obj: fc.DocumentObject) -> Part.Shape:
+    def fit_drawer_with_printable_baseplates(  # noqa: PLR0915
+        self,
+        obj: fc.DocumentObject,
+    ) -> Part.Shape:
         params = CombinedBaseplateParams().from_obj(obj).data()
         preview_mode = bool(getattr(obj, "PreviewBuildMode", False))
         options = baseplate_builder.BaseplateBuildOptions(
@@ -497,7 +509,7 @@ class DrawerBaseplate(FoundationGridfinity):
         if fc.GuiUp and fcg is not None:
             try:
                 status_bar = fcg.getMainWindow().statusBar()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 status_bar = None
 
         for row_index in range(y_chunk_count):
@@ -560,15 +572,16 @@ class DrawerBaseplate(FoundationGridfinity):
                 baseplate_shapes.append(shape)
 
                 built_baseplates += 1
-                progress_msg = f"Drawer baseplates: built {built_baseplates}/{total_baseplates} ({baseplate_name})"
+                progress_msg = (
+                    f"Drawer baseplates: built {built_baseplates}/"
+                    f"{total_baseplates} ({baseplate_name})"
+                )
                 fc.Console.PrintMessage(f"[Gridfinity] {progress_msg}\n")
                 if status_bar is not None:
                     status_bar.showMessage(progress_msg)
                 if fc.GuiUp and fcg is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         fcg.updateGui()
-                    except Exception:
-                        pass
 
         obj.PieceNames = baseplate_names
         if status_bar is not None:
@@ -675,7 +688,7 @@ def _stacked_support_prototype(obj: fc.DocumentObject) -> Part.Shape:
 
 def _build_corner_stitching_shape(
     obj: fc.DocumentObject,
-    baseplates_bbox,
+    baseplates_bbox: object,  # Part.BoundBox
 ) -> Part.Shape | None:
     stitching_thickness = float(getattr(obj, "StitchingThickness", 0.4 * unitmm))
     if not bool(getattr(obj, "CornerStitching", False)) or stitching_thickness <= 0:
@@ -699,8 +712,13 @@ def _build_corner_stitching_shape(
     outer_mid_scale = 0.2928932188134524
     inner_mid_offset = (outer_radius - stitching_thickness) * 0.7071067811865476
 
-    def _point(
-        corner_x: float, corner_y: float, sign_x: int, sign_y: int, local_x: float, local_y: float
+    def _point(  # noqa: PLR0913
+        corner_x: float,
+        corner_y: float,
+        sign_x: int,
+        sign_y: int,
+        local_x: float,
+        local_y: float,
     ) -> fc.Vector:
         return fc.Vector(corner_x + (sign_x * local_x), corner_y + (sign_y * local_y), 0)
 
@@ -789,10 +807,7 @@ def _build_stacked_support_shape(obj: fc.DocumentObject) -> Part.Shape:
         if idx:
             shape.translate(fc.Vector(0, 0, idx * z_step))
         shapes.append(shape)
-    if len(shapes) == 1:
-        stacked_supports = shapes[0]
-    else:
-        stacked_supports = shapes[0].multiFuse(shapes[1:])
+    stacked_supports = shapes[0] if len(shapes) == 1 else shapes[0].multiFuse(shapes[1:])
 
     baseplates_bbox = _build_stacked_baseplates_core_shape(obj).BoundBox
     stitching_shape = _build_corner_stitching_shape(obj, baseplates_bbox)
@@ -1469,7 +1484,7 @@ class StandaloneLabelShelf:
 
 
 class ConnectingClip(FoundationGridfinity):
-    def __init__(self, obj: fc.DocumentObject, params: "CombinedClipParams") -> None:
+    def __init__(self, obj: fc.DocumentObject, params: CombinedClipParams) -> None:
         super().__init__(obj)
 
         # Use the generic parameter-driven property addition

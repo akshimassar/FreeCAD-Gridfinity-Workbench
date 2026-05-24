@@ -4,7 +4,9 @@ Contains command objects representing what should happen on a button press.
 """
 
 # ruff: noqa: D101, D102, D107, N802
+from __future__ import annotations
 
+import contextlib
 import re
 import time
 from collections import OrderedDict
@@ -28,8 +30,8 @@ from PySide.QtWidgets import (
 )
 
 from . import baseplate_builder, custom_shape, features, utils
+from .drawer_split import split_axis_into_printable_chunks
 from .param import CombinedBaseplateParams
-from .param_system import CombinedParams
 
 
 def _standard_buttons_ok_cancel() -> int:
@@ -40,10 +42,13 @@ def _standard_buttons_ok_cancel() -> int:
     if hasattr(ok, "value"):
         return ok.value | cancel.value
     return int(ok) | int(cancel)
-from .drawer_split import split_axis_into_printable_chunks
+
 
 if TYPE_CHECKING:
     import Part
+
+    from .param import CombinedClipParams
+    from .param_system import CombinedParams
 
 ICONDIR = Path(__file__).parent / "icons"
 
@@ -89,7 +94,7 @@ class ViewProviderGridfinity:
         if state and "icon_path" in state:
             self.icon_path = state["icon_path"]
 
-    def doubleClicked(self, vobj: fcg.ViewProviderDocumentObject) -> bool:
+    def doubleClicked(self, vobj: fcg.ViewProviderDocumentObject) -> bool:  # noqa: PLR0911
         """Open edit task dialog on double click for simple baseplate."""
         obj = getattr(vobj, "Object", None)
         if obj is None:
@@ -108,7 +113,7 @@ class ViewProviderGridfinity:
             if source is None:
                 return False
             fcg.Control.showDialog(
-                CreateStackedBaseplatesTaskPanel(self.icon_path, target_obj=source)
+                CreateStackedBaseplatesTaskPanel(self.icon_path, target_obj=source),
             )
             return True
         if isinstance(proxy, features.Baseplate):
@@ -181,7 +186,7 @@ def _build_size_section(layout: QVBoxLayout) -> dict[str, QWidget]:
 
     # Create size param group and build its UI
     params = BaseplateSizeParams()
-    controls, widget = params.build_ui(None, "Size", True)
+    controls, widget = params.build_ui(None, "Size", show_description=True)
 
     # Add to layout
     layout.addWidget(widget)
@@ -207,7 +212,7 @@ def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict
     # Add note if needed
     if show_note:
         compatibility_note = QLabel(
-            "Changing these values affects Gridfinity compatibility with other objects."
+            "Changing these values affects Gridfinity compatibility with other objects.",
         )
         compatibility_note.setWordWrap(True)
         compatibility_note.setAlignment(Qt.AlignLeft)
@@ -224,11 +229,11 @@ def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict
 
 
 def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
-    from .param import BaseplateCoreParams, ClickSpringParams, JunctionScrewParams, ClipParams
+    from .param import BaseplateCoreParams, ClickSpringParams, ClipParams, JunctionScrewParams
 
     # Create the core baseplate param group and build its UI
     core_params = BaseplateCoreParams()
-    core_controls, core_widget = core_params.build_ui(None, "Baseplate", True)
+    core_controls, core_widget = core_params.build_ui(None, "Baseplate", show_description=True)
 
     # Add core controls to layout
     layout.addWidget(core_widget)
@@ -241,7 +246,9 @@ def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     # Create and add snap springs section
     click_params = ClickSpringParams()
     click_controls, click_widget = click_params.build_ui(
-        None, "", True
+        None,
+        "",
+        show_description=True,
     )  # No title - we'll add our own
     # Add styled label for subsection
     click_label = _section_label("Snap springs", indent_px=20)
@@ -254,7 +261,11 @@ def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
 
     # Create and add junction screws section
     junction_params = JunctionScrewParams()
-    junction_controls, junction_widget = junction_params.build_ui(None, "", True)  # No title
+    junction_controls, junction_widget = junction_params.build_ui(
+        None,
+        "",
+        show_description=True,
+    )  # No title
     # Add styled label for subsection
     junction_label = _section_label("Junction screws", indent_px=20)
     layout.addWidget(junction_label)
@@ -266,7 +277,11 @@ def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
 
     # Create and add connecting clips section
     clip_params = ClipParams()
-    clip_controls, clip_widget = clip_params.build_ui(None, "", True)  # No title
+    clip_controls, clip_widget = clip_params.build_ui(
+        None,
+        "",
+        show_description=True,
+    )  # No title
     # Add styled label for subsection
     clip_label = _section_label("Connecting clips", indent_px=20)
     layout.addWidget(clip_label)
@@ -280,29 +295,31 @@ def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
 
 
 def _build_bin_section(layout: QVBoxLayout) -> dict[str, QWidget]:
-    # TODO: Bin section needs rework. Hardcoded defaults for now.
-    from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget, QCheckBox
-    from PySide.QtCore import Qt
+    # NOTE: Bin section needs rework. Hardcoded defaults for now.
+    from PySide.QtWidgets import QFormLayout
 
     layout.addWidget(_section_label("Bin"))
     form = QFormLayout()
     form.setContentsMargins(20, 0, 0, 0)
-    clearance = _mm_spinbox(0.25)  # TODO: migrate to param system after bin rework
+    clearance = _mm_spinbox(0.25)  # NOTE: migrate to param system after bin rework
     form.addRow("Clearance", clearance)
     half_grid_size = QCheckBox()
-    half_grid_size.setChecked(False)  # TODO: half_grid_size dropped until bin rework
+    half_grid_size.setChecked(False)  # NOTE: half_grid_size dropped until bin rework
     form.addRow("Half Grid Size", half_grid_size)
     layout.addLayout(form)
     return {"clearance": clearance, "half_grid_size": half_grid_size}
 
 
 def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dict[str, QWidget]:
-    from .param import SupportParams, ScrewStubParams
-    from PySide.QtWidgets import QDoubleSpinBox, QCheckBox, QFormLayout, QVBoxLayout, QWidget
+    from .param import ScrewStubParams, SupportParams
 
     # Create the support params group
     support_params = SupportParams(overhang_angle=overhang_angle * fc.Units.Quantity("1 deg"))
-    support_controls, support_widget = support_params.build_ui(None, "Support", True)
+    support_controls, support_widget = support_params.build_ui(
+        None,
+        "Support",
+        show_description=True,
+    )
 
     # Add to layout
     layout.addWidget(support_widget)
@@ -310,7 +327,9 @@ def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dic
     # Create screw stub params group
     screw_stub_params = ScrewStubParams()
     screw_stub_controls, screw_stub_widget = screw_stub_params.build_ui(
-        None, "", True
+        None,
+        "",
+        show_description=True,
     )  # No title for secondary section
 
     # Add label for screw stubs section
@@ -343,7 +362,11 @@ def _build_stacked_section(
         corner_stitching=corner_stitching,
         stitching_thickness=fc.Units.Quantity(f"{stitching_thickness} mm"),
     )
-    stacking_controls, stacking_widget = stacking_params.build_ui(None, "Stacked", True)
+    stacking_controls, stacking_widget = stacking_params.build_ui(
+        None,
+        "Stacked",
+        show_description=True,
+    )
 
     layout.addWidget(stacking_widget)
 
@@ -463,7 +486,11 @@ class CreateDrawerBaseplate(BaseCommand):
 class CreateDrawerBaseplateTaskPanel:
     """Task panel for planning drawer baseplate splits (no geometry yet)."""
 
-    def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
+    def __init__(  # noqa: PLR0915
+        self,
+        pixmap: Path | str,
+        target_obj: fc.DocumentObject | None = None,
+    ) -> None:
         self._pixmap = pixmap
         self._edit_obj = target_obj
         self._target_obj: fc.DocumentObject | None = None
@@ -474,7 +501,7 @@ class CreateDrawerBaseplateTaskPanel:
         self.form.setWindowTitle(
             "Edit Drawer Fit Baseplates"
             if target_obj is not None
-            else "Create Drawer Fit Baseplates"
+            else "Create Drawer Fit Baseplates",
         )
 
         layout = QVBoxLayout(self.form)
@@ -514,7 +541,7 @@ class CreateDrawerBaseplateTaskPanel:
         controls: dict[str, QWidget] = {}
         controls.update(_build_fundamentals_section(layout, show_note=False))
         controls.update(
-            _build_baseplate_section(layout)
+            _build_baseplate_section(layout),
         )
         for key, widget in controls.items():
             setattr(self, key, widget)
@@ -530,14 +557,13 @@ class CreateDrawerBaseplateTaskPanel:
             view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
             ViewProviderGridfinity(view_object, str(self._pixmap))
             if hasattr(view_object, "ShowInTree"):
-                try:
+                with contextlib.suppress(Exception):
                     view_object.ShowInTree = False
-                except Exception:
-                    pass
         features.DrawerBaseplate(self._target_obj)
         if self._edit_obj is not None:
             self._restore_object_values(
-                self._target_obj, self._capture_object_values(self._edit_obj)
+                self._target_obj,
+                self._capture_object_values(self._edit_obj),
             )
 
         self._preview_timer = QTimer(self.form)
@@ -592,7 +618,7 @@ class CreateDrawerBaseplateTaskPanel:
     def _format_preview_label(base_label: str) -> str:
         return f"[Preview] {base_label}"
 
-    def _set_show_in_tree(self, obj: fc.DocumentObject, visible: bool) -> None:
+    def _set_show_in_tree(self, obj: fc.DocumentObject, *, visible: bool) -> None:
         if not fc.GuiUp:
             return
         try:
@@ -600,10 +626,8 @@ class CreateDrawerBaseplateTaskPanel:
         except ReferenceError:
             return
         if hasattr(view, "ShowInTree"):
-            try:
+            with contextlib.suppress(Exception):
                 view.ShowInTree = visible
-            except Exception:
-                pass
 
     def _capture_object_values(self, obj: fc.DocumentObject) -> dict[str, Any]:
         return {
@@ -647,7 +671,7 @@ class CreateDrawerBaseplateTaskPanel:
         params = CombinedBaseplateParams().from_obj(obj)
         params.apply_to_ui_owner(self)
 
-    def getStandardButtons(self) -> int:  # noqa: N802
+    def getStandardButtons(self) -> int:
         return _standard_buttons_ok_cancel()
 
     def _set_validation_visuals(self, errors: dict[str, str]) -> None:
@@ -696,10 +720,16 @@ class CreateDrawerBaseplateTaskPanel:
             return
         try:
             grid_mm = float(self.fundamentals__grid_size.value())
-            if float(self.drawer_width.value()) <= 0 or float(self.drawer_depth.value()) <= 0:
-                raise ValueError("Drawer dimensions must be > 0")
-            if float(self.bed_width.value()) <= 0 or float(self.bed_depth.value()) <= 0:
-                raise ValueError("Bed dimensions must be > 0")
+            drawer_w = float(self.drawer_width.value())
+            drawer_d = float(self.drawer_depth.value())
+            bed_w = float(self.bed_width.value())
+            bed_d = float(self.bed_depth.value())
+            if drawer_w <= 0 or drawer_d <= 0:
+                self.summary.setText("Drawer dimensions must be > 0")
+                return
+            if bed_w <= 0 or bed_d <= 0:
+                self.summary.setText("Bed dimensions must be > 0")
+                return
             x_chunks = split_axis_into_printable_chunks(
                 length_mm=float(self.drawer_width.value()),
                 bed_mm=float(self.bed_width.value()),
@@ -736,7 +766,7 @@ class CreateDrawerBaseplateTaskPanel:
         self.summary.setText(
             f"X printable chunks: {len(x_chunks)} [{x_desc}]\n"
             f"Y printable chunks: {len(y_chunks)} [{y_desc}]\n"
-            f"Total printable pieces: {pieces}"
+            f"Total printable pieces: {pieces}",
         )
 
     def _connect_signals(self) -> None:
@@ -764,15 +794,15 @@ class CreateDrawerBaseplateTaskPanel:
         params = CombinedBaseplateParams()
         params.update_from_ui_owner(self)
         if preview_mode:
-            params.click_springs.set_value("enabled", False)
-            params.junction_screws.set_value("enabled", False)
-            params.clip_cutouts.set_value("enabled", False)
+            params.click_springs.set_value("enabled", value=False)
+            params.junction_screws.set_value("enabled", value=False)
+            params.clip_cutouts.set_value("enabled", value=False)
         return params
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
         self._refresh_summary()
         if self.summary.text().startswith("Error:") or self.summary.text().startswith(
-            "Validation errors:"
+            "Validation errors:",
         ):
             return False
 
@@ -812,7 +842,8 @@ class CreateDrawerBaseplateTaskPanel:
             try:
                 status_bar = fcg.getMainWindow().statusBar()
                 status_bar.showMessage("Recomputing preview...")
-            except Exception:
+            except (AttributeError, RuntimeError):
+                # GUI may not be fully initialized or main window not available
                 status_bar = None
 
         start = time.perf_counter()
@@ -834,7 +865,7 @@ class CreateDrawerBaseplateTaskPanel:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
         elif output_obj is self._target_obj:
             self._restore_preview_visuals()
-            self._set_show_in_tree(output_obj, True)
+            self._set_show_in_tree(output_obj, visible=True)
 
         fc.ActiveDocument.recompute()
         fcg.SendMsgToActiveView("ViewFit")
@@ -877,7 +908,7 @@ class CreateBaseplateTaskPanel:
         self._error_containers: dict[str, QWidget] = {}
         self.form = QWidget()
         self.form.setWindowTitle(
-            f"Edit {self._label_name}" if target_obj is not None else f"Create {self._label_name}"
+            f"Edit {self._label_name}" if target_obj is not None else f"Create {self._label_name}",
         )
         layout = QVBoxLayout(self.form)
         controls: dict[str, QWidget] = {}
@@ -885,7 +916,7 @@ class CreateBaseplateTaskPanel:
         controls.update(self._build_pre_sections(layout))
         controls.update(_build_fundamentals_section(layout, show_note=False))
         controls.update(
-            _build_baseplate_section(layout)
+            _build_baseplate_section(layout),
         )
         controls.update(self._build_extra_sections(layout))
         for key, widget in controls.items():
@@ -899,10 +930,8 @@ class CreateBaseplateTaskPanel:
             view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
             ViewProviderGridfinity(view_object, str(self._pixmap))
             if hasattr(view_object, "ShowInTree"):
-                try:
+                with contextlib.suppress(Exception):
                     view_object.ShowInTree = False
-                except Exception:
-                    pass
         self._feature_ctor(self._target_obj)
         if self._edit_obj is not None:
             CombinedBaseplateParams().from_obj(self._edit_obj).to_obj(self._target_obj)
@@ -920,27 +949,27 @@ class CreateBaseplateTaskPanel:
         self._connect_preview_signals()
         self._update_preview()
 
-    def _build_extra_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
+    def _build_extra_sections(self, _layout: QVBoxLayout) -> dict[str, QWidget]:
         return {}
 
-    def _build_pre_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
+    def _build_pre_sections(self, _layout: QVBoxLayout) -> dict[str, QWidget]:
         return {}
 
     def _copy_extended_params_to_preview(
         self,
-        source_obj: fc.DocumentObject,
-        preview_obj: fc.DocumentObject,
+        _source_obj: fc.DocumentObject,
+        _preview_obj: fc.DocumentObject,
     ) -> None:
         return
 
-    def getStandardButtons(self) -> int:  # noqa: N802
+    def getStandardButtons(self) -> int:
         return _standard_buttons_ok_cancel()
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         params = CombinedBaseplateParams().from_obj(obj)
         params.apply_to_ui_owner(self)
 
-    def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:
+    def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:  # noqa: ARG002
         params = CombinedBaseplateParams()
         params.update_from_ui_owner(self)
         errors = dict(params.validate())
@@ -1045,7 +1074,7 @@ class CreateBaseplateTaskPanel:
                 controls.append(widget)
         controls.extend(self._extra_preview_controls())
         for control in controls:
-            if isinstance(control, (QDoubleSpinBox, QSpinBox)):
+            if isinstance(control, QDoubleSpinBox | QSpinBox):
                 control.valueChanged.connect(lambda *_: self._preview_timer.start())
             else:
                 control.stateChanged.connect(lambda *_: self._preview_timer.start())
@@ -1070,7 +1099,8 @@ class CreateBaseplateTaskPanel:
             try:
                 status_bar = fcg.getMainWindow().statusBar()
                 status_bar.showMessage("Building preview...")
-            except Exception:
+            except (AttributeError, RuntimeError):
+                # GUI may not be fully initialized or main window not available
                 status_bar = None
 
         start = time.perf_counter()
@@ -1103,7 +1133,7 @@ class CreateBaseplateTaskPanel:
     def _format_preview_label(base_label: str) -> str:
         return f"[Preview] {base_label}"
 
-    def _set_show_in_tree(self, obj: fc.DocumentObject, visible: bool) -> None:
+    def _set_show_in_tree(self, obj: fc.DocumentObject, *, visible: bool) -> None:
         if not fc.GuiUp:
             return
         try:
@@ -1111,10 +1141,8 @@ class CreateBaseplateTaskPanel:
         except ReferenceError:
             return
         if hasattr(view, "ShowInTree"):
-            try:
+            with contextlib.suppress(Exception):
                 view.ShowInTree = visible
-            except Exception:
-                pass
 
     def accept(self) -> bool:
         if self._target_obj is None:
@@ -1132,7 +1160,7 @@ class CreateBaseplateTaskPanel:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
         else:
             self._restore_preview_visuals()
-            self._set_show_in_tree(output_obj, True)
+            self._set_show_in_tree(output_obj, visible=True)
 
         fc.ActiveDocument.recompute()
         fcg.SendMsgToActiveView("ViewFit")
@@ -1166,7 +1194,7 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
     def _format_simple_baseplate_label(x_cells: int, y_cells: int) -> str:
         return f"Stacked Baseplates {x_cells} x {y_cells}"
 
-    def _build_extra_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
+    def _build_extra_sections(self, _layout: QVBoxLayout) -> dict[str, QWidget]:
         return {}
 
     def _copy_extended_params_to_preview(
@@ -1186,7 +1214,7 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
                 instance_count=3,
                 corner_stitching=False,
                 stitching_thickness=0.4,
-            )
+            ),
         )
         controls.update(_build_support_section(layout, overhang_angle=50.0))
         return controls
@@ -1205,7 +1233,7 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
         params = CombinedStackedBaseplatesParams().from_obj(obj)
         params.apply_to_ui_owner(self)
 
-    def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:
+    def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:  # noqa: ARG002
         from .param import CombinedStackedBaseplatesParams
 
         params = CombinedStackedBaseplatesParams()
@@ -1279,9 +1307,9 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
             fc.ActiveDocument.removeObject(self._target_obj.Name)
         else:
             self._restore_preview_visuals()
-            self._set_show_in_tree(base_obj, True)
+            self._set_show_in_tree(base_obj, visible=True)
 
-        self._set_show_in_tree(companion, True)
+        self._set_show_in_tree(companion, visible=True)
         fc.ActiveDocument.recompute()
         fcg.SendMsgToActiveView("ViewFit")
         fcg.Control.closeDialog()
@@ -1340,7 +1368,7 @@ class CreateConnectingClipTaskPanel:
         self._controls_by_key: dict[str, QWidget] = {}
         self.form = QWidget()
         self.form.setWindowTitle(
-            "Edit Connecting Clip" if target_obj is not None else "Create Connecting Clip"
+            "Edit Connecting Clip" if target_obj is not None else "Create Connecting Clip",
         )
         layout = QVBoxLayout(self.form)
 
@@ -1356,10 +1384,8 @@ class CreateConnectingClipTaskPanel:
             view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
             ViewProviderGridfinity(view_object, str(self._pixmap))
             if hasattr(view_object, "ShowInTree"):
-                try:
+                with contextlib.suppress(Exception):
                     view_object.ShowInTree = False
-                except Exception:
-                    pass
 
         features.ConnectingClip(self._target_obj, params)
 
@@ -1385,7 +1411,9 @@ class CreateConnectingClipTaskPanel:
         params.apply_to_ui_owner(self)
 
     def _build_connecting_clip_controls(
-        self, layout: QVBoxLayout, params: Any
+        self,
+        layout: QVBoxLayout,
+        params: CombinedClipParams,
     ) -> dict[str, QWidget]:
         controls: dict[str, QWidget] = {}
 
@@ -1394,7 +1422,7 @@ class CreateConnectingClipTaskPanel:
             # Add fundamentals section with compatibility note
             layout.addWidget(_section_label("Fundamentals"))
             compatibility_note = QLabel(
-                "Changing these values affects Gridfinity compatibility with other objects."
+                "Changing these values affects Gridfinity compatibility with other objects.",
             )
             compatibility_note.setWordWrap(True)
             compatibility_note.setAlignment(Qt.AlignLeft)
@@ -1413,7 +1441,11 @@ class CreateConnectingClipTaskPanel:
         # Use the new param system UI generation for clip section
         if hasattr(params, "clip") and hasattr(params.clip, "build_ui"):
             # Add clip section
-            clip_controls, clip_widget = params.clip.build_ui(None, "Connecting Clip", True)
+            clip_controls, clip_widget = params.clip.build_ui(
+                None,
+                "Connecting Clip",
+                show_description=True,
+            )
             layout.addWidget(clip_widget)
 
             # Add controls with proper naming
@@ -1424,7 +1456,7 @@ class CreateConnectingClipTaskPanel:
 
         return controls
 
-    def getStandardButtons(self) -> int:  # noqa: N802
+    def getStandardButtons(self) -> int:
         return _standard_buttons_ok_cancel()
 
     def _update_preview(self) -> None:
@@ -1447,8 +1479,9 @@ class CreateConnectingClipTaskPanel:
         try:
             fc.ActiveDocument.recompute()
             self._preview_applied = True
-        except Exception:
-            pass  # Ignore errors during preview
+        except (RuntimeError, ValueError):
+            # Preview recompute can fail due to invalid params - safe to ignore
+            pass
 
     def _preview_style(self) -> tuple[tuple[float, float, float], int]:
         return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
@@ -1477,7 +1510,7 @@ class CreateConnectingClipTaskPanel:
             view.LineColor = self._original_view["LineColor"]
         view.Transparency = self._original_view["Transparency"]
 
-    def _set_show_in_tree(self, obj: fc.DocumentObject, visible: bool) -> None:
+    def _set_show_in_tree(self, obj: fc.DocumentObject, *, visible: bool) -> None:
         if not fc.GuiUp:
             return
         try:
@@ -1485,10 +1518,8 @@ class CreateConnectingClipTaskPanel:
         except ReferenceError:
             return
         if hasattr(view, "ShowInTree"):
-            try:
+            with contextlib.suppress(Exception):
                 view.ShowInTree = visible
-            except Exception:
-                pass
 
     def accept(self) -> bool:
         """Accept the dialog and create the final object."""
@@ -1508,15 +1539,15 @@ class CreateConnectingClipTaskPanel:
         if validation_errors:
             # Display validation errors to user
             error_msg = "Validation errors:\n" + "\n".join(
-                [f"- {msg}" for msg in validation_errors.values()]
+                [f"- {msg}" for msg in validation_errors.values()],
             )
             try:
                 from PySide.QtWidgets import QMessageBox
 
                 QMessageBox.warning(None, "Validation Error", error_msg)
-            except Exception:
+            except (ImportError, RuntimeError):
                 # Fallback to console if GUI not available
-                print(f"Validation errors: {validation_errors}")
+                fc.Console.PrintWarning(f"{error_msg}\n")
             return False
 
         # Apply params to object using the new system
@@ -1530,7 +1561,7 @@ class CreateConnectingClipTaskPanel:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
         else:
             self._restore_preview_visuals()
-            self._set_show_in_tree(output_obj, True)
+            self._set_show_in_tree(output_obj, visible=True)
 
         # Recompute to finalize the shape
         fc.ActiveDocument.recompute()
@@ -1566,11 +1597,11 @@ class GridfinitySettingsTaskPanel:
 
     def __init__(self) -> None:
         from .param import (
-            FundamentalsParams,
             BaseplateCoreParams,
             ClickSpringParams,
-            JunctionScrewParams,
             ClipParams,
+            FundamentalsParams,
+            JunctionScrewParams,
             PluginSettingsParams,
         )
 
@@ -1596,7 +1627,7 @@ class GridfinitySettingsTaskPanel:
             title = getattr(group, "_section_title", "")
             controls, widget = group.build_ui(None, title, show_description=True)
             layout.addWidget(widget)
-            self._group_controls[group._group_name] = controls
+            self._group_controls[group._group_name] = controls  # noqa: SLF001
 
     def getStandardButtons(self) -> int:
         return _standard_buttons_ok_cancel()
@@ -1604,11 +1635,11 @@ class GridfinitySettingsTaskPanel:
     def accept(self) -> bool:
         # Update group values from UI controls, then save
         for group in self._groups:
-            controls = self._group_controls.get(group._group_name, {})
+            controls = self._group_controls.get(group._group_name, {})  # noqa: SLF001
             group.update_from_ui_controls(controls)
             errors = group.validate()
             if errors:
-                # TODO: Show validation errors to user
+                # NOTE: Could show validation errors in UI dialog
                 fc.Console.PrintError(f"Validation errors: {errors}\n")
                 return False
             group.save_as_defaults()

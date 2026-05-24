@@ -178,7 +178,7 @@ def clean_up_layout(layout: GridfinityLayout) -> list[list[bool]]:
     """Remove empty rows and colums from the layout."""
     for _ in range(2):
         layout = [row for row in layout if any(row)]
-        layout = [list(i) for i in zip(*layout)]
+        layout = [list(i) for i in zip(*layout, strict=False)]
 
     return layout
 

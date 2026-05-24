@@ -13,9 +13,15 @@ from .baseplate_full_layout import (
     expand_seed_to_shape_matrix,
 )
 
+_CORNER_COUNT_OUTSIDE = 1
+_CORNER_COUNT_INSIDE = 3
+
 
 class BaseplateCornerRoundover:
+    """Manages corner roundover profiles for baseplate layouts."""
+
     def __init__(self, outside_radius: float) -> None:
+        """Initialize with the outside corner radius."""
         self.outside_radius = float(outside_radius)
         self.inside_radius = self.outside_radius / 4.0
         self._outside_matrix = self._build_from_seed(self._make_corner_seed(self.outside_radius))
@@ -40,11 +46,13 @@ class BaseplateCornerRoundover:
         return expand_seed_to_shape_matrix(seed)
 
     def get_corner_profiles(
-        self, populated_2x2: BoolMatrix2x2
+        self,
+        populated_2x2: BoolMatrix2x2,
     ) -> tuple[Part.Shape | None, Part.Shape | None]:
-        if populated_2x2.count_true() == 1:
+        """Return outside and inside corner profiles for the given population."""
+        if populated_2x2.count_true() == _CORNER_COUNT_OUTSIDE:
             return self._outside_matrix.select_single(populated_2x2), None
-        if populated_2x2.count_true() == 3:
+        if populated_2x2.count_true() == _CORNER_COUNT_INSIDE:
             return None, self._inside_matrix.select_single(populated_2x2.negated())
         return None, None
 
@@ -56,6 +64,7 @@ def apply_layout_corner_roundover(
     outside_radius: float,
     height: float,
 ) -> Part.Shape:
+    """Apply corner roundovers to a baseplate shape."""
     if height <= 0:
         return shape
 

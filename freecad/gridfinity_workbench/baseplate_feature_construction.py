@@ -3,14 +3,16 @@
 Contains implementation to conscruct baseplate features.
 """
 
+from __future__ import annotations
+
 import math
+from typing import TYPE_CHECKING
 
 import FreeCAD as fc  # noqa: N813
 import Part
 
-from . import clip_profiles
+from . import clip_profiles, const, utils
 from . import junction_screws as junction_screw_shapes
-from . import const, utils
 from . import magnet_hole as magnet_hole_module
 from .param import (
     BaseplateCoreParams,
@@ -23,8 +25,13 @@ from .param import (
     JunctionScrewParamsData,
     ScrewStubParams,
 )
-from .baseplate_full_layout import GridfinityLayout, GridfinityLayoutGeometry
 
+if TYPE_CHECKING:
+    from .baseplate_full_layout import GridfinityLayout, GridfinityLayoutGeometry
+
+# Junction neighbor count constants
+_JUNCTION_CLIP_NEIGHBORS = 2
+_JUNCTION_SCREW_NEIGHBORS = 4
 
 # Cached param instances for defaults - loaded once at module init
 _fundamentals = FundamentalsParams()
@@ -452,7 +459,7 @@ def _profile_wire_to_centered_x_solid(profile_wire: Part.Wire, length: float) ->
     return solid
 
 
-def make_clip_cutouts(
+def make_clip_cutouts(  # noqa: C901, PLR0912, PLR0915
     obj: fc.DocumentObject,
     layout: GridfinityLayout,
     *,
@@ -465,7 +472,7 @@ def make_clip_cutouts(
     if obj.ClipLength >= max_clip_length:
         raise ValueError(
             f"ClipLength ({obj.ClipLength}) must be smaller than "
-            f"2*BaseProfileMainHalfWidth ({max_clip_length})"
+            f"2*BaseProfileMainHalfWidth ({max_clip_length})",
         )
 
     use_layout = (
@@ -484,7 +491,7 @@ def make_clip_cutouts(
     if clip_cutout_top_z <= max_clip_cutout_top_z:
         raise ValueError(
             f"Clip cutout top Z after scaling ({clip_cutout_top_z}) must be greater than "
-            f"BaseProfileMainHeight + BaseProfileMainHalfWidth ({max_clip_cutout_top_z})"
+            f"BaseProfileMainHeight + BaseProfileMainHalfWidth ({max_clip_cutout_top_z})",
         )
     clip_x = _profile_wire_to_centered_x_solid(clip_wire, obj.ClipLength)
 
@@ -497,7 +504,7 @@ def make_clip_cutouts(
         for ix in range(nx + 1):
             for iy in range(ny + 1):
                 neighbours = geometry.junction_neighbours(ix, iy)
-                if neighbours.count_true() != 2:
+                if neighbours.count_true() != _JUNCTION_CLIP_NEIGHBORS:
                     continue
                 orientation = neighbours.exists().is_side()
                 if orientation is None:
@@ -528,7 +535,7 @@ def make_clip_cutouts(
                     + north_west_present
                     + north_east_present
                 )
-                if neighbour_count != 2:
+                if neighbour_count != _JUNCTION_CLIP_NEIGHBORS:
                     continue
 
                 has_horizontal_pair = (south_west_present and south_east_present) or (
@@ -558,13 +565,14 @@ def make_clip_cutouts_from_params(
     *,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
+    """Build clip cutout shapes from params."""
     unitmm = fc.Units.Quantity("1 mm")
 
     max_clip_length = 2 * fundamentals.main_half_width
     if clip_cutouts.clip_length >= max_clip_length:
         raise ValueError(
             f"ClipLength ({clip_cutouts.clip_length}) must be smaller than "
-            f"2*BaseProfileMainHalfWidth ({max_clip_length})"
+            f"2*BaseProfileMainHalfWidth ({max_clip_length})",
         )
 
     clip_wire = clip_profiles.build_clip_cutout_profile_wire(
@@ -576,7 +584,7 @@ def make_clip_cutouts_from_params(
     if clip_cutout_top_z <= max_clip_cutout_top_z:
         raise ValueError(
             f"Clip cutout top Z after scaling ({clip_cutout_top_z}) must be greater than "
-            f"BaseProfileMainHeight + BaseProfileMainHalfWidth ({max_clip_cutout_top_z})"
+            f"BaseProfileMainHeight + BaseProfileMainHalfWidth ({max_clip_cutout_top_z})",
         )
     clip_x = _profile_wire_to_centered_x_solid(clip_wire, float(clip_cutouts.clip_length))
 
@@ -588,7 +596,7 @@ def make_clip_cutouts_from_params(
     for ix in range(nx + 1):
         for iy in range(ny + 1):
             neighbours = geometry.junction_neighbours(ix, iy)
-            if neighbours.count_true() != 2:
+            if neighbours.count_true() != _JUNCTION_CLIP_NEIGHBORS:
                 continue
 
             orientation = neighbours.exists().is_side()
@@ -645,7 +653,7 @@ def make_junction_screw_holes(
                 y = iy * obj.yGridSize
             else:
                 neighbours = geometry.junction_neighbours(ix, iy)
-                if neighbours.count_true() != 4:
+                if neighbours.count_true() != _JUNCTION_SCREW_NEIGHBORS:
                     continue
                 x = geometry.line_x(ix)
                 y = geometry.line_y(iy)
@@ -679,12 +687,13 @@ def make_junction_screw_holes(
 
 
 def make_junction_screw_holes_from_params(
-    fundamentals: FundamentalsParamsData,
+    _fundamentals: FundamentalsParamsData,
     junction_screws: JunctionScrewParamsData,
     top_z: fc.Units.Quantity,
     *,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
+    """Build junction screw hole shapes from params."""
     return junction_screw_shapes.holes_shape(junction_screws, top_z, geometry)
 
 
@@ -751,11 +760,11 @@ def base_values_properties(obj: fc.DocumentObject) -> None:
         "BinVerticalRadius",
         "zzExpertOnly",
         "Radius of the base profile Vertical section",
-    ).BinVerticalRadius = (
-        _fundamentals.get_value("outer_radius") - _fundamentals.get_value("main_half_width")
+    ).BinVerticalRadius = _fundamentals.get_value("outer_radius") - _fundamentals.get_value(
+        "main_half_width",
     )
 
-    # TODO: Clearance is not used for baseplates, only bins. Hardcoded until bin rework.
+    # NOTE: Clearance is not used for baseplates, only bins. Hardcoded until bin rework.
     obj.addProperty(
         "App::PropertyLength",
         "Clearance",

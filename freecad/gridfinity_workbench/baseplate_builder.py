@@ -8,7 +8,7 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass, is_dataclass, replace
 from dataclasses import fields as dataclass_fields
-from typing import Callable
+from typing import TYPE_CHECKING
 
 import FreeCAD as fc  # noqa: N813
 import Part
@@ -17,8 +17,12 @@ from . import baseplate_cell_cache, baseplate_corner_roundover, baseplate_full_l
 from . import baseplate_click_springs as click_springs
 from . import baseplate_feature_construction as baseplate_feat
 from . import feature_construction as feat
-from .baseplate_full_layout import GridfinityLayout, GridfinityLayoutGeometry
 from .param import CombinedBaseplateParams, CombinedBaseplateParamsData
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from .baseplate_full_layout import GridfinityLayout, GridfinityLayoutGeometry
 
 
 def _timing_enabled() -> bool:
@@ -34,7 +38,8 @@ _BASEPLATE_SHAPE_CACHE: OrderedDict[str, Part.Shape] = OrderedDict()
 
 
 def set_baseplate_shape_cache_max_entries(max_entries: int) -> None:
-    global _BASEPLATE_SHAPE_CACHE_MAX
+    """Configure the maximum number of baseplate shapes to cache."""
+    global _BASEPLATE_SHAPE_CACHE_MAX  # noqa: PLW0603
     _BASEPLATE_SHAPE_CACHE_MAX = max(0, int(max_entries))
     if _BASEPLATE_SHAPE_CACHE_MAX == 0:
         _BASEPLATE_SHAPE_CACHE.clear()
@@ -44,10 +49,11 @@ def set_baseplate_shape_cache_max_entries(max_entries: int) -> None:
 
 
 def set_cell_shape_cache_max_entries(max_entries: int) -> None:
+    """Configure the maximum number of cell shapes to cache."""
     baseplate_cell_cache.set_cell_cache_max_entries(max_entries)
 
 
-def _cache_normalize(value: object) -> object:
+def _cache_normalize(value: object) -> object:  # noqa: PLR0911
     if is_dataclass(value):
         return {
             field.name: _cache_normalize(getattr(value, field.name))
@@ -55,16 +61,16 @@ def _cache_normalize(value: object) -> object:
         }
     if isinstance(value, dict):
         return {str(k): _cache_normalize(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [_cache_normalize(v) for v in value]
-    if isinstance(value, (bool, int, str)) or value is None:
+    if isinstance(value, bool | int | str) or value is None:
         return value
     if isinstance(value, float):
         return round(value, 2)
     if hasattr(value, "Value"):
         try:
             return round(float(value), 2)  # type: ignore[arg-type]
-        except Exception:
+        except Exception:  # noqa: BLE001
             return str(value)
     return str(value)
 
@@ -107,6 +113,7 @@ def build_baseplate_support_cached(
     obj: fc.DocumentObject,
     layout: GridfinityLayout,
 ) -> Part.Shape:
+    """Build baseplate top support with caching."""
     obj_payload = {
         name: _cache_normalize(getattr(obj, name))
         for name in getattr(obj, "PropertiesList", [])
@@ -129,12 +136,12 @@ def build_baseplate_support_cached(
         z_matrix.move(fc.Vector(0, 0, z_start.Value))
         try:
             return shape.transformGeometry(z_matrix)
-        except Exception:
+        except Exception:  # noqa: BLE001
             shifted_shape = shape.copy()
             try:
                 shifted_shape.transformShape(z_matrix, copy=False)  # type: ignore[call-arg]
             except TypeError:
-                shifted_shape.transformShape(z_matrix, False)
+                shifted_shape.transformShape(z_matrix, False)  # noqa: FBT003
             return shifted_shape
 
     return _shape_cache_get_or_build(key, _build)
@@ -153,6 +160,8 @@ def _matrix_not(mask: list[list[bool]]) -> list[list[bool]]:
 
 @dataclass
 class BaseplateBuildOptions:
+    """Configuration options for baseplate building."""
+
     include_junction_screws: bool = True
     include_clip_cutouts: bool = True
     include_snap_springs: bool = True
@@ -160,6 +169,8 @@ class BaseplateBuildOptions:
 
 @dataclass
 class CoreCellBuildResult:
+    """Result of building a single core cell."""
+
     shape: Part.Shape
     is_tiny: bool
 
@@ -188,13 +199,11 @@ def _make_centered_box(
 
 
 def _base_apex_height(params: CombinedBaseplateParamsData) -> fc.Units.Quantity:
-    return (
-        params.fundamentals.main_height
-        + params.fundamentals.main_half_width
-    )
+    return params.fundamentals.main_height + params.fundamentals.main_half_width
 
 
 def baseplate_cell_top_crop(shape: Part.Shape, params: CombinedBaseplateParamsData) -> Part.Shape:
+    """Crop the top of a baseplate cell shape."""
     top_crop = params.core.base_profile_top_crop
     half_width = params.fundamentals.main_half_width
     if top_crop >= half_width:
@@ -216,8 +225,9 @@ def baseplate_cell_top_crop(shape: Part.Shape, params: CombinedBaseplateParamsDa
 
 def build_single_cell_baseplate_core(
     params: CombinedBaseplateParamsData,
-    options: BaseplateBuildOptions,
+    _options: BaseplateBuildOptions,
 ) -> CoreCellBuildResult:
+    """Build a single core cell for a baseplate."""
     baseplate_outside_shape = _create_rectangle_wire(
         float(params.fundamentals.x_grid_size),
         float(params.fundamentals.y_grid_size),
@@ -237,6 +247,7 @@ def build_single_cell_baseplate_core_cached(
     params: CombinedBaseplateParamsData,
     options: BaseplateBuildOptions,
 ) -> CoreCellBuildResult:
+    """Build a single core cell for a baseplate with caching."""
     key = baseplate_cell_cache.make_key(
         {
             "kind": "baseplate_core_cell",
@@ -250,7 +261,8 @@ def build_single_cell_baseplate_core_cached(
 
     shape = baseplate_cell_cache.get_or_build(key, _build)
     tiny_cell = feat.make_complex_bin_base_single_from_params(
-        params.fundamentals, params.core,
+        params.fundamentals,
+        params.core,
     ).isNull()
     return CoreCellBuildResult(shape=shape, is_tiny=tiny_cell)
 
@@ -258,6 +270,7 @@ def build_single_cell_baseplate_core_cached(
 def build_preview_single_cell_baseplate_core(
     params: CombinedBaseplateParamsData,
 ) -> CoreCellBuildResult:
+    """Build a simplified preview of a single core cell."""
     margin = 0.1
     x_grid_size = float(params.fundamentals.x_grid_size)
     y_grid_size = float(params.fundamentals.y_grid_size)
@@ -279,6 +292,7 @@ def build_preview_single_cell_baseplate_core(
 def build_preview_single_cell_baseplate_core_cached(
     params: CombinedBaseplateParamsData,
 ) -> CoreCellBuildResult:
+    """Build a simplified preview of a single core cell with caching."""
     key = baseplate_cell_cache.make_key(
         {
             "kind": "baseplate_preview_core_cell",
@@ -297,6 +311,7 @@ def replicate_layout(
     params: CombinedBaseplateParamsData,
     layout: GridfinityLayout,
 ) -> Part.Shape:
+    """Replicate a single cell shape across the layout grid."""
     base_cell = shape.copy()
     base_cell.translate(
         fc.Vector(
@@ -321,6 +336,7 @@ def add_filler_strips(
     *,
     preview: bool = False,
 ) -> tuple[Part.Shape, GridfinityLayoutGeometry]:
+    """Add filler strips around the core layout."""
     expanded = baseplate_full_layout.build_full_layout(
         params,
         layout,
@@ -385,7 +401,7 @@ def _build_filler_cell_shape(
     return build_single_cell_baseplate_core_cached(filler_params, options)
 
 
-def _build_filler_ring_shape(
+def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
     params: CombinedBaseplateParamsData,
     geometry: GridfinityLayoutGeometry,
     options: BaseplateBuildOptions,
@@ -507,7 +523,7 @@ def _build_filler_ring_shape(
         t_side = time.perf_counter() if timing_on else 0.0
         if not spec["indices"]:
             continue
-        for (ix, iy), vec in zip(spec["indices"], spec["vectors"]):
+        for (ix, iy), vec in zip(spec["indices"], spec["vectors"], strict=False):
             t0 = time.perf_counter() if timing_on else 0.0
             side_result = proto(
                 float(spec["width"]),  # type: ignore[arg-type]
@@ -603,8 +619,7 @@ def _apply_layout_corner_roundover(
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape:
     apex = float(
-        params.fundamentals.main_height
-        + params.fundamentals.main_half_width,
+        params.fundamentals.main_height + params.fundamentals.main_half_width,
     )
     top_crop = float(params.core.base_profile_top_crop)
     roundover_height = apex - top_crop
@@ -622,6 +637,7 @@ def apply_junction_screws(
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
 ) -> Part.Shape:
+    """Apply junction screw holes to the baseplate shape."""
     if not options.include_junction_screws:
         return shape
     junction_holes = baseplate_feat.make_junction_screw_holes(obj, layout)
@@ -634,6 +650,7 @@ def make_post_replication_cutter(
     options: BaseplateBuildOptions,
     top_z: fc.Units.Quantity,
 ) -> Part.Shape | None:
+    """Build a cutter shape for post-replication features."""
     cutters: list[Part.Shape] = []
 
     if options.include_junction_screws:
@@ -666,6 +683,7 @@ def apply_clip_cutouts(
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
 ) -> Part.Shape:
+    """Apply clip cutouts to the baseplate shape."""
     if not options.include_clip_cutouts:
         return shape
     clip_cutouts = baseplate_feat.make_clip_cutouts(obj, layout)
@@ -677,6 +695,7 @@ def apply_snap_springs(
     params: CombinedBaseplateParamsData,
     options: BaseplateBuildOptions,
 ) -> Part.Shape:
+    """Apply snap spring slots to the baseplate shape."""
     if not options.include_snap_springs:
         return shape
     negative_slots = click_springs.make_click_spring_prototype_negative(
@@ -705,6 +724,7 @@ def build_simple_baseplate(
     *,
     preview: bool = False,
 ) -> Part.Shape:
+    """Build a simple baseplate from a FreeCAD object."""
     params = CombinedBaseplateParams().from_obj(obj).data()
     return build_simple_baseplate_from_params_cached(params, layout, options, preview=preview)
 
@@ -716,6 +736,7 @@ def build_simple_baseplate_from_params_cached(
     *,
     preview: bool = False,
 ) -> Part.Shape:
+    """Build a simple baseplate from params with caching."""
     if _BASEPLATE_SHAPE_CACHE_MAX <= 0:
         return build_simple_baseplate_from_params(params, layout, options, preview=preview)
 
@@ -732,13 +753,14 @@ def build_simple_baseplate_from_params_cached(
     return shape.copy()
 
 
-def build_simple_baseplate_from_params(
+def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
     params: CombinedBaseplateParamsData,
     layout: GridfinityLayout,
     options: BaseplateBuildOptions,
     *,
     preview: bool = False,
 ) -> Part.Shape:
+    """Build a simple baseplate from params."""
     timing_on = _timing_enabled()
     t_total = time.perf_counter() if timing_on else 0.0
     nx = max(0, int(params.core.x_grid_count))
@@ -762,7 +784,8 @@ def build_simple_baseplate_from_params(
         shape, geometry = add_filler_strips(empty_shape, params, layout, options, preview=preview)
         if timing_on:
             _timing_print(
-                "baseplate.filler_only.add_filler_strips", time.perf_counter() - t_fill_only,
+                "baseplate.filler_only.add_filler_strips",
+                time.perf_counter() - t_fill_only,
             )
         if shape.isNull():
             raise ValueError("No core cells and no fillers to build")

@@ -8,12 +8,15 @@ from typing import Literal
 import FreeCAD as fc  # noqa: N813
 import Part
 
-from . import const, utils
+from . import (
+    baseplate_cell_cache,
+    baseplate_corner_roundover,
+    baseplate_full_layout,
+    const,
+    junction_screws,
+    utils,
+)
 from . import baseplate_click_springs as click_springs
-from . import baseplate_corner_roundover
-from . import baseplate_cell_cache
-from . import baseplate_full_layout
-from . import junction_screws
 from . import label_shelf as label_shelf_module
 from . import magnet_hole as magnet_hole_module
 from .param import BaseplateCoreLayoutParamsData, CombinedBaseplateParams, FundamentalsParamsData
@@ -960,7 +963,6 @@ def make_complex_bin_base(
     for_cutout: bool = False,
 ) -> Part.Shape:
     """Creaet complex shaped bin base."""
-
     single = make_complex_bin_base_single(obj, for_cutout=for_cutout)
     fuse_total = utils.copy_in_layout(single, layout, obj.xGridSize, obj.yGridSize)
 
@@ -975,11 +977,10 @@ def make_complex_bin_base_single(
     for_cutout: bool = False,
 ) -> Part.Shape:
     """Create one-cell complex shaped bin base centered at origin."""
-
     if obj.BaseProfileTopCrop >= obj.BaseProfileMainHalfWidth:
         raise ValueError(
             f"BaseProfileTopCrop ({obj.BaseProfileTopCrop}) must be smaller than "
-            f"BaseProfileMainHalfWidth ({obj.BaseProfileMainHalfWidth})"
+            f"BaseProfileMainHalfWidth ({obj.BaseProfileMainHalfWidth})",
         )
 
     lower_enabled = (
@@ -1058,7 +1059,7 @@ def make_complex_bin_base_single_from_params(
     if bin_vertical_radius <= 0:
         raise ValueError(
             f"BinOuterRadius ({fundamentals.bin_outer_radius}) must be greater than "
-            f"BaseProfileMainHalfWidth ({fundamentals.main_half_width})"
+            f"BaseProfileMainHalfWidth ({fundamentals.main_half_width})",
         )
 
     x_vert_width = fundamentals.x_grid_size - 2 * fundamentals.main_half_width
@@ -1129,7 +1130,7 @@ def _top_planar_faces(shape: Part.Shape) -> list[Part.Face]:
     return faces
 
 
-def make_baseplate_top_support(
+def make_baseplate_top_support(  # noqa: C901, PLR0915
     obj: fc.DocumentObject,
     layout: GridfinityLayout,
 ) -> Part.Shape:
@@ -1142,7 +1143,7 @@ def make_baseplate_top_support(
     if run <= 0:
         raise ValueError(
             "Invalid support geometry: BaseProfileMainHalfWidth + ClickOffset "
-            "must be greater than BaseProfileTopCrop"
+            "must be greater than BaseProfileTopCrop",
         )
 
     loft_height = run / math.tan(math.radians(obj.SupportOverhangAngle.Value))
@@ -1181,15 +1182,19 @@ def make_baseplate_top_support(
                     "width": cell_width,
                     "height": cell_height,
                     "loft_height": float(loft_height),
-                }
+                },
             )
 
-            def _build_slab() -> Part.Shape:
+            def _build_slab(
+                cw: float = cell_width,
+                ch: float = cell_height,
+                lh: float = float(loft_height),
+            ) -> Part.Shape:
                 return Part.makeBox(
-                    cell_width,
-                    cell_height,
-                    float(loft_height),
-                    fc.Vector(-cell_width / 2, -cell_height / 2, 0),
+                    cw,
+                    ch,
+                    lh,
+                    fc.Vector(-cw / 2, -ch / 2, 0),
                     fc.Vector(0, 0, 1),
                 )
 
@@ -1253,11 +1258,14 @@ def make_baseplate_top_support(
                     "mask": cell_meta.get_mask(),
                     "shift_x": cell_meta.spring_shift_x if cell_meta.kind == "Filler" else 0.0,
                     "shift_y": cell_meta.spring_shift_y if cell_meta.kind == "Filler" else 0.0,
-                }
+                },
             )
 
-            def _build_cutter() -> Part.Shape:
-                return Part.makeLoft([profile_b, profile_a], True)
+            def _build_cutter(
+                pb: Part.Wire = profile_b,
+                pa: Part.Wire = profile_a,
+            ) -> Part.Shape:
+                return Part.makeLoft([pb, pa], solid=True)
 
             cutter = baseplate_cell_cache.get_or_build(cutter_key, _build_cutter)
             cutter.translate(cell_center)

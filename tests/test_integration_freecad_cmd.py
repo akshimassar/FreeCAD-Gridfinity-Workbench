@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import shlex
@@ -6,7 +8,6 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FREECAD_CMD_ENV = "FREECAD_CMD"
@@ -97,7 +98,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             payload = {{"baseline": baseline, "with_springs": with_springs}}
             print("GRIDFINITY_RESULT=" + json.dumps(payload))
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -105,7 +106,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -127,15 +128,15 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
         data = json.loads(line[len(RESULT_PREFIX) :])
 
-        baseline = data["baseline"]
-        with_springs = data["with_springs"]
-        self.assertEqual(int(baseline["solids"]), 1)
-        self.assertEqual(int(with_springs["solids"]), 1)
-        self.assertTrue(bool(baseline["valid"]))
-        self.assertTrue(bool(with_springs["valid"]))
+        baseline_data = data["baseline"]
+        with_springs_data = data["with_springs"]
+        self.assertEqual(int(baseline_data["solids"]), 1)
+        self.assertEqual(int(with_springs_data["solids"]), 1)
+        self.assertTrue(bool(baseline_data["valid"]))
+        self.assertTrue(bool(with_springs_data["valid"]))
         self.assertAlmostEqual(
-            float(with_springs["volume"]),
-            float(baseline["volume"]),
+            float(with_springs_data["volume"]),
+            float(baseline_data["volume"]),
             places=6,
             msg="Tiny core should ignore click springs and keep identical volume",
         )
@@ -196,7 +197,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             payload = {{"baseline": baseline, "with_springs": with_springs}}
             print("GRIDFINITY_RESULT=" + json.dumps(payload))
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -204,7 +205,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -251,8 +252,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             abs_diff,
             0.01,
             msg=(
-                f"Volume drift too large: baseline={baseline_volume}, with_springs={springs_volume}, "
-                f"absolute={abs_diff:.6f}"
+                f"Volume drift too large: baseline={baseline_volume}, "
+                f"with_springs={springs_volume}, absolute={abs_diff:.6f}"
             ),
         )
 
@@ -326,7 +327,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -334,7 +335,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -429,7 +430,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -437,7 +438,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -516,7 +517,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -524,7 +525,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -616,7 +617,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -624,7 +625,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -694,7 +695,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -702,7 +703,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -764,7 +765,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -772,7 +773,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -796,7 +797,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         self.assertEqual(int(data["solids"]), 1)
         self.assertTrue(bool(data["valid"]))
         freecad_version = str(data.get("freecad_version", ""))
-        # FIXME: OCC/FreeCAD geometry kernel differences between versions
+        # NOTE: OCC/FreeCAD geometry kernel differences between versions
         # produce different but stable body volumes for this scenario.
         expected_volume = 2876.8821069099063
         if freecad_version.startswith("1.1"):
@@ -837,7 +838,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 doc.recompute()
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -845,7 +846,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -890,7 +891,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -898,7 +899,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -948,7 +949,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 doc.recompute()
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -956,7 +957,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -994,7 +995,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 doc.recompute()
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -1002,7 +1003,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -1049,9 +1050,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                         obj.FillerRightWidth = 3
                     doc.recompute()
                     shape = obj.Shape
-                    effective_height = float(
-                        obj.BaseProfileMainHeight + obj.BaseProfileMainHalfWidth - obj.BaseProfileTopCrop
-                    )
+                    h = obj.BaseProfileMainHeight
+                    w = obj.BaseProfileMainHalfWidth
+                    c = obj.BaseProfileTopCrop
+                    effective_height = float(h + w - c)
                     span = float(obj.yGridSize * obj.yGridUnits)
                     return {{
                         "volume": float(shape.Volume),
@@ -1065,8 +1067,9 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             baseline = build_case("Base2x2NoFiller", with_right_filler=False)
             with_filler = build_case("Base2x2RightFill3", with_right_filler=True)
-            print("GRIDFINITY_RESULT=" + json.dumps({{"baseline": baseline, "with_filler": with_filler}}))
-            """
+            result = {{"baseline": baseline, "with_filler": with_filler}}
+            print("GRIDFINITY_RESULT=" + json.dumps(result))
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -1074,7 +1077,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -1165,7 +1168,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -1173,7 +1176,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -1246,25 +1249,29 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 support_with_stubs = support_obj.Shape
 
                 # Calculate intersection volumes
-                base_base_intersection = base_without_stubs.common(base_with_stubs)
-                support_support_intersection = support_without_stubs.common(support_with_stubs)
-                
+                base_isect = base_without_stubs.common(base_with_stubs)
+                supp_isect = support_without_stubs.common(support_with_stubs)
+
+                b_wo = base_without_stubs
+                b_w = base_with_stubs
+                s_wo = support_without_stubs
+                s_w = support_with_stubs
                 payload = {{
-                    "base_without_volume": float(base_without_stubs.Volume),
-                    "base_with_volume": float(base_with_stubs.Volume),
-                    "support_without_volume": float(support_without_stubs.Volume),
-                    "support_with_volume": float(support_with_stubs.Volume),
-                    "base_base_intersection_volume": float(base_base_intersection.Volume),
-                    "support_support_intersection_volume": float(support_support_intersection.Volume),
-                    "base_valid": bool(base_without_stubs.isValid()) and bool(base_with_stubs.isValid()),
-                    "support_valid": bool(support_without_stubs.isValid()) and bool(support_with_stubs.isValid()),
-                    "base_solids": int(len(base_without_stubs.Solids)) + int(len(base_with_stubs.Solids)),
-                    "support_solids": int(len(support_without_stubs.Solids)) + int(len(support_with_stubs.Solids)),
+                    "base_without_volume": float(b_wo.Volume),
+                    "base_with_volume": float(b_w.Volume),
+                    "support_without_volume": float(s_wo.Volume),
+                    "support_with_volume": float(s_w.Volume),
+                    "base_base_intersection_volume": float(base_isect.Volume),
+                    "support_support_intersection_volume": float(supp_isect.Volume),
+                    "base_valid": bool(b_wo.isValid()) and bool(b_w.isValid()),
+                    "support_valid": bool(s_wo.isValid()) and bool(s_w.isValid()),
+                    "base_solids": int(len(b_wo.Solids)) + int(len(b_w.Solids)),
+                    "support_solids": int(len(s_wo.Solids)) + int(len(s_w.Solids)),
                 }}
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
                 fc.closeDocument(doc.Name)
-            """
+            """,
         ).format(module_root=repr(freecad_module_root))
 
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
@@ -1272,7 +1279,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             script_path = tmp.name
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603
                 [freecad_cmd, script_path],
                 check=False,
                 capture_output=True,
@@ -1301,16 +1308,20 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
         # Support volume should increase with stubs
         self.assertGreater(
-            float(data["support_with_volume"]), float(data["support_without_volume"])
+            float(data["support_with_volume"]),
+            float(data["support_without_volume"]),
         )
 
         # Baseplate volume should be unchanged
         self.assertAlmostEqual(
-            float(data["base_with_volume"]), float(data["base_without_volume"]), places=6
+            float(data["base_with_volume"]),
+            float(data["base_without_volume"]),
+            places=6,
         )
 
-        # Base-base and support-support should have same core volume (intersection should be nearly full volume)
-        # Allow small tolerance for floating point differences
+        # Base-base and support-support should have same core volume
+        # (intersection should be nearly full volume).
+        # Allow small tolerance for floating point differences.
         base_vol_without = float(data["base_without_volume"])
         base_vol_with = float(data["base_with_volume"])
         base_intersection = float(data["base_base_intersection_volume"])
@@ -1320,5 +1331,6 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         support_vol_with = float(data["support_with_volume"])
         support_intersection = float(data["support_support_intersection_volume"])
         self.assertGreaterEqual(
-            support_intersection, min(support_vol_without, support_vol_with) * 0.999
+            support_intersection,
+            min(support_vol_without, support_vol_with) * 0.999,
         )

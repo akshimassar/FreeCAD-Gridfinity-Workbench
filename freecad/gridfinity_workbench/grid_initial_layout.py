@@ -51,9 +51,9 @@ def _total_width_properties(obj: fc.DocumentObject) -> None:
     )
 
 
-def _grid_size_properties(obj: fc.DocumentObject, *, baseplate_default: bool) -> None:
+def _grid_size_properties(obj: fc.DocumentObject, *, _baseplate_default: bool) -> None:
     """Grid Size Properties."""
-    # TODO: half_grid_size dropped until bin rework. Using full grid_size only.
+    # NOTE: half_grid_size dropped until bin rework. Using full grid_size only.
     grid_size = _fundamentals.get_value("grid_size")
 
     obj.addProperty(
@@ -81,7 +81,7 @@ def rectangle_layout_properties(obj: fc.DocumentObject, *, baseplate_default: bo
     """
     _location_properties(obj)
     _total_width_properties(obj)
-    _grid_size_properties(obj, baseplate_default=baseplate_default)
+    _grid_size_properties(obj, _baseplate_default=baseplate_default)
 
     ## Standard Gridfinity Parameters
     obj.addProperty(
@@ -141,7 +141,7 @@ def custom_shape_layout_properties(obj: fc.DocumentObject, *, baseplate_default:
 
     """
     _total_width_properties(obj)
-    _grid_size_properties(obj, baseplate_default=baseplate_default)
+    _grid_size_properties(obj, _baseplate_default=baseplate_default)
 
     _location_properties(obj)
     obj.setEditorMode("GenerationLocation", 2)
