@@ -1,4 +1,13 @@
-"""Concrete parameter groups and data containers."""
+"""Concrete parameter groups and data containers.
+
+This module defines the actual parameter groups used by Gridfinity objects.
+Each ParameterGroup subclass sets `_default_type` to control how defaults
+are resolved for all parameters in the group:
+
+- DefaultType.VALUE: Hardcoded defaults (most groups use this)
+- DefaultType.MEM: Remember last used values within session (BaseplateSizeParams)
+- DefaultType.SAVED: Persist to FreeCAD preferences (PluginSettingsParams)
+"""
 
 from __future__ import annotations
 
@@ -265,8 +274,15 @@ class CombinedClipParams(CombinedParams):
 
 
 class BaseplateSizeParams(ParameterGroup):
+    """Baseplate size parameters (grid counts, filler dimensions).
+
+    Uses MEM default type - values are remembered within the session so
+    creating a new baseplate defaults to the last used grid size.
+    """
+
     _category = "Gridfinity_BaseplateSize"
     _section_title = "Size"
+    _default_type = DefaultType.MEM
 
     def __init__(self, **kwargs):
         parameters = [
@@ -275,14 +291,12 @@ class BaseplateSizeParams(ParameterGroup):
                 "X Grid Count",
                 2,
                 positive_only=True,
-                default_type=DefaultType.MEM,
             ),
             IntParam(
                 "y_grid_count",
                 "Y Grid Count",
                 2,
                 positive_only=True,
-                default_type=DefaultType.MEM,
             ),
             BooleanParam("filler_left_enabled", "Left Filler Enabled"),
             FloatParam(
@@ -848,10 +862,15 @@ class CombinedStackedBaseplatesParams(CombinedParams):
 
 
 class PluginSettingsParams(ParameterGroup):
-    """Plugin-level settings (cache sizes, etc.) - not used for geometry."""
+    """Plugin-level settings (cache sizes, etc.) - not used for geometry.
+
+    Uses SAVED default type - values persist to FreeCAD preferences and
+    survive across sessions. Changed via Edit Defaults UI.
+    """
 
     _category = "Gridfinity_PluginSettings"
     _section_title = "Performance"
+    _default_type = DefaultType.SAVED
 
     def __init__(self, **kwargs):
         parameters = [
@@ -861,7 +880,6 @@ class PluginSettingsParams(ParameterGroup):
                 32,
                 min_value=0,
                 max_value=4096,
-                default_type=DefaultType.SAVED,
             ),
             IntParam(
                 "cell_cache_size",
@@ -869,7 +887,6 @@ class PluginSettingsParams(ParameterGroup):
                 64,
                 min_value=0,
                 max_value=4096,
-                default_type=DefaultType.SAVED,
             ),
         ]
 
