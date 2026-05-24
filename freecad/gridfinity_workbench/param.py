@@ -21,6 +21,7 @@ from .param_system import (
     DefaultType,
     FloatParam,
     IntParam,
+    LiteralParam,
     ParameterGroup,
     ParameterValidationError,
 )
@@ -561,6 +562,7 @@ class SupportParams(ParameterGroup):
                 "overhang_angle",
                 "Overhang Angle",
                 fc.Units.Quantity("50.0 deg"),
+                freecad_property_type="App::PropertyAngle",
             ),
         ]
 
@@ -945,6 +947,210 @@ class CombinedStackedBaseplatesParams(CombinedParams):
             support=self.support.data(),
             stacking=self.stacking.data(),
             clip_cutouts=self.clip_cutouts.data(),
+        )
+
+
+@dataclass(frozen=True)
+class DrawerParamsData:
+    """Immutable data container for drawer fitting parameters."""
+
+    drawer_width: fc.Units.Quantity
+    drawer_depth: fc.Units.Quantity
+    width_filler_alignment: str
+    depth_filler_alignment: str
+    split_algorithm: str
+    printer_bed_width: fc.Units.Quantity
+    printer_bed_depth: fc.Units.Quantity
+
+
+@dataclass(frozen=True)
+class CombinedDrawerBaseplateParamsData:
+    """Immutable combined data for drawer baseplate geometry generation."""
+
+    fundamentals: FundamentalsParamsData
+    core: BaseplateCoreLayoutParamsData
+    fillers: BaseplateFillersParamsData
+    click_springs: ClickSpringParamsData
+    junction_screws: JunctionScrewParamsData
+    clip_cutouts: ClipParamsData
+    drawer: DrawerParamsData
+
+
+class DrawerParams(ParameterGroup):
+    """Drawer fitting parameters for drawer baseplates.
+
+    Uses MEM default type - values are remembered within the session so
+    creating a new drawer baseplate defaults to the last used dimensions.
+    """
+
+    _category = "Gridfinity_Drawer"
+    _section_title = "Drawer"
+    _default_type = DefaultType.MEM
+
+    def __init__(self, **kwargs) -> None:
+        """Initialize with drawer dimensions and fitting settings."""
+        parameters = [
+            FloatParam(
+                "drawer_width",
+                "Drawer Width",
+                fc.Units.Quantity("600 mm"),
+                positive_only=True,
+            ),
+            FloatParam(
+                "drawer_depth",
+                "Drawer Depth",
+                fc.Units.Quantity("600 mm"),
+                positive_only=True,
+            ),
+            LiteralParam(
+                "width_filler_alignment",
+                "Width Filler Alignment",
+                "Right",
+                choices=["Left", "Right", "Both"],
+            ),
+            LiteralParam(
+                "depth_filler_alignment",
+                "Depth Filler Alignment",
+                "Top",
+                choices=["Bottom", "Top", "Both"],
+            ),
+            LiteralParam(
+                "split_algorithm",
+                "Split Algorithm",
+                "Balanced",
+                choices=["Balanced", "Greedy"],
+            ),
+            FloatParam(
+                "printer_bed_width",
+                "Printer Bed Width",
+                fc.Units.Quantity("256 mm"),
+                positive_only=True,
+            ),
+            FloatParam(
+                "printer_bed_depth",
+                "Printer Bed Depth",
+                fc.Units.Quantity("240 mm"),
+                positive_only=True,
+            ),
+        ]
+
+        super().__init__(parameters)
+        self.set_all_values(kwargs)
+
+    def data(self) -> DrawerParamsData:
+        """Return immutable data container."""
+        return DrawerParamsData(
+            drawer_width=self.get_value("drawer_width"),
+            drawer_depth=self.get_value("drawer_depth"),
+            width_filler_alignment=self.get_value("width_filler_alignment"),
+            depth_filler_alignment=self.get_value("depth_filler_alignment"),
+            split_algorithm=self.get_value("split_algorithm"),
+            printer_bed_width=self.get_value("printer_bed_width"),
+            printer_bed_depth=self.get_value("printer_bed_depth"),
+        )
+
+
+class CombinedDrawerBaseplateParams(CombinedParams):
+    """Combined parameters for drawer baseplate geometry generation."""
+
+    def __init__(  # noqa: PLR0913
+        self,
+        fundamentals: FundamentalsParams = None,
+        size: BaseplateSizeParams = None,
+        core: BaseplateCoreParams = None,
+        click_springs: ClickSpringParams = None,
+        junction_screws: JunctionScrewParams = None,
+        clip_cutouts: ClipParams = None,
+        drawer: DrawerParams = None,
+    ) -> None:
+        """Initialize with all drawer baseplate parameter groups."""
+        super().__init__(
+            fundamentals=fundamentals or FundamentalsParams(),
+            size=size or BaseplateSizeParams(),
+            core=core or BaseplateCoreParams(),
+            click_springs=click_springs or ClickSpringParams(),
+            junction_screws=junction_screws or JunctionScrewParams(),
+            clip_cutouts=clip_cutouts or ClipParams(),
+            drawer=drawer or DrawerParams(),
+        )
+
+    def validate(self) -> dict[str, str]:
+        """Validate cross-group constraints."""
+        errors = CombinedBaseplateParams(
+            fundamentals=self.fundamentals,
+            size=self.size,
+            core=self.core,
+            click_springs=self.click_springs,
+            junction_screws=self.junction_screws,
+            clip_cutouts=self.clip_cutouts,
+        ).validate()
+        drawer = self.drawer.data()
+        if float(drawer.drawer_width) <= 0:
+            errors["drawer.drawer_width"] = "Drawer width must be greater than 0"
+        if float(drawer.drawer_depth) <= 0:
+            errors["drawer.drawer_depth"] = "Drawer depth must be greater than 0"
+        if float(drawer.printer_bed_width) <= 0:
+            errors["drawer.printer_bed_width"] = "Printer bed width must be greater than 0"
+        if float(drawer.printer_bed_depth) <= 0:
+            errors["drawer.printer_bed_depth"] = "Printer bed depth must be greater than 0"
+        return errors
+
+    def baseplate_data(self) -> CombinedBaseplateParamsData:
+        """Return baseplate-only data container for builder compatibility."""
+        size = self.size.data()
+        core = self.core.data()
+        return CombinedBaseplateParamsData(
+            fundamentals=self.fundamentals.data(),
+            core=BaseplateCoreLayoutParamsData(
+                x_grid_count=size.x_grid_count,
+                y_grid_count=size.y_grid_count,
+                base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
+                base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
+                base_profile_top_crop=core.base_profile_top_crop,
+            ),
+            fillers=BaseplateFillersParamsData(
+                left_enabled=size.filler_left_enabled,
+                left_width=size.filler_left_width,
+                right_enabled=size.filler_right_enabled,
+                right_width=size.filler_right_width,
+                top_enabled=size.filler_top_enabled,
+                top_width=size.filler_top_width,
+                bottom_enabled=size.filler_bottom_enabled,
+                bottom_width=size.filler_bottom_width,
+            ),
+            click_springs=self.click_springs.data(),
+            junction_screws=self.junction_screws.data(),
+            screw_stubs=ScrewStubParamsData(enabled=False, clearance=fc.Units.Quantity("0.15 mm")),
+            clip_cutouts=self.clip_cutouts.data(),
+        )
+
+    def data(self) -> CombinedDrawerBaseplateParamsData:
+        """Return validated immutable combined data container."""
+        size = self.size.data()
+        core = self.core.data()
+        return CombinedDrawerBaseplateParamsData(
+            fundamentals=self.fundamentals.data(),
+            core=BaseplateCoreLayoutParamsData(
+                x_grid_count=size.x_grid_count,
+                y_grid_count=size.y_grid_count,
+                base_profile_lower_chamfer_enabled=core.base_profile_lower_chamfer_enabled,
+                base_profile_lower_chamfer_size=core.base_profile_lower_chamfer_size,
+                base_profile_top_crop=core.base_profile_top_crop,
+            ),
+            fillers=BaseplateFillersParamsData(
+                left_enabled=size.filler_left_enabled,
+                left_width=size.filler_left_width,
+                right_enabled=size.filler_right_enabled,
+                right_width=size.filler_right_width,
+                top_enabled=size.filler_top_enabled,
+                top_width=size.filler_top_width,
+                bottom_enabled=size.filler_bottom_enabled,
+                bottom_width=size.filler_bottom_width,
+            ),
+            click_springs=self.click_springs.data(),
+            junction_screws=self.junction_screws.data(),
+            clip_cutouts=self.clip_cutouts.data(),
+            drawer=self.drawer.data(),
         )
 
 

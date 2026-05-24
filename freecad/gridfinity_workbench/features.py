@@ -3,6 +3,7 @@
 # ruff: noqa: D101, D102, D107
 from __future__ import annotations
 
+import contextlib
 from abc import abstractmethod
 from dataclasses import replace
 
@@ -13,8 +14,6 @@ try:
     import FreeCADGui as fcg  # noqa: N813
 except ImportError:  # pragma: no cover
     fcg = None
-
-import contextlib
 
 from . import (
     baseplate_builder,
@@ -37,7 +36,13 @@ from .custom_shape_features import (
     vertical_edge_fillet_with_concave_edges,
 )
 from .drawer_split import split_axis_into_printable_chunks
-from .param import CombinedBaseplateParams, CombinedClipParams
+from .param import (
+    CombinedBaseplateParams,
+    CombinedClipParams,
+    CombinedDrawerBaseplateParams,
+    CombinedStackedBaseplatesParams,
+    CombinedSupportBaseplateParams,
+)
 from .version import __version__
 
 unitmm = fc.Units.Quantity("1 mm")
@@ -381,63 +386,9 @@ class Baseplate(FoundationGridfinity):
 class DrawerBaseplate(FoundationGridfinity):
     def __init__(self, obj: fc.DocumentObject) -> None:
         super().__init__(obj)
+        CombinedDrawerBaseplateParams().add_all_properties_to_object(obj)
 
-        grid_initial_layout.rectangle_layout_properties(obj, baseplate_default=True)
-        baseplate_feat.solid_shape_properties(obj)
-        baseplate_feat.base_values_properties(obj)
-
-        obj.addProperty(
-            "App::PropertyLength",
-            "DrawerWidth",
-            "Drawer",
-            "Drawer inner width in mm",
-        ).DrawerWidth = 600 * unitmm
-        obj.addProperty(
-            "App::PropertyLength",
-            "DrawerDepth",
-            "Drawer",
-            "Drawer inner depth in mm",
-        ).DrawerDepth = 600 * unitmm
-
-        obj.addProperty(
-            "App::PropertyEnumeration",
-            "WidthFillerAlignment",
-            "Drawer",
-            "Left/Right/Both filler alignment on width axis",
-        )
-        obj.WidthFillerAlignment = ["Left", "Right", "Both"]
-        obj.WidthFillerAlignment = "Right"
-
-        obj.addProperty(
-            "App::PropertyEnumeration",
-            "DepthFillerAlignment",
-            "Drawer",
-            "Bottom/Top/Both filler alignment on depth axis",
-        )
-        obj.DepthFillerAlignment = ["Bottom", "Top", "Both"]
-        obj.DepthFillerAlignment = "Top"
-        obj.addProperty(
-            "App::PropertyEnumeration",
-            "SplitAlgorithm",
-            "Drawer",
-            "Chunk split algorithm used for drawer fitting",
-        )
-        obj.SplitAlgorithm = ["Balanced", "Greedy"]
-        obj.SplitAlgorithm = "Balanced"
-
-        obj.addProperty(
-            "App::PropertyLength",
-            "PrinterBedWidth",
-            "Drawer",
-            "Printer bed width used for drawer fitting",
-        ).PrinterBedWidth = 256 * unitmm
-        obj.addProperty(
-            "App::PropertyLength",
-            "PrinterBedDepth",
-            "Drawer",
-            "Printer bed depth used for drawer fitting",
-        ).PrinterBedDepth = 240 * unitmm
-
+        # Additional runtime properties not part of param system
         obj.addProperty(
             "App::PropertyStringList",
             "PieceNames",
@@ -458,37 +409,37 @@ class DrawerBaseplate(FoundationGridfinity):
         self,
         obj: fc.DocumentObject,
     ) -> Part.Shape:
-        params = CombinedBaseplateParams().from_obj(obj).data()
+        combined_params = CombinedDrawerBaseplateParams().from_obj(obj)
+        full_data = combined_params.data()
+        baseplate_params = combined_params.baseplate_data()
         preview_mode = bool(getattr(obj, "PreviewBuildMode", False))
         options = baseplate_builder.BaseplateBuildOptions(
-            include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
-            include_clip_cutouts=bool(getattr(obj, "ClipCutoutsEnabled", False)),
-            include_snap_springs=bool(getattr(obj, "ClickSpringsEnabled", False)),
+            include_junction_screws=full_data.junction_screws.enabled,
+            include_clip_cutouts=full_data.clip_cutouts.enabled,
+            include_snap_springs=full_data.click_springs.enabled,
         )
 
-        grid_mm = float(params.fundamentals.x_grid_size)
-        split_algorithm = (
-            "greedy" if str(getattr(obj, "SplitAlgorithm", "Balanced")) == "Greedy" else "balanced"
-        )
+        grid_mm = float(full_data.fundamentals.x_grid_size)
+        split_algorithm = "greedy" if full_data.drawer.split_algorithm == "Greedy" else "balanced"
         x_axis_chunks = split_axis_into_printable_chunks(
-            length_mm=float(obj.DrawerWidth),
-            bed_mm=float(obj.PrinterBedWidth),
+            length_mm=float(full_data.drawer.drawer_width),
+            bed_mm=float(full_data.drawer.printer_bed_width),
             grid_mm=grid_mm,
             alignment=(
                 "low"
-                if str(obj.WidthFillerAlignment) == "Left"
-                else ("high" if str(obj.WidthFillerAlignment) == "Right" else "both")
+                if full_data.drawer.width_filler_alignment == "Left"
+                else ("high" if full_data.drawer.width_filler_alignment == "Right" else "both")
             ),
             algorithm=split_algorithm,
         )
         y_axis_chunks = split_axis_into_printable_chunks(
-            length_mm=float(obj.DrawerDepth),
-            bed_mm=float(obj.PrinterBedDepth),
+            length_mm=float(full_data.drawer.drawer_depth),
+            bed_mm=float(full_data.drawer.printer_bed_depth),
             grid_mm=grid_mm,
             alignment=(
                 "low"
-                if str(obj.DepthFillerAlignment) == "Bottom"
-                else ("high" if str(obj.DepthFillerAlignment) == "Top" else "both")
+                if full_data.drawer.depth_filler_alignment == "Bottom"
+                else ("high" if full_data.drawer.depth_filler_alignment == "Top" else "both")
             ),
             algorithm=split_algorithm,
         )
@@ -499,8 +450,8 @@ class DrawerBaseplate(FoundationGridfinity):
         y_chunk_count = len(y_axis_chunks_for_rows)
         baseplate_names: list[str] = []
         baseplate_shapes: list[Part.Shape] = []
-        bed_w = float(obj.PrinterBedWidth)
-        bed_d = float(obj.PrinterBedDepth)
+        bed_w = float(full_data.drawer.printer_bed_width)
+        bed_d = float(full_data.drawer.printer_bed_depth)
         plate_gap_x = 42.0
         plate_gap_y = 42.0
         total_baseplates = x_chunk_count * y_chunk_count
@@ -536,10 +487,10 @@ class DrawerBaseplate(FoundationGridfinity):
                 baseplate_names.append(baseplate_name)
 
                 piece_params = replace(
-                    params,
-                    core=replace(params.core, x_grid_count=x_units, y_grid_count=y_units),
+                    baseplate_params,
+                    core=replace(baseplate_params.core, x_grid_count=x_units, y_grid_count=y_units),
                     fillers=replace(
-                        params.fillers,
+                        baseplate_params.fillers,
                         left_enabled=left_fill > 0,
                         left_width=left_fill * unitmm,
                         right_enabled=right_fill > 0,
@@ -595,30 +546,16 @@ class DrawerBaseplate(FoundationGridfinity):
 class SupportBaseplate(FoundationGridfinity):
     def __init__(self, obj: fc.DocumentObject) -> None:
         super().__init__(obj)
-
-        grid_initial_layout.rectangle_layout_properties(obj, baseplate_default=True)
-        baseplate_feat.solid_shape_properties(obj)
-        baseplate_feat.base_values_properties(obj)
-        obj.addProperty(
-            "App::PropertyAngle",
-            "SupportOverhangAngle",
-            "GridfinityNonStandard",
-            "Overhang angle used to calculate A-to-B loft height <br> <br> default = 50 deg",
-        ).SupportOverhangAngle = 50
-
-        if hasattr(obj, "JunctionScrewHoles"):
-            obj.JunctionScrewHoles = False
-            obj.setEditorMode("JunctionScrewHoles", ("ReadOnly", "Hidden"))
-        if hasattr(obj, "ClipCutoutsEnabled"):
-            obj.ClipCutoutsEnabled = False
-            obj.setEditorMode("ClipCutoutsEnabled", ("ReadOnly", "Hidden"))
+        CombinedSupportBaseplateParams().add_all_properties_to_object(obj)
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        layout = grid_initial_layout.make_rectangle_layout(obj)
+        params = CombinedSupportBaseplateParams().from_obj(obj)
+        data = params.data()
+        layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
         return baseplate_builder.build_baseplate_support_cached(obj, layout)
 
 
-class StackedBaseplates(Baseplate):
+class StackedBaseplates(FoundationGridfinity):
     """Stacked baseplates for printing.
 
     Uses the same geometry backend as SupportBaseplate.
@@ -626,30 +563,9 @@ class StackedBaseplates(Baseplate):
 
     def __init__(self, obj: fc.DocumentObject) -> None:
         super().__init__(obj)
-        obj.addProperty(
-            "App::PropertyAngle",
-            "SupportOverhangAngle",
-            "GridfinityNonStandard",
-            "Overhang angle used to calculate A-to-B loft height <br> <br> default = 50 deg",
-        ).SupportOverhangAngle = 50
-        obj.addProperty(
-            "App::PropertyInteger",
-            "InstanceCount",
-            "GridfinityNonStandard",
-            "Number of stacked baseplate instances <br> <br> default = 3",
-        ).InstanceCount = 3
-        obj.addProperty(
-            "App::PropertyBool",
-            "CornerStitching",
-            "GridfinityNonStandard",
-            "Enable corner stitching between stacked instances <br> <br> default = false",
-        ).CornerStitching = False
-        obj.addProperty(
-            "App::PropertyLength",
-            "StitchingThickness",
-            "GridfinityNonStandard",
-            "Corner stitching thickness <br> <br> default = 0.4 mm",
-        ).StitchingThickness = 0.4 * unitmm
+        CombinedStackedBaseplatesParams().add_all_properties_to_object(obj)
+
+        # Additional runtime property not part of param system
         obj.addProperty(
             "App::PropertyBool",
             "PreviewBuildMode",
@@ -659,7 +575,22 @@ class StackedBaseplates(Baseplate):
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         if bool(getattr(obj, "PreviewBuildMode", False)):
-            return Baseplate.generate_gridfinity_shape(self, obj)
+            params = CombinedStackedBaseplatesParams().from_obj(obj)
+            data = params.data()
+            layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
+            options = baseplate_builder.BaseplateBuildOptions(
+                include_junction_screws=data.junction_screws.enabled,
+                include_clip_cutouts=data.clip_cutouts.enabled,
+                include_snap_springs=data.click_springs.enabled,
+            )
+            # Use baseplate-only data for the builder
+            baseplate_data = CombinedBaseplateParams().from_obj(obj).data()
+            return baseplate_builder.build_simple_baseplate_from_params(
+                baseplate_data,
+                layout,
+                options,
+                preview=False,
+            )
 
         return _build_stacked_baseplates_shape(obj)
 
@@ -682,22 +613,27 @@ class StackedBaseplatesSupport(FoundationGridfinity):
 
 
 def _stacked_support_prototype(obj: fc.DocumentObject) -> Part.Shape:
-    proxy: SupportBaseplate = obj.Proxy  # type: ignore[assignment]
-    return proxy.generate_gridfinity_shape(obj)
+    """Build a single support layer for stacked baseplates."""
+    params = CombinedStackedBaseplatesParams().from_obj(obj)
+    data = params.data()
+    layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
+    return baseplate_builder.build_baseplate_support_cached(obj, layout)
 
 
 def _build_corner_stitching_shape(
     obj: fc.DocumentObject,
     baseplates_bbox: object,  # Part.BoundBox
 ) -> Part.Shape | None:
-    stitching_thickness = float(getattr(obj, "StitchingThickness", 0.4 * unitmm))
-    if not bool(getattr(obj, "CornerStitching", False)) or stitching_thickness <= 0:
+    params = CombinedStackedBaseplatesParams().from_obj(obj)
+    data = params.data()
+    stitching_thickness = float(data.stacking.stitching_thickness)
+    if not data.stacking.corner_stitching or stitching_thickness <= 0:
         return None
 
-    outer_radius = float(obj.BinOuterRadius)
+    outer_radius = float(data.fundamentals.bin_outer_radius)
     if stitching_thickness >= outer_radius:
         return None
-    if stitching_thickness > float(obj.BaseProfileTopCrop):
+    if stitching_thickness > float(data.core.base_profile_top_crop):
         return None
 
     x_min = float(baseplates_bbox.XMin)
@@ -767,11 +703,24 @@ def _build_corner_stitching_shape(
 
 
 def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
-    # Use Baseplate.generate_gridfinity_shape directly to avoid recursion through StackedBaseplates
-    proxy: Baseplate = obj.Proxy  # type: ignore[assignment]
-    baseplate_shape = Baseplate.generate_gridfinity_shape(proxy, obj)
+    # Build a single baseplate using params
+    params = CombinedStackedBaseplatesParams().from_obj(obj)
+    data = params.data()
+    layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
+    options = baseplate_builder.BaseplateBuildOptions(
+        include_junction_screws=data.junction_screws.enabled,
+        include_clip_cutouts=data.clip_cutouts.enabled,
+        include_snap_springs=data.click_springs.enabled,
+    )
+    baseplate_data = CombinedBaseplateParams().from_obj(obj).data()
+    baseplate_shape = baseplate_builder.build_simple_baseplate_from_params(
+        baseplate_data,
+        layout,
+        options,
+        preview=False,
+    )
     support_shape = _stacked_support_prototype(obj)
-    instance_count = max(1, int(getattr(obj, "InstanceCount", 3)))
+    instance_count = max(1, data.stacking.instance_count)
     z_step = support_shape.BoundBox.ZMax
 
     shapes = []
@@ -794,8 +743,10 @@ def _build_stacked_baseplates_shape(obj: fc.DocumentObject) -> Part.Shape:
 
 
 def _build_stacked_support_shape(obj: fc.DocumentObject) -> Part.Shape:
+    params = CombinedStackedBaseplatesParams().from_obj(obj)
+    data = params.data()
     support_shape = _stacked_support_prototype(obj)
-    instance_count = max(1, int(getattr(obj, "InstanceCount", 3)))
+    instance_count = max(1, data.stacking.instance_count)
     support_count = max(1, instance_count - 1)
     if support_count == 0:
         return Part.Shape()

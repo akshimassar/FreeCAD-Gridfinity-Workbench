@@ -399,12 +399,12 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 obj = doc.addObject("Part::FeaturePython", "DrawerBaseplate")
                 features.DrawerBaseplate(obj)
 
-                obj.DrawerWidth = 600
-                obj.DrawerDepth = 500
-                obj.PrinterBedWidth = 256
-                obj.PrinterBedDepth = 240
-                obj.WidthFillerAlignment = "Right"
-                obj.DepthFillerAlignment = "Top"
+                obj.drawer_drawer_width = 600
+                obj.drawer_drawer_depth = 500
+                obj.drawer_printer_bed_width = 256
+                obj.drawer_printer_bed_depth = 240
+                obj.drawer_width_filler_alignment = "Right"
+                obj.drawer_depth_filler_alignment = "Top"
                 obj.PreviewBuildMode = True
 
                 start = time.perf_counter()
@@ -568,7 +568,9 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             )
             layout = [[], []]  # 0 columns, 2 rows
             options = BaseplateBuildOptions(
-                include_snap_springs=False, include_junction_screws=False, include_clip_cutouts=False
+                include_snap_springs=False,
+                include_junction_screws=False,
+                include_clip_cutouts=False,
             )
             shape = build_simple_baseplate_from_params(params.data(), layout, options)
             bbox = shape.BoundBox
@@ -677,11 +679,11 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             try:
                 obj = doc.addObject("Part::FeaturePython", "SupportBaseplate")
                 features.SupportBaseplate(obj)
-                obj.FillerTopEnabled = True
-                obj.FillerRightEnabled = True
-                obj.FillerRightWidth = 3
-                obj.FillerLeftEnabled = False
-                obj.FillerBottomEnabled = False
+                obj.baseplate_size_filler_top_enabled = True
+                obj.baseplate_size_filler_right_enabled = True
+                obj.baseplate_size_filler_right_width = 3
+                obj.baseplate_size_filler_left_enabled = False
+                obj.baseplate_size_filler_bottom_enabled = False
                 doc.recompute()
                 shape = obj.Shape
                 payload = {{
@@ -767,7 +769,9 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             )
             layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions(
-                include_snap_springs=False, include_junction_screws=False, include_clip_cutouts=False
+                include_snap_springs=False,
+                include_junction_screws=False,
+                include_clip_cutouts=False,
             )
             shape = build_simple_baseplate_from_params(params.data(), layout, options)
             """,
@@ -944,11 +948,12 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             )
 
             def build_case(with_right_filler: bool) -> dict[str, float | int | bool]:
+                filler_width = "3 mm" if with_right_filler else "30 mm"
                 params = CombinedBaseplateParams(
                     size=BaseplateSizeParams(
                         x_grid_count=2, y_grid_count=2,
                         filler_right_enabled=with_right_filler,
-                        filler_right_width=fc.Units.Quantity("3 mm") if with_right_filler else fc.Units.Quantity("30 mm"),
+                        filler_right_width=fc.Units.Quantity(filler_width),
                     ),
                     clip_cutouts=ClipParams(enabled=False),
                 )
@@ -960,7 +965,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 w = float(data.fundamentals.main_half_width)
                 c = float(data.core.base_profile_top_crop)
                 effective_height = h + w - c
-                span = float(data.fundamentals.y_grid_size) * data.size.y_grid_count
+                span = float(data.fundamentals.y_grid_size) * data.core.y_grid_count
                 return {{
                     "volume": float(shape.Volume),
                     "solids": int(len(shape.Solids)),
@@ -1015,7 +1020,6 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             ),
         )
 
-    @unittest.skip("StackedBaseplates not yet migrated to params system")
     def test_stacked_baseplates_defaults_shape_and_timing(self) -> None:
         freecad_cmd = _resolve_freecad_cmd()
         if not freecad_cmd:
@@ -1038,8 +1042,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             try:
                 base_obj = doc.addObject("Part::FeaturePython", "StackedBaseplates")
                 features.StackedBaseplates(base_obj)
-                base_obj.xGridUnits = 2
-                base_obj.yGridUnits = 2
+                base_obj.baseplate_size_x_grid_count = 2
+                base_obj.baseplate_size_y_grid_count = 2
                 support_obj = doc.addObject("Part::FeaturePython", "StackedBaseplatesSupport")
                 features.StackedBaseplatesSupport(support_obj, base_obj)
 
@@ -1098,7 +1102,6 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         self.assertGreater(float(data["base_volume"]), 0.0)
         self.assertGreater(float(data["support_volume"]), 0.0)
 
-    @unittest.skip("StackedBaseplates not yet migrated to params system")
     def test_stacked_support_screw_stubs_with_fillers_and_stitching_volume_locked(self) -> None:
         freecad_cmd = _resolve_freecad_cmd()
         if not freecad_cmd:
@@ -1121,23 +1124,23 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             try:
                 base_obj = doc.addObject("Part::FeaturePython", "StackedBaseplates")
                 features.StackedBaseplates(base_obj)
-                base_obj.xGridUnits = 2
-                base_obj.yGridUnits = 2
-                base_obj.FillerRightEnabled = True
-                base_obj.FillerTopEnabled = True
-                base_obj.FillerTopWidth = 3.0
-                base_obj.CornerStitching = True
+                base_obj.baseplate_size_x_grid_count = 2
+                base_obj.baseplate_size_y_grid_count = 2
+                base_obj.baseplate_size_filler_right_enabled = True
+                base_obj.baseplate_size_filler_top_enabled = True
+                base_obj.baseplate_size_filler_top_width = 3.0
+                base_obj.stacking_corner_stitching = True
                 support_obj = doc.addObject("Part::FeaturePython", "StackedBaseplatesSupport")
                 features.StackedBaseplatesSupport(support_obj, base_obj)
 
-                base_obj.ScrewStubsEnabled = False
-                base_obj.JunctionScrewHoles = True
+                base_obj.screw_stub_enabled = False
+                base_obj.junction_screw_enabled = True
                 doc.recompute()
                 base_without_stubs = base_obj.Shape
                 support_without_stubs = support_obj.Shape
 
-                base_obj.ScrewStubsEnabled = True
-                base_obj.ScrewStubClearance = 0.15
+                base_obj.screw_stub_enabled = True
+                base_obj.screw_stub_clearance = 0.15
                 doc.recompute()
                 base_with_stubs = base_obj.Shape
                 support_with_stubs = support_obj.Shape

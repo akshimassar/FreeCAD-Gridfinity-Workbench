@@ -9,10 +9,10 @@ TEMPDIR = Path(gettempdir())
 DOC_NAME = "GridfinityDocument"
 
 # Enable FreeCAD console output to stderr so test failures are visible
-fc.Console.SetStatus("Console", "Log", True)
-fc.Console.SetStatus("Console", "Msg", True)
-fc.Console.SetStatus("Console", "Wrn", True)
-fc.Console.SetStatus("Console", "Err", True)
+fc.Console.SetStatus("Console", "Log", True)  # noqa: FBT003
+fc.Console.SetStatus("Console", "Msg", True)  # noqa: FBT003
+fc.Console.SetStatus("Console", "Wrn", True)  # noqa: FBT003
+fc.Console.SetStatus("Console", "Err", True)  # noqa: FBT003
 
 
 class TestWithDocument(unittest.TestCase):
@@ -75,6 +75,3 @@ class TestBaseplateTaskPanel(TestWithDocument):
         # Verify shape is valid
         self.assertTrue(obj.Shape.isValid())
         self.assertGreater(obj.Shape.Volume, 0)
-
-
-
