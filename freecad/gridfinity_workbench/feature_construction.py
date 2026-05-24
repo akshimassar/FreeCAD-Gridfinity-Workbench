@@ -19,7 +19,13 @@ from . import (
 from . import baseplate_click_springs as click_springs
 from . import label_shelf as label_shelf_module
 from . import magnet_hole as magnet_hole_module
-from .param import BaseplateCoreLayoutParamsData, CombinedBaseplateParams, FundamentalsParamsData
+from .param import (
+    BaseplateCoreLayoutParamsData,
+    CombinedBaseplateParamsData,
+    CombinedStackedBaseplatesParamsData,
+    CombinedSupportBaseplateParamsData,
+    FundamentalsParamsData,
+)
 
 unitmm = fc.Units.Quantity("1 mm")
 zeromm = fc.Units.Quantity("0 mm")
@@ -1131,12 +1137,15 @@ def _top_planar_faces(shape: Part.Shape) -> list[Part.Face]:
 
 
 def make_baseplate_top_support(  # noqa: C901, PLR0915
-    obj: fc.DocumentObject,
+    params: CombinedStackedBaseplatesParamsData | CombinedSupportBaseplateParamsData,
     layout: GridfinityLayout,
+    x_location_offset: float = 0.0,
+    y_location_offset: float = 0.0,
 ) -> Part.Shape:
     """Create support body from per-cell slabs and optional center cutouts."""
-    params = CombinedBaseplateParams().from_obj(obj).data()
     main_half_width = params.fundamentals.main_half_width
+    outer_radius = params.fundamentals.bin_outer_radius
+    bin_vertical_radius = float(outer_radius) - float(main_half_width)
     top_half_width = params.core.base_profile_top_crop
     run = main_half_width + params.click_springs.click_offset - top_half_width
 
@@ -1146,12 +1155,38 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
             "must be greater than BaseProfileTopCrop",
         )
 
-    loft_height = run / math.tan(math.radians(obj.SupportOverhangAngle.Value))
+    loft_height = run / math.tan(math.radians(float(params.support.overhang_angle)))
     if loft_height <= 0:
         raise ValueError("Invalid support geometry: computed loft height must be positive")
 
+    # Extract junction_screws and screw_stubs if available (CombinedStackedBaseplatesParamsData)
+    # CombinedSupportBaseplateParamsData doesn't have these
+    junction_screws_data = getattr(params, "junction_screws", None)
+    screw_stubs_data = getattr(params, "screw_stubs", None)
+    clip_cutouts_data = getattr(params, "clip_cutouts", None)
+
+    # Build a CombinedBaseplateParamsData for build_full_layout
+    from .param import ClipParamsData, JunctionScrewParamsData, ScrewStubParamsData
+
+    baseplate_params = CombinedBaseplateParamsData(
+        fundamentals=params.fundamentals,
+        core=params.core,
+        fillers=params.fillers,
+        click_springs=params.click_springs,
+        junction_screws=junction_screws_data
+        or JunctionScrewParamsData(
+            enabled=False,
+            screw_diameter=zeromm,
+            counterbore_diameter=zeromm,
+            counterbore_depth=zeromm,
+        ),
+        screw_stubs=screw_stubs_data or ScrewStubParamsData(enabled=False, clearance=zeromm),
+        clip_cutouts=clip_cutouts_data
+        or ClipParamsData(enabled=False, clip_tolerance=zeromm, clip_length=zeromm),
+    )
+
     geometry = baseplate_full_layout.build_full_layout(
-        params,
+        baseplate_params,
         layout,
         include_spring_masks=bool(params.click_springs.enabled),
     )
@@ -1171,8 +1206,8 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
             cell_height = cell_meta.height
             center_x, center_y = geometry.cell_center(ix, iy)
             cell_center = fc.Vector(
-                center_x - float(obj.xLocationOffset),
-                center_y - float(obj.yLocationOffset),
+                center_x - x_location_offset,
+                center_y - y_location_offset,
                 0,
             )
 
@@ -1214,9 +1249,9 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
             if x_a <= 0 or y_a <= 0 or x_b <= 0 or y_b <= 0:
                 continue
 
-            r_a = min(float(obj.BinVerticalRadius), max(0.001, min(x_a, y_a) / 2 - 1e-6))
+            r_a = min(bin_vertical_radius, max(0.001, min(x_a, y_a) / 2 - 1e-6))
             r_b = min(
-                float(obj.BinVerticalRadius + main_half_width - top_half_width),
+                bin_vertical_radius + float(main_half_width) - float(top_half_width),
                 max(0.001, min(x_b, y_b) / 2 - 1e-6),
             )
 
@@ -1278,10 +1313,15 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
     if cutters:
         support_solid = support_solid.cut(utils.multi_fuse(cutters))
 
-    if bool(params.junction_screws.enabled) and bool(params.screw_stubs.enabled):
+    if (
+        junction_screws_data is not None
+        and screw_stubs_data is not None
+        and junction_screws_data.enabled
+        and screw_stubs_data.enabled
+    ):
         stub_shape = junction_screws.stubs_shape(
-            params.junction_screws,
-            params.screw_stubs,
+            junction_screws_data,
+            screw_stubs_data,
             0 * unitmm,  # Bottom of support
             geometry,
         )
@@ -1291,7 +1331,7 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
     return baseplate_corner_roundover.apply_layout_corner_roundover(
         support_solid,
         geometry=geometry,
-        outside_radius=float(obj.BinOuterRadius),
+        outside_radius=float(outer_radius),
         height=float(loft_height),
     )
 

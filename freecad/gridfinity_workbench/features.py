@@ -552,7 +552,7 @@ class SupportBaseplate(FoundationGridfinity):
         params = CombinedSupportBaseplateParams().from_obj(obj)
         data = params.data()
         layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
-        return baseplate_builder.build_baseplate_support_cached(obj, layout)
+        return baseplate_builder.build_baseplate_support_cached(data, layout)
 
 
 class StackedBaseplates(FoundationGridfinity):
@@ -617,7 +617,7 @@ def _stacked_support_prototype(obj: fc.DocumentObject) -> Part.Shape:
     params = CombinedStackedBaseplatesParams().from_obj(obj)
     data = params.data()
     layout = [[True] * data.core.y_grid_count for _ in range(data.core.x_grid_count)]
-    return baseplate_builder.build_baseplate_support_cached(obj, layout)
+    return baseplate_builder.build_baseplate_support_cached(data, layout)
 
 
 def _build_corner_stitching_shape(

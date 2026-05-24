@@ -17,7 +17,12 @@ from . import baseplate_cell_cache, baseplate_corner_roundover, baseplate_full_l
 from . import baseplate_click_springs as click_springs
 from . import baseplate_feature_construction as baseplate_feat
 from . import feature_construction as feat
-from .param import CombinedBaseplateParams, CombinedBaseplateParamsData
+from .param import (
+    CombinedBaseplateParams,
+    CombinedBaseplateParamsData,
+    CombinedStackedBaseplatesParamsData,
+    CombinedSupportBaseplateParamsData,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -110,19 +115,16 @@ def _shape_cache_get_or_build(key: str, build_fn: Callable[[], Part.Shape]) -> P
 
 
 def build_baseplate_support_cached(
-    obj: fc.DocumentObject,
+    params: CombinedStackedBaseplatesParamsData | CombinedSupportBaseplateParamsData,
     layout: GridfinityLayout,
 ) -> Part.Shape:
     """Build baseplate top support with caching."""
-    obj_payload = {
-        name: _cache_normalize(getattr(obj, name))
-        for name in getattr(obj, "PropertiesList", [])
-        if name != "Shape"
-    }
+    # Create cache key from params data
+    params_payload = _cache_normalize(params)
     key = json.dumps(
         {
             "kind": "support_baseplate",
-            "obj": obj_payload,
+            "params": params_payload,
             "layout": _cache_normalize(layout),
         },
         sort_keys=True,
@@ -130,10 +132,14 @@ def build_baseplate_support_cached(
     )
 
     def _build() -> Part.Shape:
-        shape = feat.make_baseplate_top_support(obj, layout)
-        z_start = obj.BaseProfileMainHeight + obj.BaseProfileMainHalfWidth - obj.BaseProfileTopCrop
+        shape = feat.make_baseplate_top_support(params, layout)
+        z_start = (
+            float(params.fundamentals.main_height)
+            + float(params.fundamentals.main_half_width)
+            - float(params.core.base_profile_top_crop)
+        )
         z_matrix = fc.Matrix()
-        z_matrix.move(fc.Vector(0, 0, z_start.Value))
+        z_matrix.move(fc.Vector(0, 0, z_start))
         try:
             return shape.transformGeometry(z_matrix)
         except Exception:  # noqa: BLE001

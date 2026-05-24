@@ -278,12 +278,11 @@ def build_full_layout(  # noqa: C901, PLR0912
     include_spring_masks: bool,
 ) -> GridfinityLayoutGeometry:
     """Build a full layout geometry from params and layout."""
-    nx = len(layout)
-    ny = len(layout[0]) if nx > 0 else 0
-    if nx == 0:
-        nx = int(params.core.x_grid_count)
-    if ny == 0:
-        ny = int(params.core.y_grid_count)
+    # Determine grid dimensions from layout, falling back to params
+    layout_nx = len(layout)
+    layout_ny = len(layout[0]) if layout_nx > 0 and len(layout[0]) > 0 else 0
+    nx = layout_nx if layout_nx > 0 else int(params.core.x_grid_count)
+    ny = layout_ny if layout_ny > 0 else int(params.core.y_grid_count)
 
     left_w = (
         params.fillers.left_width
@@ -319,9 +318,11 @@ def build_full_layout(  # noqa: C901, PLR0912
     y_sizes = [bottom_w] + [params.fundamentals.y_grid_size] * ny + [top_w]
 
     expanded: GridfinityLayout = [[False for _ in range(ny + 2)] for _ in range(nx + 2)]
-    for ix in range(nx):
-        for iy in range(ny):
-            expanded[ix + 1][iy + 1] = bool(layout[ix][iy])
+    # Only copy from layout if it has actual cells (use actual layout dimensions)
+    for ix in range(layout_nx):
+        layout_col = layout[ix]
+        for iy in range(len(layout_col)):
+            expanded[ix + 1][iy + 1] = bool(layout_col[iy])
 
     if float(left_w) > 0:
         for iy in range(1, ny + 1):
