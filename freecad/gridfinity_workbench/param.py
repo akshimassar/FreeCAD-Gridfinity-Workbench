@@ -67,14 +67,14 @@ class BaseplateSizeParamsData:
 
     x_grid_count: int
     y_grid_count: int
-    filler_left_enabled: bool
-    filler_left_width: fc.Units.Quantity
-    filler_right_enabled: bool
-    filler_right_width: fc.Units.Quantity
     filler_top_enabled: bool
     filler_top_width: fc.Units.Quantity
+    filler_right_enabled: bool
+    filler_right_width: fc.Units.Quantity
     filler_bottom_enabled: bool
     filler_bottom_width: fc.Units.Quantity
+    filler_left_enabled: bool
+    filler_left_width: fc.Units.Quantity
     custom_layout_enabled: bool
     custom_layout: list[list[bool]] | None
 
@@ -316,10 +316,10 @@ class BaseplateSizeParams(ParameterGroup):
                 2,
                 positive_only=True,
             ),
-            BooleanParam("filler_left_enabled", "Left Filler Enabled"),
+            BooleanParam("filler_top_enabled", "Top Filler Enabled"),
             FloatParam(
-                "filler_left_width",
-                "Left Filler Width",
+                "filler_top_width",
+                "Top Filler Width",
                 fc.Units.Quantity("30 mm"),
                 positive_only=True,
             ),
@@ -330,17 +330,17 @@ class BaseplateSizeParams(ParameterGroup):
                 fc.Units.Quantity("30 mm"),
                 positive_only=True,
             ),
-            BooleanParam("filler_top_enabled", "Top Filler Enabled"),
-            FloatParam(
-                "filler_top_width",
-                "Top Filler Width",
-                fc.Units.Quantity("30 mm"),
-                positive_only=True,
-            ),
             BooleanParam("filler_bottom_enabled", "Bottom Filler Enabled"),
             FloatParam(
                 "filler_bottom_width",
                 "Bottom Filler Width",
+                fc.Units.Quantity("30 mm"),
+                positive_only=True,
+            ),
+            BooleanParam("filler_left_enabled", "Left Filler Enabled"),
+            FloatParam(
+                "filler_left_width",
+                "Left Filler Width",
                 fc.Units.Quantity("30 mm"),
                 positive_only=True,
             ),
@@ -356,14 +356,14 @@ class BaseplateSizeParams(ParameterGroup):
         return BaseplateSizeParamsData(
             x_grid_count=self.get_value("x_grid_count"),
             y_grid_count=self.get_value("y_grid_count"),
-            filler_left_enabled=self.get_value("filler_left_enabled"),
-            filler_left_width=self.get_value("filler_left_width"),
-            filler_right_enabled=self.get_value("filler_right_enabled"),
-            filler_right_width=self.get_value("filler_right_width"),
             filler_top_enabled=self.get_value("filler_top_enabled"),
             filler_top_width=self.get_value("filler_top_width"),
+            filler_right_enabled=self.get_value("filler_right_enabled"),
+            filler_right_width=self.get_value("filler_right_width"),
             filler_bottom_enabled=self.get_value("filler_bottom_enabled"),
             filler_bottom_width=self.get_value("filler_bottom_width"),
+            filler_left_enabled=self.get_value("filler_left_enabled"),
+            filler_left_width=self.get_value("filler_left_width"),
             custom_layout_enabled=self.get_value("custom_layout_enabled"),
             custom_layout=self.get_value("custom_layout"),
         )

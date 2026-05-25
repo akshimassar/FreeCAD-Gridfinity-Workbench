@@ -48,7 +48,6 @@ def _standard_buttons_ok_cancel() -> int:
 if TYPE_CHECKING:
     import Part
 
-    from .param import CombinedConnectingClipsParams
     from .param_system import CombinedParams
 
 ICONDIR = Path(__file__).parent / "icons"
@@ -1360,23 +1359,26 @@ class CreateConnectingClipTaskPanel:
     """Task panel for creating a connecting clip with custom parameters."""
 
     def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
+        from .param import CombinedConnectingClipsParams
+
         self._pixmap = pixmap
         self._edit_obj = target_obj
         self._target_obj: fc.DocumentObject | None = None
         self._created_preview_obj = False
         self._original_view: dict[str, Any] | None = None
         self._preview_applied = False
-        self._controls_by_key: dict[str, QWidget] = {}
+        self._params = CombinedConnectingClipsParams()
+
         self.form = QWidget()
         self.form.setWindowTitle(
             "Edit Connecting Clip" if target_obj is not None else "Create Connecting Clip",
         )
         layout = QVBoxLayout(self.form)
 
-        from .param import CombinedConnectingClipsParams
-
-        params = CombinedConnectingClipsParams()
-        self._controls_by_key = self._build_connecting_clip_controls(layout, params)
+        # Build UI using the param system
+        controls, widget = self._params.build_ui(layout)
+        for key, control in controls.items():
+            setattr(self, key, control)
 
         # Create preview object
         self._target_obj = utils.new_object("ConnectingClip")
@@ -1388,13 +1390,14 @@ class CreateConnectingClipTaskPanel:
                 with contextlib.suppress(Exception):
                     view_object.ShowInTree = False
 
-        features.ConnectingClip(self._target_obj, params)
+        features.ConnectingClip(self._target_obj, self._params)
 
         if self._edit_obj is not None:
-            # Load values from existing object
-            self._load_from_object(self._edit_obj)
+            # Load values from existing object into params, then apply to UI
+            self._params = self._params.from_obj(self._edit_obj)
+            self._params.apply_to_ui_owner(self)
 
-        for control in self._controls_by_key.values():
+        for control in controls.values():
             if hasattr(control, "valueChanged"):
                 control.valueChanged.connect(self._update_preview)
             if hasattr(control, "stateChanged"):
@@ -1404,59 +1407,6 @@ class CreateConnectingClipTaskPanel:
         self._capture_and_set_preview_visuals()
         self._update_preview()
 
-    def _load_from_object(self, obj: fc.DocumentObject) -> None:
-        """Load values from an existing connecting clip object."""
-        from .param import CombinedConnectingClipsParams
-
-        params = CombinedConnectingClipsParams().from_obj(obj)
-        params.apply_to_ui_owner(self)
-
-    def _build_connecting_clip_controls(
-        self,
-        layout: QVBoxLayout,
-        params: CombinedConnectingClipsParams,
-    ) -> dict[str, QWidget]:
-        controls: dict[str, QWidget] = {}
-
-        # Use the new param system UI generation for fundamentals
-        if hasattr(params, "fundamentals") and hasattr(params.fundamentals, "build_ui"):
-            # Add fundamentals section with compatibility note
-            layout.addWidget(_section_label("Fundamentals"))
-            compatibility_note = QLabel(
-                "Changing these values affects Gridfinity compatibility with other objects.",
-            )
-            compatibility_note.setWordWrap(True)
-            compatibility_note.setAlignment(Qt.AlignLeft)
-            layout.addWidget(compatibility_note)
-
-            # Generate UI for fundamentals group
-            fundamental_controls, fundamental_widget = params.fundamentals.build_ui()
-            layout.addWidget(fundamental_widget)
-
-            # Add controls with proper naming
-            for param_name, control in fundamental_controls.items():
-                key = f"fundamentals__{param_name}"
-                controls[key] = control
-                setattr(self, key, control)
-
-        # Use the new param system UI generation for connecting clips section
-        if hasattr(params, "connecting_clips") and hasattr(params.connecting_clips, "build_ui"):
-            # Add clip section
-            clip_controls, clip_widget = params.connecting_clips.build_ui(
-                None,
-                "Connecting Clips",
-                show_description=True,
-            )
-            layout.addWidget(clip_widget)
-
-            # Add controls with proper naming
-            for param_name, control in clip_controls.items():
-                key = f"connecting_clips__{param_name}"
-                controls[key] = control
-                setattr(self, key, control)
-
-        return controls
-
     def getStandardButtons(self) -> int:
         return _standard_buttons_ok_cancel()
 
@@ -1465,16 +1415,9 @@ class CreateConnectingClipTaskPanel:
         if self._target_obj is None:
             return
 
-        # Apply values to the preview object using the new param system
-        from .param import CombinedConnectingClipsParams
-
-        # Create param object using values from controls
-        params = CombinedConnectingClipsParams()
-
-        params.update_from_ui_owner(self)
-
-        # Apply params to object
-        params.to_obj(self._target_obj)
+        # Update params from UI and apply to object
+        self._params.update_from_ui_owner(self)
+        self._params.to_obj(self._target_obj)
 
         # Recompute the object to update the shape
         try:
@@ -1527,16 +1470,11 @@ class CreateConnectingClipTaskPanel:
         if self._target_obj is None:
             return False
 
-        # Apply final values to the target object using the new param system
-        from .param import CombinedConnectingClipsParams
+        # Update params from UI
+        self._params.update_from_ui_owner(self)
 
-        # Create param object using values from controls
-        params = CombinedConnectingClipsParams()
-
-        params.update_from_ui_owner(self)
-
-        # Validate the parameters using the new system
-        validation_errors = params.validate()
+        # Validate the parameters
+        validation_errors = self._params.validate()
         if validation_errors:
             # Display validation errors to user
             error_msg = "Validation errors:\n" + "\n".join(
@@ -1551,11 +1489,9 @@ class CreateConnectingClipTaskPanel:
                 fc.Console.PrintWarning(f"{error_msg}\n")
             return False
 
-        # Apply params to object using the new system
-        params.to_obj(self._target_obj)
-
+        # Apply params to output object
         output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
-        # Use a clean name without dimensions
+        self._params.to_obj(output_obj)
         output_obj.Label = "ConnectingClip"
 
         if self._edit_obj is not None and self._created_preview_obj:
