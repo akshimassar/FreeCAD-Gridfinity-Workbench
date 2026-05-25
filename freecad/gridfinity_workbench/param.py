@@ -22,6 +22,7 @@ from dataclasses import dataclass
 import FreeCAD as fc  # noqa: N813
 
 from .param_system import (
+    BaseParam,
     BooleanParam,
     CombinedParams,
     DefaultType,
@@ -29,6 +30,8 @@ from .param_system import (
     IntParam,
     LayoutParam,
     LiteralParam,
+    OptionalQuantityParam,
+    ParamCombination,
     ParameterGroup,
     ParameterValidationError,
 )
@@ -303,46 +306,32 @@ class BaseplateSizeParams(ParameterGroup):
 
     def __init__(self, **kwargs) -> None:
         """Initialize with grid counts and filler dimensions."""
-        parameters = [
-            IntParam(
-                "x_grid_count",
-                "X Grid Count",
-                2,
-                positive_only=True,
+        parameters: list[BaseParam | ParamCombination] = [
+            IntParam("x_grid_count", "X Grid Count", 2, positive_only=True),
+            IntParam("y_grid_count", "Y Grid Count", 2, positive_only=True),
+            OptionalQuantityParam(
+                "filler_top", "Top Filler",
+                enabled_suffix="_enabled",
+                quantity_suffix="_width",
+                default_quantity=fc.Units.Quantity("30 mm"),
             ),
-            IntParam(
-                "y_grid_count",
-                "Y Grid Count",
-                2,
-                positive_only=True,
+            OptionalQuantityParam(
+                "filler_right", "Right Filler",
+                enabled_suffix="_enabled",
+                quantity_suffix="_width",
+                default_quantity=fc.Units.Quantity("30 mm"),
             ),
-            BooleanParam("filler_top_enabled", "Top Filler Enabled"),
-            FloatParam(
-                "filler_top_width",
-                "Top Filler Width",
-                fc.Units.Quantity("30 mm"),
-                positive_only=True,
+            OptionalQuantityParam(
+                "filler_bottom", "Bottom Filler",
+                enabled_suffix="_enabled",
+                quantity_suffix="_width",
+                default_quantity=fc.Units.Quantity("30 mm"),
             ),
-            BooleanParam("filler_right_enabled", "Right Filler Enabled"),
-            FloatParam(
-                "filler_right_width",
-                "Right Filler Width",
-                fc.Units.Quantity("30 mm"),
-                positive_only=True,
-            ),
-            BooleanParam("filler_bottom_enabled", "Bottom Filler Enabled"),
-            FloatParam(
-                "filler_bottom_width",
-                "Bottom Filler Width",
-                fc.Units.Quantity("30 mm"),
-                positive_only=True,
-            ),
-            BooleanParam("filler_left_enabled", "Left Filler Enabled"),
-            FloatParam(
-                "filler_left_width",
-                "Left Filler Width",
-                fc.Units.Quantity("30 mm"),
-                positive_only=True,
+            OptionalQuantityParam(
+                "filler_left", "Left Filler",
+                enabled_suffix="_enabled",
+                quantity_suffix="_width",
+                default_quantity=fc.Units.Quantity("30 mm"),
             ),
             BooleanParam("custom_layout_enabled", "Custom Layout Enabled"),
             LayoutParam("custom_layout", "Custom Layout"),
@@ -374,16 +363,12 @@ class BaseplateCoreParams(ParameterGroup):
 
     def __init__(self, **kwargs) -> None:
         """Initialize with chamfer and top crop settings."""
-        parameters = [
-            BooleanParam(
-                "lower_chamfer_enabled",
-                "Lower Chamfer Enabled",
-                default_value=False,
-            ),
-            FloatParam(
-                "lower_chamfer_size",
-                "Lower Chamfer Size",
-                fc.Units.Quantity("0.7 mm"),
+        parameters: list[BaseParam | ParamCombination] = [
+            OptionalQuantityParam(
+                "lower_chamfer", "Lower Chamfer",
+                enabled_suffix="_enabled",
+                quantity_suffix="_size",
+                default_quantity=fc.Units.Quantity("0.7 mm"),
             ),
             FloatParam(
                 "top_crop",

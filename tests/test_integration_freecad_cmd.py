@@ -1231,3 +1231,72 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             support_intersection,
             min(support_vol_without, support_vol_with) * 0.999,
         )
+
+    def test_baseplate_5x5_top_right_fillers_timing(self) -> None:
+        """Benchmark test for 5x5 baseplate with top and right fillers enabled."""
+        if os.environ.get("RUN_BENCHMARKS", "").lower() not in ("1", "true"):
+            self.skipTest("Use --benchmarks flag to enable benchmark tests")
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+            import time
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc  # noqa: N813
+            import gridfinity_workbench.features as features
+
+            doc = fc.newDocument("Baseplate5x5Fillers")
+            try:
+                obj = doc.addObject("Part::FeaturePython", "Baseplate")
+                features.Baseplate(obj)
+                obj.baseplate_size_x_grid_count = 5
+                obj.baseplate_size_y_grid_count = 5
+                obj.baseplate_size_filler_top_enabled = True
+                obj.baseplate_size_filler_right_enabled = True
+
+                t0 = time.perf_counter()
+                doc.recompute()
+                elapsed = time.perf_counter() - t0
+
+                shape = obj.Shape
+                payload = {{
+                    "elapsed_s": float(elapsed),
+                    "volume": float(shape.Volume),
+                    "solids": int(len(shape.Solids)),
+                    "valid": bool(shape.isValid()),
+                }}
+                print("GRIDFINITY_RESULT=" + json.dumps(payload))
+            finally:
+                fc.closeDocument(doc.Name)
+            """,
+        ).format(module_root=repr(freecad_module_root))
+
+        proc = _run_freecad_script(freecad_cmd, script)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        print(f"\n5x5 baseplate with top+right fillers: {data['elapsed_s']:.3f}s")
+        print(f"  Volume: {data['volume']:.2f} mm³")
+        print(f"  Solids: {data['solids']}")
+
+        self.assertTrue(bool(data["valid"]))
+        self.assertGreater(float(data["volume"]), 0.0)

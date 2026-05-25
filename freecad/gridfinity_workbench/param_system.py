@@ -476,6 +476,213 @@ class LayoutParam(BaseParam):
         return json.loads(json_str)
 
 
+class ParamCombination(ABC):
+    """Base class for compound parameters that expand to multiple BaseParams.
+
+    ParamCombination allows defining a single logical parameter that internally
+    manages multiple underlying BaseParams. This is useful for related parameters
+    that should appear as a single UI row (e.g., enabled checkbox + value spinbox).
+
+    Subclasses must implement:
+    - expand(): Return list of underlying BaseParams
+    - build_control(): Create combined Qt widget
+    - read_control(): Extract values from combined widget
+
+    The ParameterGroup handles expansion automatically in __init__ and provides
+    special handling in UI generation methods.
+    """
+
+    name: str
+    display_name: str
+
+    @abstractmethod
+    def expand(self) -> list[BaseParam]:
+        """Return list of underlying BaseParams that this combination expands to."""
+        ...
+
+    def expanded_names(self) -> list[str]:
+        """Return names of all expanded params (for filtering in ui_descriptors)."""
+        return [p.name for p in self.expand()]
+
+    @abstractmethod
+    def build_control(self, values: dict[str, ParamValue]) -> QWidget:
+        """Build combined UI widget.
+
+        Args:
+            values: Dict mapping expanded param names to their current values.
+
+        Returns:
+            Combined Qt widget (e.g., HBoxLayout with checkbox + spinbox).
+
+        """
+        ...
+
+    @abstractmethod
+    def read_control(self, widget: QWidget) -> dict[str, ParamValue]:
+        """Extract values from combined widget.
+
+        Args:
+            widget: The combined widget created by build_control().
+
+        Returns:
+            Dict mapping expanded param names to their values.
+
+        """
+        ...
+
+    @abstractmethod
+    def connect_signals(self, widget: QWidget, callback: "Callable[[], None]") -> None:
+        """Connect widget signals to a callback for change notifications.
+
+        Args:
+            widget: The combined widget created by build_control().
+            callback: Function to call when any value changes.
+
+        """
+        ...
+
+
+class OptionalQuantityParam(ParamCombination):
+    """Compound parameter: checkbox (enabled) + spinbox (quantity).
+
+    Expands to two params: {name}{enabled_suffix} and {name}{quantity_suffix}.
+    Renders as single UI row: [checkbox] Label [spinbox mm]
+
+    Example usage:
+        OptionalQuantityParam(
+            "filler_top",
+            "Top Filler",
+            enabled_suffix="_enabled",
+            quantity_suffix="_width",
+            default_quantity=fc.Units.Quantity("30 mm"),
+        )
+        # Expands to: filler_top_enabled (bool), filler_top_width (Quantity)
+    """
+
+    def __init__(
+        self,
+        name: str,
+        display_name: str,
+        enabled_suffix: str,
+        quantity_suffix: str,
+        default_quantity: fc.Units.Quantity,
+        default_enabled: bool = False,  # noqa: FBT001, FBT002
+        positive_only: bool = True,  # noqa: FBT001, FBT002
+    ) -> None:
+        """Initialize an optional quantity parameter.
+
+        Args:
+            name: Base name (e.g., "filler_top")
+            display_name: Human-readable label for UI
+            enabled_suffix: Suffix for the boolean param
+            quantity_suffix: Suffix for the quantity param
+            default_quantity: Default quantity value when enabled
+            default_enabled: Whether enabled by default
+            positive_only: Whether quantity must be positive
+
+        """
+        self.name = name
+        self.display_name = display_name
+        self.enabled_suffix = enabled_suffix
+        self.quantity_suffix = quantity_suffix
+        self.default_quantity = default_quantity
+        self.default_enabled = default_enabled
+        self.positive_only = positive_only
+
+    @property
+    def enabled_name(self) -> str:
+        """Full name for the enabled param."""
+        return f"{self.name}{self.enabled_suffix}"
+
+    @property
+    def quantity_name(self) -> str:
+        """Full name for the quantity param."""
+        return f"{self.name}{self.quantity_suffix}"
+
+    def expand(self) -> list[BaseParam]:
+        """Return enabled (bool) and quantity params."""
+        return [
+            BooleanParam(
+                self.enabled_name,
+                f"{self.display_name} Enabled",
+                self.default_enabled,
+            ),
+            FloatParam(
+                self.quantity_name,
+                f"{self.display_name} Width",
+                self.default_quantity,
+                positive_only=self.positive_only,
+            ),
+        ]
+
+    def build_control(self, values: dict[str, ParamValue]) -> QWidget:
+        """Build checkbox + spinbox in horizontal layout."""
+        from PySide.QtWidgets import QCheckBox, QDoubleSpinBox, QHBoxLayout, QWidget
+
+        enabled_val = values.get(self.enabled_name, self.default_enabled)
+        quantity_val = values.get(self.quantity_name, self.default_quantity)
+
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        checkbox = QCheckBox()
+        checkbox.setChecked(bool(enabled_val))
+        checkbox.setObjectName("enabled")
+
+        spinbox = QDoubleSpinBox()
+        spinbox.setMinimum(0)
+        spinbox.setMaximum(999999)
+        spinbox.setValue(float(quantity_val))
+        spinbox.setObjectName("quantity")
+        # Store unit for later conversion
+        spinbox.setProperty("unit", self.default_quantity / float(self.default_quantity))
+
+        layout.addWidget(checkbox)
+        layout.addWidget(spinbox)
+
+        return widget
+
+    def read_control(self, widget: QWidget) -> dict[str, ParamValue]:
+        """Extract enabled and quantity values from combined widget."""
+        checkbox = widget.findChild(widget.__class__, "enabled")
+        spinbox = widget.findChild(widget.__class__, "quantity")
+
+        # Fallback to searching by type if objectName search fails
+        if checkbox is None or spinbox is None:
+            from PySide.QtWidgets import QCheckBox, QDoubleSpinBox
+
+            for child in widget.children():
+                if isinstance(child, QCheckBox):
+                    checkbox = child
+                elif isinstance(child, QDoubleSpinBox):
+                    spinbox = child
+
+        enabled = checkbox.isChecked() if checkbox else self.default_enabled
+        if spinbox:
+            unit = spinbox.property("unit")
+            quantity = (
+                spinbox.value() * unit if unit else fc.Units.Quantity(spinbox.value(), "mm")
+            )
+        else:
+            quantity = self.default_quantity
+
+        return {
+            self.enabled_name: enabled,
+            self.quantity_name: quantity,
+        }
+
+    def connect_signals(self, widget: QWidget, callback: Callable[[], None]) -> None:
+        """Connect checkbox and spinbox signals to callback."""
+        from PySide.QtWidgets import QCheckBox, QDoubleSpinBox
+
+        for child in widget.children():
+            if isinstance(child, QCheckBox):
+                child.stateChanged.connect(lambda *_: callback())
+            elif isinstance(child, QDoubleSpinBox):
+                child.valueChanged.connect(lambda *_: callback())
+
+
 class ParameterGroup(ABC):
     """Base class for parameter groups with automatic UI, validation, and FreeCAD integration.
 
@@ -524,13 +731,26 @@ class ParameterGroup(ABC):
 
     def __init__(
         self,
-        parameters: Sequence[BaseParam] | None = None,
+        parameters: Sequence[BaseParam | ParamCombination] | None = None,
         resolver: ParamDefaultResolver | None = None,
     ) -> None:
         """Initialize a parameter group with optional parameters and resolver."""
-        self._parameters: dict[str, BaseParam] = (
-            {param.name: param for param in parameters} if parameters else {}
-        )
+        # Expand ParamCombination instances into their underlying params
+        expanded_params: list[BaseParam] = []
+        self._compound_params: dict[str, ParamCombination] = {}
+        # Track UI order: list of param names (compound params use their base name)
+        self._ui_order: list[str] = []
+
+        for param in parameters or []:
+            if isinstance(param, ParamCombination):
+                self._compound_params[param.name] = param
+                self._ui_order.append(param.name)
+                expanded_params.extend(param.expand())
+            else:
+                self._ui_order.append(param.name)
+                expanded_params.append(param)
+
+        self._parameters: dict[str, BaseParam] = {p.name: p for p in expanded_params}
         self._values: dict[str, ParamValue] = {}
         self._resolver = resolver if resolver is not None else default_resolver
         self._group_name = self._compute_group_name()
@@ -741,15 +961,30 @@ class ParameterGroup(ABC):
             self.set_value(param_name, self._from_ui_value(param, ui_value))
 
     def ui_descriptors(self) -> dict[str, UIField]:
-        """Automatically generate UI configuration for all parameters."""
+        """Automatically generate UI configuration for all parameters in original order."""
         descriptors = {}
-        for param_name, param in self._parameters.items():
-            descriptors[param_name] = UIField(
-                control_type=self._get_control_type(param),
-                label=param.display_name,
-                param_name=param_name,
-                group=self.__class__.__name__.replace("Params", "").lower(),
-            )
+        group_name = self.__class__.__name__.replace("Params", "").lower()
+
+        for name in self._ui_order:
+            if name in self._compound_params:
+                # Compound param
+                cp = self._compound_params[name]
+                descriptors[name] = UIField(
+                    control_type="compound",
+                    label=cp.display_name,
+                    param_name=name,
+                    group=group_name,
+                )
+            elif name in self._parameters:
+                # Regular param
+                param = self._parameters[name]
+                descriptors[name] = UIField(
+                    control_type=self._get_control_type(param),
+                    label=param.display_name,
+                    param_name=name,
+                    group=group_name,
+                )
+
         return descriptors
 
     def has_param(self, param_name: str) -> bool:
@@ -852,6 +1087,14 @@ class ParameterGroup(ABC):
         ui_descriptors = self.ui_descriptors()
 
         for param_name, ui_field in ui_descriptors.items():
+            # Handle compound params specially
+            if ui_field.control_type == "compound":
+                cp = self._compound_params[param_name]
+                values = {name: self.get_value(name) for name in cp.expanded_names()}
+                control = cp.build_control(values)
+                controls[param_name] = control
+                continue
+
             param = self._parameters[param_name]
             default_value = self.get_value(param_name)
 
@@ -941,6 +1184,14 @@ class ParameterGroup(ABC):
             return
 
         for param_name, control in controls.items():
+            # Handle compound params specially
+            if param_name in self._compound_params:
+                cp = self._compound_params[param_name]
+                values = cp.read_control(control)
+                for expanded_name, value in values.items():
+                    self.set_value(expanded_name, value)
+                continue
+
             if param_name not in self._parameters:
                 continue
             param = self._parameters[param_name]
@@ -1021,6 +1272,45 @@ class ParameterGroup(ABC):
 
         return controls, widget
 
+    def connect_control_signals(
+        self, controls: dict[str, object], callback: Callable[[], None]
+    ) -> None:
+        """Connect all control signals to a callback for change notifications.
+
+        Handles both regular controls and compound param controls.
+
+        Args:
+            controls: Dict mapping param names to Qt widget controls.
+            callback: Function to call when any value changes.
+
+        """
+        try:
+            from PySide.QtWidgets import (
+                QCheckBox,
+                QComboBox,
+                QDoubleSpinBox,
+                QSpinBox,
+            )
+        except ImportError:
+            return
+
+        ui_descriptors = self.ui_descriptors()
+
+        for param_name, control in controls.items():
+            # Handle compound params
+            if param_name in self._compound_params:
+                cp = self._compound_params[param_name]
+                cp.connect_signals(control, callback)  # type: ignore[arg-type]
+                continue
+
+            # Handle regular controls
+            if isinstance(control, QDoubleSpinBox | QSpinBox):
+                control.valueChanged.connect(lambda *_: callback())
+            elif isinstance(control, QCheckBox):
+                control.stateChanged.connect(lambda *_: callback())
+            elif isinstance(control, QComboBox):
+                control.currentIndexChanged.connect(lambda *_: callback())
+
 
 class ParameterValidationError(Exception):
     """Exception raised when parameter validation fails.
@@ -1037,7 +1327,7 @@ class ParameterValidationError(Exception):
         )
 
 
-ControlType = Literal["spinbox", "checkbox", "combo", "textbox", "button"]
+ControlType = Literal["spinbox", "checkbox", "combo", "textbox", "button", "compound"]
 
 
 class UIField:
@@ -1174,8 +1464,30 @@ class CombinedParams:
     def apply_to_ui_owner(self, owner: object) -> None:
         """Apply values to UI owner attributes keyed as `group__param`."""
         payload = self.to_ui_payload()
+
+        # Track which params are handled by compound params
+        compound_handled: set[str] = set()
+
+        # First, apply compound param values
+        for group_name, group in self._param_groups.items():
+            if not hasattr(group, "_compound_params"):
+                continue
+            group_payload = payload.get(group_name, {})
+            for cp_name, cp in group._compound_params.items():  # noqa: SLF001
+                control = getattr(owner, f"{group_name}__{cp_name}", None)
+                if control is None:
+                    continue
+                # Build values dict from payload for compound param's expanded names
+                values = {name: group_payload.get(name) for name in cp.expanded_names()}
+                # Apply to compound control's child widgets
+                self._apply_compound_values(control, cp, values)
+                compound_handled.update(cp.expanded_names())
+
+        # Then apply regular param values
         for group_name, group_payload in payload.items():
             for param_name, value in group_payload.items():
+                if param_name in compound_handled:
+                    continue  # Already handled by compound param
                 control = getattr(owner, f"{group_name}__{param_name}", None)
                 if control is None:
                     continue
@@ -1184,6 +1496,23 @@ class CombinedParams:
                 elif hasattr(control, "setValue"):
                     control.setValue(value)
 
+    def _apply_compound_values(
+        self, control: object, cp: ParamCombination, values: dict[str, ParamValue]
+    ) -> None:
+        """Apply values to a compound control's child widgets."""
+        try:
+            from PySide.QtWidgets import QCheckBox, QDoubleSpinBox
+        except ImportError:
+            return
+
+        for child in control.children():  # type: ignore[union-attr]
+            if isinstance(child, QCheckBox):
+                enabled_val = values.get(cp.expanded_names()[0], False)
+                child.setChecked(bool(enabled_val))
+            elif isinstance(child, QDoubleSpinBox):
+                quantity_val = values.get(cp.expanded_names()[1], 0)
+                child.setValue(float(quantity_val))
+
     def update_from_ui_controls(self, controls_by_key: dict[str, object]) -> None:
         """Update parameters from controls keyed as `group__param`."""
         payload: dict[str, dict[str, ParamValue]] = {}
@@ -1191,7 +1520,19 @@ class CombinedParams:
             if not hasattr(group, "_parameters"):
                 continue
             group_payload: dict[str, ParamValue] = {}
+
+            # Handle compound params first
+            if hasattr(group, "_compound_params"):
+                for cp_name, cp in group._compound_params.items():  # noqa: SLF001
+                    control = controls_by_key.get(f"{group_name}__{cp_name}")
+                    if control is not None:
+                        values = cp.read_control(control)
+                        group_payload.update(values)
+
+            # Handle regular params
             for param_name in group._parameters:  # noqa: SLF001
+                if param_name in group_payload:
+                    continue  # Already handled by compound param
                 control = controls_by_key.get(f"{group_name}__{param_name}")
                 if control is None:
                     continue
@@ -1209,7 +1550,19 @@ class CombinedParams:
             if not hasattr(group, "_parameters"):
                 continue
             group_payload: dict[str, ParamValue] = {}
+
+            # Handle compound params first
+            if hasattr(group, "_compound_params"):
+                for cp_name, cp in group._compound_params.items():  # noqa: SLF001
+                    control = getattr(owner, f"{group_name}__{cp_name}", None)
+                    if control is not None:
+                        values = cp.read_control(control)
+                        group_payload.update(values)
+
+            # Handle regular params
             for param_name, param in group._parameters.items():  # noqa: SLF001
+                if param_name in group_payload:
+                    continue  # Already handled by compound param
                 control = getattr(owner, f"{group_name}__{param_name}", None)
                 if control is None:
                     continue

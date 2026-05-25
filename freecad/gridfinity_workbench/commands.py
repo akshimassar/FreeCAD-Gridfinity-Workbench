@@ -975,6 +975,13 @@ class CreateBaseplateTaskPanel:
                 pass
             elif hasattr(control, "stateChanged"):
                 control.stateChanged.connect(lambda *_: self._preview_timer.start())
+            elif isinstance(control, QWidget):
+                # Handle compound params - connect signals from child widgets
+                for child in control.children():
+                    if isinstance(child, QDoubleSpinBox | QSpinBox):
+                        child.valueChanged.connect(lambda *_: self._preview_timer.start())
+                    elif isinstance(child, QCheckBox):
+                        child.stateChanged.connect(lambda *_: self._preview_timer.start())
 
     def _update_preview(self) -> None:
         if self._target_obj is None:

@@ -11,6 +11,7 @@ RUN_INTEGRATION=false
 EXPLICIT=false
 TEST_NAME=""
 FREECAD_VERSION=""
+RUN_BENCHMARKS=false
 
 # Default FreeCAD paths (can be overridden by .env or env vars)
 DEFAULT_FREECAD_1_1_CMD="/home/akshi/opencode-tmp/freecad-1.1-rootfs/AppRun"
@@ -22,6 +23,7 @@ while [[ $# -gt 0 ]]; do
     --unit) RUN_UNIT=true; EXPLICIT=true; shift ;;
     --gui) RUN_GUI=true; EXPLICIT=true; shift ;;
     --integration) RUN_INTEGRATION=true; EXPLICIT=true; shift ;;
+    --benchmarks) RUN_BENCHMARKS=true; shift ;;
     --freecad|-f)
       if [[ -z "${2:-}" ]]; then
         echo "Error: --freecad requires a version argument (1.1, link, or all)" >&2
@@ -45,11 +47,12 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --help|-h)
-      echo "Usage: $0 [--lint] [--unit] [--gui] [--integration] [--freecad <version>] [--test <name>]"
+      echo "Usage: $0 [--lint] [--unit] [--gui] [--integration] [--benchmarks] [--freecad <version>] [--test <name>]"
       echo "  --lint                  Run ruff and mypy checks"
       echo "  --unit                  Run unit tests"
       echo "  --gui                   Run GUI tests (requires FreeCAD)"
       echo "  --integration           Run integration tests (requires FreeCAD)"
+      echo "  --benchmarks            Enable benchmark tests (skipped by default)"
       echo "  --freecad|-f <version>  FreeCAD version: 1.1, link, or all"
       echo "  --test|-t <name>        Run only the specified test method"
       echo "  No flags runs all tests."
@@ -193,9 +196,9 @@ if [[ "$RUN_INTEGRATION" == "true" ]]; then
     
     echo "Running integration tests [FreeCAD $version]: $freecad_cmd"
     if [[ -n "$TEST_NAME" ]]; then
-      FREECAD_CMD="$freecad_cmd" python -m unittest "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
+      FREECAD_CMD="$freecad_cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
     else
-      FREECAD_CMD="$freecad_cmd" python -m unittest tests.test_integration_freecad_cmd
+      FREECAD_CMD="$freecad_cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest tests.test_integration_freecad_cmd
     fi
     ran_any=true
   done
@@ -218,9 +221,9 @@ if [[ "$RUN_INTEGRATION" == "true" ]]; then
       fi
       echo "Running integration tests (legacy): $cmd"
       if [[ -n "$TEST_NAME" ]]; then
-        FREECAD_CMD="$cmd" python -m unittest "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
+        FREECAD_CMD="$cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
       else
-        FREECAD_CMD="$cmd" python -m unittest tests.test_integration_freecad_cmd
+        FREECAD_CMD="$cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest tests.test_integration_freecad_cmd
       fi
     done
   fi
