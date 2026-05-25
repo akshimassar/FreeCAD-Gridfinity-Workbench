@@ -222,8 +222,17 @@ class TestBaseplateDialogFields(TestWithDocument):
         params = CombinedBaseplateParams()
         expected_controls = set()
         for group_name, group in params._param_groups.items():  # noqa: SLF001
+            # Get expanded param names from compound params (these are NOT individual controls)
+            expanded_from_compound = set()
+            for cp in group._compound_params.values():  # noqa: SLF001
+                expanded_from_compound.update(cp.expanded_names())
+            # Add individual params that are NOT from compound params
             for param_name in group._parameters:  # noqa: SLF001
-                expected_controls.add(f"{group_name}__{param_name}")
+                if param_name not in expanded_from_compound:
+                    expected_controls.add(f"{group_name}__{param_name}")
+            # Add compound params (which render as single UI controls)
+            for cp_name in group._compound_params:  # noqa: SLF001
+                expected_controls.add(f"{group_name}__{cp_name}")
 
         # Find unexpected controls (in dialog but not in params)
         unexpected = dialog_controls - expected_controls
@@ -255,8 +264,17 @@ class TestBaseplateDialogFields(TestWithDocument):
         params = CombinedStackedBaseplatesParams()
         expected_controls = set()
         for group_name, group in params._param_groups.items():  # noqa: SLF001
+            # Get expanded param names from compound params (these are NOT individual controls)
+            expanded_from_compound = set()
+            for cp in group._compound_params.values():  # noqa: SLF001
+                expanded_from_compound.update(cp.expanded_names())
+            # Add individual params that are NOT from compound params
             for param_name in group._parameters:  # noqa: SLF001
-                expected_controls.add(f"{group_name}__{param_name}")
+                if param_name not in expanded_from_compound:
+                    expected_controls.add(f"{group_name}__{param_name}")
+            # Add compound params (which render as single UI controls)
+            for cp_name in group._compound_params:  # noqa: SLF001
+                expected_controls.add(f"{group_name}__{cp_name}")
 
         # Find discrepancies
         unexpected = dialog_controls - expected_controls

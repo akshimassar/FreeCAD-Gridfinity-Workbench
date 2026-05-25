@@ -18,12 +18,9 @@ import FreeCADGui as fcg  # noqa: N813
 from PySide.QtCore import Qt, QTimer
 from PySide.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialogButtonBox,
     QDoubleSpinBox,
     QLabel,
-    QPushButton,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -456,7 +453,7 @@ class CreateDrawerBaseplateTaskPanel:
         self._preview_timer.setInterval(500)
         self._preview_timer.timeout.connect(self._update_preview)
 
-        self._connect_signals(controls)
+        self._params.connect_control_signals(controls, self._on_control_changed)
         self._params.apply_to_ui_owner(self)
 
         self._capture_and_set_preview_visuals()
@@ -592,15 +589,6 @@ class CreateDrawerBaseplateTaskPanel:
             f"Y printable chunks: {len(y_chunks)} [{y_desc}]\n"
             f"Total printable pieces: {pieces}",
         )
-
-    def _connect_signals(self, controls: dict[str, QWidget]) -> None:
-        for control in controls.values():
-            if isinstance(control, QDoubleSpinBox):
-                control.valueChanged.connect(lambda *_: self._on_control_changed())
-            elif isinstance(control, QComboBox):
-                control.currentIndexChanged.connect(lambda *_: self._on_control_changed())
-            elif isinstance(control, QCheckBox):
-                control.stateChanged.connect(lambda *_: self._on_control_changed())
 
     def _on_control_changed(self) -> None:
         self._refresh_summary()
@@ -752,7 +740,7 @@ class CreateBaseplateTaskPanel:
         self._preview_timer.setSingleShot(True)
         self._preview_timer.setInterval(500)
         self._preview_timer.timeout.connect(self._update_preview)
-        self._connect_preview_signals(controls)
+        self._params.connect_control_signals(controls, lambda: self._preview_timer.start())
         self._update_preview()
 
     def getStandardButtons(self) -> int:
@@ -793,23 +781,6 @@ class CreateBaseplateTaskPanel:
             view.LineColor = self._original_view["LineColor"]
         view.Transparency = self._original_view["Transparency"]
 
-    def _connect_preview_signals(self, controls: dict[str, object]) -> None:
-        for control in controls.values():
-            if isinstance(control, QDoubleSpinBox | QSpinBox):
-                control.valueChanged.connect(lambda *_: self._preview_timer.start())
-            elif isinstance(control, QPushButton):
-                # Layout edit buttons don't trigger preview directly
-                pass
-            elif hasattr(control, "stateChanged"):
-                control.stateChanged.connect(lambda *_: self._preview_timer.start())
-            elif isinstance(control, QWidget):
-                # Handle compound params - connect signals from child widgets
-                for child in control.children():
-                    if isinstance(child, QDoubleSpinBox | QSpinBox):
-                        child.valueChanged.connect(lambda *_: self._preview_timer.start())
-                    elif isinstance(child, QCheckBox):
-                        child.stateChanged.connect(lambda *_: self._preview_timer.start())
-
     def _update_preview(self) -> None:
         if self._target_obj is None:
             return
@@ -817,9 +788,20 @@ class CreateBaseplateTaskPanel:
         if params is None:
             return
         params.to_obj(self._target_obj)
+
+        # Get layout for preview
+        data = params.data()
+        size = data.baseplate_size
+        if size.custom_layout_enabled and size.custom_layout:
+            layout = size.custom_layout
+        else:
+            layout = [[True] * size.y_grid_count for _ in range(size.x_grid_count)]
+
+        custom_layout = size.custom_layout if size.custom_layout_enabled else None
         base_label = self._format_simple_baseplate_label(
             int(self.baseplate_size__x_grid_count.value()),
             int(self.baseplate_size__y_grid_count.value()),
+            custom_layout,
         )
         self._target_obj.Label = self._format_preview_label(base_label)
         status_bar = None
@@ -832,13 +814,6 @@ class CreateBaseplateTaskPanel:
                 status_bar = None
 
         start = time.perf_counter()
-        # Directly build preview shape instead of relying on recompute
-        data = params.data()
-        size = data.baseplate_size
-        if size.custom_layout_enabled and size.custom_layout:
-            layout = size.custom_layout
-        else:
-            layout = [[True] * size.y_grid_count for _ in range(size.x_grid_count)]
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=data.junction_screws.enabled,
             include_clip_cutouts=data.connecting_clips.enabled,
@@ -858,7 +833,14 @@ class CreateBaseplateTaskPanel:
         self._preview_applied = True
 
     @staticmethod
-    def _format_simple_baseplate_label(x_cells: int, y_cells: int) -> str:
+    def _format_simple_baseplate_label(
+        x_cells: int,
+        y_cells: int,
+        custom_layout: list[list[bool]] | None = None,
+    ) -> str:
+        if custom_layout:
+            cell_count = sum(sum(row) for row in custom_layout)
+            return f"Baseplate Custom {cell_count}"
         return f"Baseplate {x_cells} x {y_cells}"
 
     @staticmethod
@@ -890,9 +872,14 @@ class CreateBaseplateTaskPanel:
             return False
         output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
         params.to_obj(output_obj)
+        custom_layout_enabled = params.baseplate_size.get_value("custom_layout_enabled")
+        custom_layout = (
+            params.baseplate_size.get_value("custom_layout") if custom_layout_enabled else None
+        )
         output_obj.Label = self._format_simple_baseplate_label(
             int(params.baseplate_size.get_value("x_grid_count")),
             int(params.baseplate_size.get_value("y_grid_count")),
+            custom_layout,
         )
         if self._edit_obj is not None and self._created_preview_obj:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
@@ -931,7 +918,11 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
         )
 
     @staticmethod
-    def _format_simple_baseplate_label(x_cells: int, y_cells: int) -> str:
+    def _format_simple_baseplate_label(
+        x_cells: int,
+        y_cells: int,
+        custom_layout: list[list[bool]] | None = None,  # noqa: ARG004
+    ) -> str:
         return f"Stacked Baseplates {x_cells} x {y_cells}"
 
     @staticmethod
@@ -1069,11 +1060,7 @@ class CreateConnectingClipTaskPanel:
             self._params = self._params.from_obj(self._edit_obj)
             self._params.apply_to_ui_owner(self)
 
-        for control in controls.values():
-            if hasattr(control, "valueChanged"):
-                control.valueChanged.connect(self._update_preview)
-            if hasattr(control, "stateChanged"):
-                control.stateChanged.connect(self._update_preview)
+        self._params.connect_control_signals(controls, self._update_preview)
 
         # Initial preview update
         self._capture_and_set_preview_visuals()

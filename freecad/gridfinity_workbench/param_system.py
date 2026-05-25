@@ -844,6 +844,7 @@ class OptionalLayoutParam(ParamCombination):
         button = QPushButton("Edit Layout...")
         button.setObjectName("layout_button")
         button.setProperty("layout_value", layout_val)
+        button._layout_changed_callback = None  # noqa: SLF001
 
         def on_click() -> None:
             from freecad.gridfinity_workbench import custom_shape
@@ -852,6 +853,9 @@ class OptionalLayoutParam(ParamCombination):
             result = custom_shape.custom_bin_dialog([], current)
             if result is not None:
                 button.setProperty("layout_value", result.layout)
+                # Trigger preview update callback if set
+                if button._layout_changed_callback is not None:  # noqa: SLF001
+                    button._layout_changed_callback()  # noqa: SLF001
 
         button.clicked.connect(on_click)
 
@@ -884,12 +888,15 @@ class OptionalLayoutParam(ParamCombination):
         }
 
     def connect_signals(self, widget: QWidget, callback: Callable[[], None]) -> None:
-        """Connect checkbox signal to callback."""
-        from PySide.QtWidgets import QCheckBox
+        """Connect checkbox and layout button signals to callback."""
+        from PySide.QtWidgets import QCheckBox, QPushButton
 
         for child in widget.children():
             if isinstance(child, QCheckBox):
                 child.stateChanged.connect(lambda *_: callback())
+            elif isinstance(child, QPushButton):
+                # Store callback as Python attr so layout dialog can trigger preview
+                child._layout_changed_callback = callback  # noqa: SLF001
 
 
 class ParameterGroup(ABC):
@@ -2040,6 +2047,30 @@ class CombinedParams:
             layout.addWidget(widget)
 
         return all_controls, widget
+
+    def connect_control_signals(
+        self, controls: dict[str, object], callback: Callable[[], None]
+    ) -> None:
+        """Connect all control signals to callback across all parameter groups.
+
+        Delegates to each group's connect_control_signals method, filtering
+        controls by group prefix. Control keys must be in "group_name__param_name" format.
+
+        Args:
+            controls: Dict mapping prefixed param names to Qt widget controls.
+            callback: Function to call when any value changes.
+
+        """
+        for group_name, group in self._param_groups.items():
+            # Filter controls for this group (keys are "group_name__param_name")
+            prefix = f"{group_name}__"
+            group_controls = {
+                key[len(prefix):]: ctrl
+                for key, ctrl in controls.items()
+                if key.startswith(prefix)
+            }
+            if group_controls and hasattr(group, "connect_control_signals"):
+                group.connect_control_signals(group_controls, callback)
 
     def render_errors(self, errors: list[ValidationError]) -> None:
         """Render validation errors under the affected parameter controls.
