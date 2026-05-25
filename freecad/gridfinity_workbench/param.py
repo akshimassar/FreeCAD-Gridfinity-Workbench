@@ -258,13 +258,13 @@ class CombinedConnectingClipsParams(CombinedParams):
 
     def __init__(
         self,
-        fundamentals: FundamentalsParams = None,
         connecting_clips: ConnectingClipsParams = None,
+        fundamentals: FundamentalsParams = None,
     ) -> None:
         """Initialize with fundamentals and connecting clip parameter groups."""
         super().__init__(
-            fundamentals=fundamentals or FundamentalsParams(),
             connecting_clips=connecting_clips or ConnectingClipsParams(),
+            fundamentals=fundamentals or FundamentalsParams(),
         )
 
     def validate(self) -> dict[str, str]:
@@ -579,8 +579,8 @@ class CombinedBaseplateParams(CombinedParams):
 
     def __init__(  # noqa: PLR0913
         self,
-        fundamentals: FundamentalsParams = None,
         baseplate_size: BaseplateSizeParams = None,
+        fundamentals: FundamentalsParams = None,
         baseplate_core: BaseplateCoreParams = None,
         click_springs: ClickSpringsParams = None,
         junction_screws: JunctionScrewsParams = None,
@@ -588,8 +588,8 @@ class CombinedBaseplateParams(CombinedParams):
     ) -> None:
         """Initialize with all baseplate parameter groups."""
         super().__init__(
-            fundamentals=fundamentals or FundamentalsParams(),
             baseplate_size=baseplate_size or BaseplateSizeParams(),
+            fundamentals=fundamentals or FundamentalsParams(),
             baseplate_core=baseplate_core or BaseplateCoreParams(),
             click_springs=click_springs or ClickSpringsParams(),
             junction_screws=junction_screws or JunctionScrewsParams(),
@@ -819,8 +819,8 @@ class CombinedStackedBaseplatesParams(CombinedParams):
 
     def __init__(  # noqa: PLR0913
         self,
-        fundamentals: FundamentalsParams = None,
         baseplate_size: BaseplateSizeParams = None,
+        fundamentals: FundamentalsParams = None,
         baseplate_core: BaseplateCoreParams = None,
         click_springs: ClickSpringsParams = None,
         junction_screws: JunctionScrewsParams = None,
@@ -831,8 +831,8 @@ class CombinedStackedBaseplatesParams(CombinedParams):
     ) -> None:
         """Initialize with all stacked baseplates parameter groups."""
         super().__init__(
-            fundamentals=fundamentals or FundamentalsParams(),
             baseplate_size=baseplate_size or BaseplateSizeParams(),
+            fundamentals=fundamentals or FundamentalsParams(),
             baseplate_core=baseplate_core or BaseplateCoreParams(),
             click_springs=click_springs or ClickSpringsParams(),
             junction_screws=junction_screws or JunctionScrewsParams(),
