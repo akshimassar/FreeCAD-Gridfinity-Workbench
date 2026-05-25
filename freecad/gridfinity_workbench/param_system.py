@@ -100,6 +100,33 @@ def validation_errors_to_dict(errors: list[ValidationError]) -> dict[str, str]:
     return result
 
 
+def map_errors_to_compound_params(
+    error_dict: dict[str, str],
+    expanded_to_compound: dict[str, str],
+) -> dict[str, str]:
+    """Map expanded param error keys to compound param keys.
+
+    Args:
+        error_dict: Dict mapping param keys to error messages.
+        expanded_to_compound: Dict mapping expanded names to compound names.
+
+    Returns:
+        New dict with compound param keys, accumulating messages with '; '.
+
+    """
+    result: dict[str, str] = {}
+    for param_key, message in error_dict.items():
+        if param_key in expanded_to_compound:
+            compound_name = expanded_to_compound[param_key]
+            if compound_name in result:
+                result[compound_name] += f"; {message}"
+            else:
+                result[compound_name] = message
+        else:
+            result[param_key] = message
+    return result
+
+
 @dataclass
 class ParamErrorDisplay:
     """Manages error display state for a parameter control.
@@ -910,6 +937,9 @@ class ParameterGroup(ABC):
         # Create new instance with extracted values
         new_group = self.__class__()
         new_group.set_all_values(values)
+        # Preserve error displays if they exist (for UI error rendering)
+        if hasattr(self, "_error_displays"):
+            new_group._error_displays = self._error_displays  # noqa: SLF001
         return new_group
 
     def to_obj(self, obj: fc.DocumentObject) -> None:
@@ -1376,10 +1406,18 @@ class ParameterGroup(ABC):
         if not hasattr(self, "_error_displays"):
             return
 
+        # Build mapping from expanded param names to compound param names
+        expanded_to_compound: dict[str, str] = {}
+        for cp_name, cp in self._compound_params.items():
+            for expanded_name in cp.expanded_names():
+                expanded_to_compound[expanded_name] = cp_name
+
         error_dict = validation_errors_to_dict(errors)
+        compound_errors = map_errors_to_compound_params(error_dict, expanded_to_compound)
+
         for param_name, display in self._error_displays.items():
-            if param_name in error_dict:
-                display.show_error(error_dict[param_name])
+            if param_name in compound_errors:
+                display.show_error(compound_errors[param_name])
             else:
                 display.clear_error()
 
@@ -1519,7 +1557,11 @@ class CombinedParams:
                 new_groups[name] = group.from_obj(obj)
             else:
                 new_groups[name] = group  # Keep unchanged if no from_obj method
-        return self.__class__(**new_groups)
+        new_combined = self.__class__(**new_groups)
+        # Preserve error displays if they exist (for UI error rendering)
+        if hasattr(self, "_error_displays"):
+            new_combined._error_displays = self._error_displays  # noqa: SLF001
+        return new_combined
 
     def to_obj(self, obj: fc.DocumentObject) -> None:
         """Apply all parameter groups to FreeCAD object and update MEM defaults."""
@@ -1864,10 +1906,23 @@ class CombinedParams:
         if not hasattr(self, "_error_displays"):
             return
 
+        # Build mapping from expanded param names to compound param names
+        # Keys are like "group_name.expanded_name" -> "group_name.compound_name"
+        expanded_to_compound: dict[str, str] = {}
+        for group_name, group in self._param_groups.items():
+            if hasattr(group, "_compound_params"):
+                for cp_name, cp in group._compound_params.items():  # noqa: SLF001
+                    for expanded_name in cp.expanded_names():
+                        expanded_to_compound[f"{group_name}.{expanded_name}"] = (
+                            f"{group_name}.{cp_name}"
+                        )
+
         error_dict = validation_errors_to_dict(errors)
+        compound_errors = map_errors_to_compound_params(error_dict, expanded_to_compound)
+
         for param_key, display in self._error_displays.items():
-            if param_key in error_dict:
-                display.show_error(error_dict[param_key])
+            if param_key in compound_errors:
+                display.show_error(compound_errors[param_key])
             else:
                 display.clear_error()
 
