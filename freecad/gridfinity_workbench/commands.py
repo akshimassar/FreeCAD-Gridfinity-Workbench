@@ -181,24 +181,6 @@ def _mm_spinbox(value: float, *, minimum: float = 0.0, maximum: float = 100.0) -
     return box
 
 
-def _build_size_section(layout: QVBoxLayout) -> dict[str, QWidget]:
-    from .param import BaseplateSizeParams
-
-    # Create size param group and build its UI
-    params = BaseplateSizeParams()
-    controls, widget = params.build_ui(None, "Size", show_description=True)
-
-    # Add to layout
-    layout.addWidget(widget)
-
-    # Prefix control names to match expected return format
-    prefixed_controls = {}
-    for param_name, control in controls.items():
-        prefixed_controls[f"baseplate_size__{param_name}"] = control
-
-    return prefixed_controls
-
-
 def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict[str, QWidget]:
     from .param import FundamentalsParams
 
@@ -313,74 +295,6 @@ def _build_bin_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     form.addRow("Half Grid Size", half_grid_size)
     layout.addLayout(form)
     return {"clearance": clearance, "half_grid_size": half_grid_size}
-
-
-def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dict[str, QWidget]:
-    from .param import ScrewStubsParams, SupportParams
-
-    # Create the support params group
-    support_params = SupportParams(overhang_angle=overhang_angle * fc.Units.Quantity("1 deg"))
-    support_controls, support_widget = support_params.build_ui(
-        None,
-        "Support",
-        show_description=True,
-    )
-
-    # Add to layout
-    layout.addWidget(support_widget)
-
-    # Create screw stub params group
-    screw_stub_params = ScrewStubsParams()
-    screw_stub_controls, screw_stub_widget = screw_stub_params.build_ui(
-        None,
-        "",
-        show_description=True,
-    )  # No title for secondary section
-
-    # Add label for screw stubs section
-    stub_label = _section_label("Screw stubs")
-    layout.addWidget(stub_label)
-    layout.addWidget(screw_stub_widget)
-
-    # Combine controls with appropriate naming
-    controls = {}
-    for param_name, control in support_controls.items():
-        controls[f"support__{param_name}"] = control
-
-    for param_name, control in screw_stub_controls.items():
-        controls[f"screw_stubs__{param_name}"] = control
-
-    return controls
-
-
-def _build_stacked_section(
-    layout: QVBoxLayout,
-    *,
-    instance_count: int,
-    corner_stitching: bool,
-    stitching_thickness: float,
-) -> dict[str, QWidget]:
-    from .param import StackingParams
-
-    stacking_params = StackingParams(
-        instance_count=instance_count,
-        corner_stitching=corner_stitching,
-        stitching_thickness=fc.Units.Quantity(f"{stitching_thickness} mm"),
-    )
-    stacking_controls, stacking_widget = stacking_params.build_ui(
-        None,
-        "Stacked",
-        show_description=True,
-    )
-
-    layout.addWidget(stacking_widget)
-
-    # Prefix control names with group name for consistent naming
-    controls = {}
-    for param_name, control in stacking_controls.items():
-        controls[f"stacking__{param_name}"] = control
-
-    return controls
 
 
 class CreateCommand(BaseCommand):
@@ -908,24 +822,23 @@ class CreateBaseplateTaskPanel:
         self._created_preview_obj = False
         self._original_view: dict[str, Any] | None = None
         self._preview_applied = False
-        self._last_valid_params: CombinedBaseplateParams | None = None
         self._error_labels: dict[str, QLabel] = {}
         self._error_containers: dict[str, QWidget] = {}
+
+        # Initialize params - subclasses can set _params before calling super().__init__()
+        if not hasattr(self, "_params"):
+            self._params = CombinedBaseplateParams()
+
         self.form = QWidget()
         self.form.setWindowTitle(
             f"Edit {self._label_name}" if target_obj is not None else f"Create {self._label_name}",
         )
         layout = QVBoxLayout(self.form)
-        controls: dict[str, QWidget] = {}
-        controls.update(_build_size_section(layout))
-        controls.update(self._build_pre_sections(layout))
-        controls.update(_build_fundamentals_section(layout, show_note=False))
-        controls.update(
-            _build_baseplate_section(layout),
-        )
-        controls.update(self._build_extra_sections(layout))
-        for key, widget in controls.items():
-            setattr(self, key, widget)
+
+        # Build UI using the param system
+        controls, widget = self._params.build_ui(layout)
+        for key, control in controls.items():
+            setattr(self, key, control)
 
         self._install_inline_error_rows()
 
@@ -938,51 +851,34 @@ class CreateBaseplateTaskPanel:
                 with contextlib.suppress(Exception):
                     view_object.ShowInTree = False
         self._feature_ctor(self._target_obj)
+
         if self._edit_obj is not None:
-            CombinedBaseplateParams().from_obj(self._edit_obj).to_obj(self._target_obj)
-            self._copy_extended_params_to_preview(self._edit_obj, self._target_obj)
+            # Load values from existing object
+            self._params = self._params.from_obj(self._edit_obj)
+            self._params.to_obj(self._target_obj)
 
         self._capture_and_set_preview_visuals()
 
         if self._target_obj is not None:
-            self._load_from_object(self._target_obj)
+            self._params.apply_to_ui_owner(self)
 
         self._preview_timer = QTimer(self.form)
         self._preview_timer.setSingleShot(True)
         self._preview_timer.setInterval(500)
         self._preview_timer.timeout.connect(self._update_preview)
-        self._connect_preview_signals()
+        self._connect_preview_signals(controls)
         self._update_preview()
-
-    def _build_extra_sections(self, _layout: QVBoxLayout) -> dict[str, QWidget]:
-        return {}
-
-    def _build_pre_sections(self, _layout: QVBoxLayout) -> dict[str, QWidget]:
-        return {}
-
-    def _copy_extended_params_to_preview(
-        self,
-        _source_obj: fc.DocumentObject,
-        _preview_obj: fc.DocumentObject,
-    ) -> None:
-        return
 
     def getStandardButtons(self) -> int:
         return _standard_buttons_ok_cancel()
 
-    def _load_from_object(self, obj: fc.DocumentObject) -> None:
-        params = CombinedBaseplateParams().from_obj(obj)
-        params.apply_to_ui_owner(self)
-
     def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:  # noqa: ARG002
-        params = CombinedBaseplateParams()
-        params.update_from_ui_owner(self)
-        errors = dict(params.validate())
+        self._params.update_from_ui_owner(self)
+        errors = dict(self._params.validate())
         self._render_validation_errors(errors)
-        self._last_valid_params = params
         if errors:
             return None
-        return params
+        return self._params
 
     def _find_form_layout_for_widget(self, widget: QWidget) -> QFormLayout | None:
         def visit(layout: QLayout) -> QFormLayout | None:
@@ -1070,25 +966,15 @@ class CreateBaseplateTaskPanel:
             view.LineColor = self._original_view["LineColor"]
         view.Transparency = self._original_view["Transparency"]
 
-    def _connect_preview_signals(self) -> None:
-        controls: list[QWidget] = []
-        for key, widget in vars(self).items():
-            if not isinstance(widget, QWidget):
-                continue
-            if "__" in key:
-                controls.append(widget)
-        controls.extend(self._extra_preview_controls())
-        for control in controls:
+    def _connect_preview_signals(self, controls: dict[str, object]) -> None:
+        for control in controls.values():
             if isinstance(control, QDoubleSpinBox | QSpinBox):
                 control.valueChanged.connect(lambda *_: self._preview_timer.start())
             elif isinstance(control, QPushButton):
                 # Layout edit buttons don't trigger preview directly
                 pass
-            else:
+            elif hasattr(control, "stateChanged"):
                 control.stateChanged.connect(lambda *_: self._preview_timer.start())
-
-    def _extra_preview_controls(self) -> list[QWidget]:
-        return []
 
     def _update_preview(self) -> None:
         if self._target_obj is None:
@@ -1199,7 +1085,8 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
     def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
         from .param import CombinedStackedBaseplatesParams
 
-        self._params_class = CombinedStackedBaseplatesParams
+        # Set params before super().__init__() so base class uses correct type
+        self._params = CombinedStackedBaseplatesParams()
         super().__init__(
             pixmap,
             target_obj,
@@ -1211,57 +1098,6 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
     @staticmethod
     def _format_simple_baseplate_label(x_cells: int, y_cells: int) -> str:
         return f"Stacked Baseplates {x_cells} x {y_cells}"
-
-    def _build_extra_sections(self, _layout: QVBoxLayout) -> dict[str, QWidget]:
-        return {}
-
-    def _copy_extended_params_to_preview(
-        self,
-        source_obj: fc.DocumentObject,
-        preview_obj: fc.DocumentObject,
-    ) -> None:
-        from .param import CombinedStackedBaseplatesParams
-
-        CombinedStackedBaseplatesParams().from_obj(source_obj).to_obj(preview_obj)
-
-    def _build_pre_sections(self, layout: QVBoxLayout) -> dict[str, QWidget]:
-        controls: dict[str, QWidget] = {}
-        controls.update(
-            _build_stacked_section(
-                layout,
-                instance_count=3,
-                corner_stitching=False,
-                stitching_thickness=0.4,
-            ),
-        )
-        controls.update(_build_support_section(layout, overhang_angle=50.0))
-        return controls
-
-    def _extra_preview_controls(self) -> list[QWidget]:
-        return [
-            self.support__overhang_angle,
-            self.stacking__instance_count,
-            self.stacking__corner_stitching,
-            self.stacking__stitching_thickness,
-        ]
-
-    def _load_from_object(self, obj: fc.DocumentObject) -> None:
-        from .param import CombinedStackedBaseplatesParams
-
-        params = CombinedStackedBaseplatesParams().from_obj(obj)
-        params.apply_to_ui_owner(self)
-
-    def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:  # noqa: ARG002
-        from .param import CombinedStackedBaseplatesParams
-
-        params = CombinedStackedBaseplatesParams()
-        params.update_from_ui_owner(self)
-        errors = dict(params.validate())
-        self._render_validation_errors(errors)
-        self._last_valid_params = params
-        if errors:
-            return None
-        return params
 
     @staticmethod
     def _support_label_for(base_label: str) -> str:
