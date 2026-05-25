@@ -147,9 +147,9 @@ fi
 if [[ "$RUN_UNIT" == "true" ]]; then
   echo "Running unit tests..."
   if [[ -n "$TEST_NAME" ]]; then
-    python -m unittest "tests.test_unit_utils.TestUnitUtils.$TEST_NAME"
+    python -m unittest -v "tests.test_unit_utils.TestUnitUtils.$TEST_NAME"
   else
-    python -m unittest tests.test_unit_utils
+    python -m unittest -v tests.test_unit_utils
   fi
 fi
 
@@ -196,9 +196,9 @@ if [[ "$RUN_INTEGRATION" == "true" ]]; then
     
     echo "Running integration tests [FreeCAD $version]: $freecad_cmd"
     if [[ -n "$TEST_NAME" ]]; then
-      FREECAD_CMD="$freecad_cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
+      FREECAD_CMD="$freecad_cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest -v "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
     else
-      FREECAD_CMD="$freecad_cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest tests.test_integration_freecad_cmd
+      FREECAD_CMD="$freecad_cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest -v tests.test_integration_freecad_cmd
     fi
     ran_any=true
   done
@@ -221,9 +221,9 @@ if [[ "$RUN_INTEGRATION" == "true" ]]; then
       fi
       echo "Running integration tests (legacy): $cmd"
       if [[ -n "$TEST_NAME" ]]; then
-        FREECAD_CMD="$cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
+        FREECAD_CMD="$cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest -v "tests.test_integration_freecad_cmd.FreeCADCmdIntegrationTest.$TEST_NAME"
       else
-        FREECAD_CMD="$cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest tests.test_integration_freecad_cmd
+        FREECAD_CMD="$cmd" RUN_BENCHMARKS="$RUN_BENCHMARKS" python -m unittest -v tests.test_integration_freecad_cmd
       fi
     done
   fi

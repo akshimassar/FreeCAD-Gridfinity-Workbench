@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
@@ -68,7 +69,58 @@ ParamValue = Any
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from PySide.QtWidgets import QLayout, QWidget
+    from PySide.QtWidgets import QLabel, QLayout, QWidget
+
+
+@dataclass(frozen=True)
+class ValidationError:
+    """A validation error affecting one or more parameters.
+
+    Attributes:
+        message: Human-readable error description.
+        affected_params: Parameter keys that should display this error.
+            For ParameterGroup: just param names (e.g., "filler_top_enabled").
+            For CombinedParams: prefixed names (e.g., "baseplate_size.filler_top_enabled").
+
+    """
+
+    message: str
+    affected_params: tuple[str, ...]
+
+
+def validation_errors_to_dict(errors: list[ValidationError]) -> dict[str, str]:
+    """Expand ValidationErrors to param_key -> message dict.
+
+    When multiple errors affect the same param, the last error wins.
+    """
+    result: dict[str, str] = {}
+    for err in errors:
+        for param in err.affected_params:
+            result[param] = err.message
+    return result
+
+
+@dataclass
+class ParamErrorDisplay:
+    """Manages error display state for a parameter control.
+
+    Encapsulates the control widget and its associated error label,
+    providing methods to show/clear validation errors with consistent styling.
+    """
+
+    control: QWidget
+    error_label: QLabel
+
+    def show_error(self, message: str) -> None:
+        """Display error with red text styling."""
+        self.error_label.setText(message)
+        self.error_label.setStyleSheet("color: #cc3d3d; font-style: italic; font-size: 11px;")
+        self.error_label.show()
+
+    def clear_error(self) -> None:
+        """Hide error label and clear text."""
+        self.error_label.setText("")
+        self.error_label.hide()
 
 
 class DefaultType(Enum):
@@ -531,7 +583,7 @@ class ParamCombination(ABC):
         ...
 
     @abstractmethod
-    def connect_signals(self, widget: QWidget, callback: "Callable[[], None]") -> None:
+    def connect_signals(self, widget: QWidget, callback: Callable[[], None]) -> None:
         """Connect widget signals to a callback for change notifications.
 
         Args:
@@ -936,13 +988,24 @@ class ParameterGroup(ABC):
         # Insert space before each capital letter (except first)
         return re.sub(r"(?<!^)(?=[A-Z])", " ", base)
 
-    def validate(self) -> dict[str, str]:
-        """Automatically validate all parameters in this group."""
-        errors = {}
+    def validate(self) -> list[ValidationError]:
+        """Validate all parameters in this group.
+
+        Returns:
+            List of ValidationError instances. Each error specifies the message
+            and which parameters it affects.
+
+        """
+        errors: list[ValidationError] = []
         for param_name, param in self._parameters.items():
             value = self.get_value(param_name)
             if not param.validate(value):
-                errors[param_name] = f"Invalid value for {param.display_name}: {value}"
+                errors.append(
+                    ValidationError(
+                        message=f"Invalid value for {param.display_name}: {value}",
+                        affected_params=(param_name,),
+                    )
+                )
         return errors
 
     def to_ui_payload(self) -> dict[str, Any]:
@@ -1232,6 +1295,9 @@ class ParameterGroup(ABC):
             tuple: (controls_dict, widget) where controls_dict maps parameter names to UI controls
                    and widget is the container widget
 
+        Side effects:
+            Populates self._error_displays with ParamErrorDisplay for each parameter.
+
         """
         try:
             from PySide.QtWidgets import QFormLayout, QLabel, QVBoxLayout, QWidget
@@ -1240,6 +1306,9 @@ class ParameterGroup(ABC):
             return {}, None
 
         _ = show_description  # Reserved for future use
+
+        # Initialize error displays storage
+        self._error_displays: dict[str, ParamErrorDisplay] = {}
 
         widget = QWidget()
         container_layout = QVBoxLayout(widget)
@@ -1258,11 +1327,33 @@ class ParameterGroup(ABC):
         # Generate controls for this group
         controls = self.get_ui_controls()
 
-        # Add each control to the form layout
+        # Add each control to the form layout with error label support
         ui_descriptors = self.ui_descriptors()
         for param_name, control in controls.items():
-            if param_name in ui_descriptors:
-                form_layout.addRow(ui_descriptors[param_name].label, control)
+            if param_name not in ui_descriptors:
+                continue
+
+            # Create a container for control + error label
+            field_container = QWidget()
+            field_layout = QVBoxLayout(field_container)
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(2)
+
+            # Add the control widget
+            field_layout.addWidget(control)  # type: ignore[arg-type]
+
+            # Create hidden error label below the control
+            error_label = QLabel("")
+            error_label.hide()
+            field_layout.addWidget(error_label)
+
+            # Store error display for this param
+            self._error_displays[param_name] = ParamErrorDisplay(
+                control=control,  # type: ignore[arg-type]
+                error_label=error_label,
+            )
+
+            form_layout.addRow(ui_descriptors[param_name].label, field_container)
 
         container_layout.addLayout(form_layout)
 
@@ -1271,6 +1362,26 @@ class ParameterGroup(ABC):
             layout.addWidget(widget)
 
         return controls, widget
+
+    def render_errors(self, errors: list[ValidationError]) -> None:
+        """Render validation errors under the affected parameter controls.
+
+        Call this after validate() to display errors in the UI.
+        Clears errors for parameters not in the error list.
+
+        Args:
+            errors: List of ValidationError from validate().
+
+        """
+        if not hasattr(self, "_error_displays"):
+            return
+
+        error_dict = validation_errors_to_dict(errors)
+        for param_name, display in self._error_displays.items():
+            if param_name in error_dict:
+                display.show_error(error_dict[param_name])
+            else:
+                display.clear_error()
 
     def connect_control_signals(
         self, controls: dict[str, object], callback: Callable[[], None]
@@ -1294,8 +1405,6 @@ class ParameterGroup(ABC):
         except ImportError:
             return
 
-        ui_descriptors = self.ui_descriptors()
-
         for param_name, control in controls.items():
             # Handle compound params
             if param_name in self._compound_params:
@@ -1315,15 +1424,16 @@ class ParameterGroup(ABC):
 class ParameterValidationError(Exception):
     """Exception raised when parameter validation fails.
 
-    Contains a dict mapping parameter names to error messages.
+    Contains a list of ValidationError instances.
     Useful for bubbling validation failures up to UI or logging.
     """
 
-    def __init__(self, errors: dict[str, str]) -> None:
-        """Initialize validation error with dict mapping param names to error messages."""
+    def __init__(self, errors: list[ValidationError]) -> None:
+        """Initialize validation error with list of ValidationError instances."""
         self.errors = errors
+        messages = [err.message for err in errors]
         super().__init__(
-            f"{len(errors)} parameter validation error(s): {'; '.join(errors.values())}",
+            f"{len(errors)} parameter validation error(s): {'; '.join(messages)}",
         )
 
 
@@ -1417,15 +1527,26 @@ class CombinedParams:
             if hasattr(group, "to_obj"):
                 group.to_obj(obj)
 
-    def validate(self) -> dict[str, str]:
-        """Validate all parameter groups with hierarchical validation."""
-        errors = {}
+    def validate(self) -> list[ValidationError]:
+        """Validate all parameter groups with hierarchical validation.
+
+        Returns:
+            List of ValidationError instances with group-prefixed param keys.
+            E.g., "baseplate_size.filler_top_enabled" for params in baseplate_size group.
+
+        """
+        errors: list[ValidationError] = []
         for group_name, group in self._param_groups.items():
             if hasattr(group, "validate"):
                 group_errors = group.validate()
-                # Prefix errors with group name to avoid conflicts
-                for param_name, error in group_errors.items():
-                    errors[f"{group_name}.{param_name}"] = error
+                # Prefix param keys with group name
+                for err in group_errors:
+                    prefixed_params = tuple(
+                        f"{group_name}.{param}" for param in err.affected_params
+                    )
+                    errors.append(
+                        ValidationError(message=err.message, affected_params=prefixed_params)
+                    )
         return errors
 
     def ui_descriptors(self) -> dict[str, dict[str, UIField]]:
@@ -1679,12 +1800,19 @@ class CombinedParams:
             tuple: (controls_dict, widget) where controls_dict maps parameter names to UI controls
                    and widget is the container widget
 
+        Side effects:
+            Populates self._error_displays with aggregated ParamErrorDisplay from all groups,
+            using prefixed keys like "group_name.param_name".
+
         """
         try:
             from PySide.QtWidgets import QLabel, QVBoxLayout, QWidget
         except ImportError:
             # Fallback if GUI is not available
             return {}, None
+
+        # Initialize aggregated error displays storage
+        self._error_displays: dict[str, ParamErrorDisplay] = {}
 
         widget = QWidget()
         container_layout = QVBoxLayout(widget)
@@ -1707,6 +1835,11 @@ class CombinedParams:
                 for param_name, control in group_controls.items():
                     all_controls[f"{group_name}__{param_name}"] = control
 
+                # Aggregate error displays with prefixed keys (using . separator)
+                if hasattr(group, "_error_displays"):
+                    for param_name, display in group._error_displays.items():  # noqa: SLF001
+                        self._error_displays[f"{group_name}.{param_name}"] = display
+
                 # Add the group widget to our container
                 if group_widget is not None:
                     container_layout.addWidget(group_widget)
@@ -1716,6 +1849,27 @@ class CombinedParams:
             layout.addWidget(widget)
 
         return all_controls, widget
+
+    def render_errors(self, errors: list[ValidationError]) -> None:
+        """Render validation errors under the affected parameter controls.
+
+        Call this after validate() to display errors in the UI.
+        Clears errors for parameters not in the error list.
+
+        Args:
+            errors: List of ValidationError from validate(). Keys should be
+                prefixed like "group_name.param_name".
+
+        """
+        if not hasattr(self, "_error_displays"):
+            return
+
+        error_dict = validation_errors_to_dict(errors)
+        for param_key, display in self._error_displays.items():
+            if param_key in error_dict:
+                display.show_error(error_dict[param_key])
+            else:
+                display.clear_error()
 
 
 class ParamConverter:
@@ -1750,11 +1904,13 @@ class ParamConverter:
             )
 
     @staticmethod
-    def validate_params(params_instance: ParameterGroup | CombinedParams) -> dict[str, str]:
+    def validate_params(
+        params_instance: ParameterGroup | CombinedParams,
+    ) -> list[ValidationError]:
         """Validate parameter instance values."""
         if hasattr(params_instance, "validate"):
             return params_instance.validate()
-        return {}
+        return []
 
 
 class ParamSystemRouter:

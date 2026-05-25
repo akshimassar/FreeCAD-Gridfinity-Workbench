@@ -34,6 +34,7 @@ from .param_system import (
     ParamCombination,
     ParameterGroup,
     ParameterValidationError,
+    ValidationError,
 )
 
 
@@ -270,15 +271,22 @@ class CombinedConnectingClipsParams(CombinedParams):
             fundamentals=fundamentals or FundamentalsParams(),
         )
 
-    def validate(self) -> dict[str, str]:
+    def validate(self) -> list[ValidationError]:
         """Validate cross-group constraints."""
         errors = super().validate()
         try:
             tolerance_val = float(self.connecting_clips.get_value("tolerance"))
             clip_length_val = float(self.connecting_clips.get_value("clip_length"))
             if clip_length_val <= 2 * tolerance_val:
-                errors["connecting_clips.clip_length"] = (
-                    f"Clip length ({clip_length_val}) must be > 2 * tolerance ({2 * tolerance_val})"
+                msg = (
+                    f"Clip length ({clip_length_val}) must be > 2 * tolerance "
+                    f"({2 * tolerance_val})"
+                )
+                errors.append(
+                    ValidationError(
+                        message=msg,
+                        affected_params=("connecting_clips.clip_length",),
+                    )
                 )
         except (AttributeError, KeyError, TypeError, ValueError):
             pass
@@ -581,7 +589,7 @@ class CombinedBaseplateParams(CombinedParams):
             connecting_clips=connecting_clips or ConnectingClipsParams(),
         )
 
-    def validate(self) -> dict[str, str]:  # noqa: C901, PLR0912, PLR0915
+    def validate(self) -> list[ValidationError]:  # noqa: C901, PLR0912, PLR0915
         """Validate cross-group constraints."""
         errors = super().validate()
         fundamentals = self.fundamentals.data()
@@ -597,22 +605,36 @@ class CombinedBaseplateParams(CombinedParams):
         grid_size = float(fundamentals.grid_size)
 
         if not top_crop < half_width:
-            errors["baseplate_core.top_crop"] = "Top crop must be less than main profile half width"
+            errors.append(
+                ValidationError(
+                    message="Top crop must be less than main profile half width",
+                    affected_params=("baseplate_core.top_crop",),
+                )
+            )
         if not outer_radius > half_width:
-            errors["fundamentals.outer_radius"] = (
-                "Outer radius must be greater than main profile half width"
+            errors.append(
+                ValidationError(
+                    message="Outer radius must be greater than main profile half width",
+                    affected_params=("fundamentals.outer_radius",),
+                )
             )
 
         if click.enabled:
             if not float(click.click_thickness) < half_width:
-                errors["click_springs.click_thickness"] = (
-                    "Click thickness must be less than main profile half width"
+                errors.append(
+                    ValidationError(
+                        message="Click thickness must be less than main profile half width",
+                        affected_params=("click_springs.click_thickness",),
+                    )
                 )
             bin_vertical_radius = outer_radius - half_width
             max_half = grid_size / 4 - bin_vertical_radius
             if not float(click.click_length) / 2 < max_half:
-                errors["click_springs.click_length"] = (
-                    "Click length/2 must be less than grid_size/4 - (outer_radius - half_width)"
+                errors.append(
+                    ValidationError(
+                        message="Click length/2 must be < grid/4 - (radius - half_width)",
+                        affected_params=("click_springs.click_length",),
+                    )
                 )
 
         if junction.enabled:
@@ -620,18 +642,32 @@ class CombinedBaseplateParams(CombinedParams):
             counterbore_d = float(junction.counterbore_diameter)
             counterbore_depth = float(junction.counterbore_depth)
             if not screw_d > 0:
-                errors["junction_screws.screw_diameter"] = "Screw diameter must be greater than 0"
+                errors.append(
+                    ValidationError(
+                        message="Screw diameter must be greater than 0",
+                        affected_params=("junction_screws.screw_diameter",),
+                    )
+                )
             if not counterbore_d > 0:
-                errors["junction_screws.counterbore_diameter"] = (
-                    "Counterbore diameter must be greater than 0"
+                errors.append(
+                    ValidationError(
+                        message="Counterbore diameter must be greater than 0",
+                        affected_params=("junction_screws.counterbore_diameter",),
+                    )
                 )
             if not counterbore_depth > 0:
-                errors["junction_screws.counterbore_depth"] = (
-                    "Counterbore depth must be greater than 0"
+                errors.append(
+                    ValidationError(
+                        message="Counterbore depth must be greater than 0",
+                        affected_params=("junction_screws.counterbore_depth",),
+                    )
                 )
             if not counterbore_d > screw_d:
-                errors["junction_screws.counterbore_diameter"] = (
-                    "Counterbore diameter must be greater than screw diameter"
+                errors.append(
+                    ValidationError(
+                        message="Counterbore diameter must be greater than screw diameter",
+                        affected_params=("junction_screws.counterbore_diameter",),
+                    )
                 )
 
         if clip.enabled:
@@ -639,14 +675,25 @@ class CombinedBaseplateParams(CombinedParams):
             clip_tolerance = float(clip.tolerance)
             max_clip = 2 * half_width
             if not clip_length > 0:
-                errors["connecting_clips.clip_length"] = "Clip length must be greater than 0"
+                errors.append(
+                    ValidationError(
+                        message="Clip length must be greater than 0",
+                        affected_params=("connecting_clips.clip_length",),
+                    )
+                )
             if not clip_length < max_clip:
-                errors["connecting_clips.clip_length"] = (
-                    "Clip length must be less than 2 * main profile half width"
+                errors.append(
+                    ValidationError(
+                        message="Clip length must be less than 2 * main profile half width",
+                        affected_params=("connecting_clips.clip_length",),
+                    )
                 )
             if not clip_tolerance >= 0:
-                errors["connecting_clips.tolerance"] = (
-                    "Clip tolerance must be greater than or equal to 0"
+                errors.append(
+                    ValidationError(
+                        message="Clip tolerance must be greater than or equal to 0",
+                        affected_params=("connecting_clips.tolerance",),
+                    )
                 )
 
         x_units = int(size.x_grid_count)
@@ -657,12 +704,29 @@ class CombinedBaseplateParams(CombinedParams):
         bottom_present = size.filler_bottom_enabled and float(size.filler_bottom_width) > 0
 
         if x_units == 0 and not (left_present or right_present):
-            errors["baseplate_size.x_grid_count"] = "X grid count 0 requires left or right filler"
+            errors.append(
+                ValidationError(
+                    message="X grid count 0 requires left or right filler",
+                    affected_params=("baseplate_size.x_grid_count",),
+                )
+            )
         if y_units == 0 and not (top_present or bottom_present):
-            errors["baseplate_size.y_grid_count"] = "Y grid count 0 requires top or bottom filler"
+            errors.append(
+                ValidationError(
+                    message="Y grid count 0 requires top or bottom filler",
+                    affected_params=("baseplate_size.y_grid_count",),
+                )
+            )
         if x_units == 0 and y_units == 0:
-            errors["baseplate_size.x_grid_count"] = "X and Y grid count cannot both be 0"
-            errors["baseplate_size.y_grid_count"] = "X and Y grid count cannot both be 0"
+            errors.append(
+                ValidationError(
+                    message="X and Y grid count cannot both be 0",
+                    affected_params=(
+                        "baseplate_size.x_grid_count",
+                        "baseplate_size.y_grid_count",
+                    ),
+                )
+            )
 
         filler_checks = [
             (
@@ -688,19 +752,34 @@ class CombinedBaseplateParams(CombinedParams):
         ]
         for enabled, width, key in filler_checks:
             if enabled and not (0 < width < grid_size):
-                errors[key] = "Filler width must be greater than 0 and less than grid size"
+                errors.append(
+                    ValidationError(
+                        message="Filler width must be greater than 0 and less than grid size",
+                        affected_params=(key,),
+                    )
+                )
 
-        # Custom layout and fillers are mutually exclusive
-        any_filler_enabled = (
-            size.filler_left_enabled
-            or size.filler_right_enabled
-            or size.filler_top_enabled
-            or size.filler_bottom_enabled
-        )
-        if size.custom_layout_enabled and any_filler_enabled:
-            errors["baseplate_size.custom_layout_enabled"] = (
-                "Custom layout and fillers are mutually exclusive"
-            )
+        # Custom layout and fillers are mutually exclusive - show error on all affected params
+        if size.custom_layout_enabled:
+            conflicting_fillers: list[str] = []
+            if size.filler_left_enabled:
+                conflicting_fillers.append("baseplate_size.filler_left_enabled")
+            if size.filler_right_enabled:
+                conflicting_fillers.append("baseplate_size.filler_right_enabled")
+            if size.filler_top_enabled:
+                conflicting_fillers.append("baseplate_size.filler_top_enabled")
+            if size.filler_bottom_enabled:
+                conflicting_fillers.append("baseplate_size.filler_bottom_enabled")
+            if conflicting_fillers:
+                errors.append(
+                    ValidationError(
+                        message="Custom layout and fillers are mutually exclusive",
+                        affected_params=(
+                            "baseplate_size.custom_layout_enabled",
+                            *conflicting_fillers,
+                        ),
+                    )
+                )
 
         two_radius = 2 * outer_radius
         if (
@@ -708,32 +787,44 @@ class CombinedBaseplateParams(CombinedParams):
             and x_units == 0
             and not float(size.filler_left_width) > two_radius
         ):
-            errors["baseplate_size.filler_left_width"] = (
-                "With x grid count 0, left filler width must be greater than 2 * outer radius"
+            errors.append(
+                ValidationError(
+                    message="With x=0, left filler width must be > 2 * outer radius",
+                    affected_params=("baseplate_size.filler_left_width",),
+                )
             )
         if (
             size.filler_right_enabled
             and x_units == 0
             and not float(size.filler_right_width) > two_radius
         ):
-            errors["baseplate_size.filler_right_width"] = (
-                "With x grid count 0, right filler width must be greater than 2 * outer radius"
+            errors.append(
+                ValidationError(
+                    message="With x=0, right filler width must be > 2 * outer radius",
+                    affected_params=("baseplate_size.filler_right_width",),
+                )
             )
         if (
             size.filler_top_enabled
             and y_units == 0
             and not float(size.filler_top_width) > two_radius
         ):
-            errors["baseplate_size.filler_top_width"] = (
-                "With y grid count 0, top filler width must be greater than 2 * outer radius"
+            errors.append(
+                ValidationError(
+                    message="With y=0, top filler width must be > 2 * outer radius",
+                    affected_params=("baseplate_size.filler_top_width",),
+                )
             )
         if (
             size.filler_bottom_enabled
             and y_units == 0
             and not float(size.filler_bottom_width) > two_radius
         ):
-            errors["baseplate_size.filler_bottom_width"] = (
-                "With y grid count 0, bottom filler width must be greater than 2 * outer radius"
+            errors.append(
+                ValidationError(
+                    message="With y=0, bottom filler width must be > 2 * outer radius",
+                    affected_params=("baseplate_size.filler_bottom_width",),
+                )
             )
 
         return errors
@@ -771,7 +862,7 @@ class CombinedSupportBaseplateParams(CombinedParams):
             support=support or SupportParams(),
         )
 
-    def validate(self) -> dict[str, str]:
+    def validate(self) -> list[ValidationError]:
         """Validate cross-group constraints."""
         errors = super().validate()
         fundamentals = self.fundamentals.data()
@@ -781,10 +872,18 @@ class CombinedSupportBaseplateParams(CombinedParams):
         top_crop = float(core.top_crop)
 
         if not top_crop < half_width:
-            errors["baseplate_core.top_crop"] = "Top crop must be less than main profile half width"
+            errors.append(
+                ValidationError(
+                    message="Top crop must be less than main profile half width",
+                    affected_params=("baseplate_core.top_crop",),
+                )
+            )
         if not outer_radius > half_width:
-            errors["fundamentals.outer_radius"] = (
-                "Outer radius must be greater than main profile half width"
+            errors.append(
+                ValidationError(
+                    message="Outer radius must be greater than main profile half width",
+                    affected_params=("fundamentals.outer_radius",),
+                )
             )
         return errors
 
@@ -827,7 +926,7 @@ class CombinedStackedBaseplatesParams(CombinedParams):
             connecting_clips=connecting_clips or ConnectingClipsParams(),
         )
 
-    def validate(self) -> dict[str, str]:
+    def validate(self) -> list[ValidationError]:
         """Validate cross-group constraints."""
         errors = CombinedBaseplateParams(
             fundamentals=self.fundamentals,
@@ -841,12 +940,27 @@ class CombinedStackedBaseplatesParams(CombinedParams):
         junction = self.junction_screws.data()
         if screw_stubs.enabled:
             if not junction.enabled:
-                errors["screw_stubs.enabled"] = "Screw stubs require junction screws"
+                errors.append(
+                    ValidationError(
+                        message="Screw stubs require junction screws",
+                        affected_params=("screw_stubs.enabled",),
+                    )
+                )
             if not float(screw_stubs.clearance) >= 0:
-                errors["screw_stubs.clearance"] = "Screw stub clearance must be >= 0"
+                errors.append(
+                    ValidationError(
+                        message="Screw stub clearance must be >= 0",
+                        affected_params=("screw_stubs.clearance",),
+                    )
+                )
             stub_d = float(junction.screw_diameter) - 2 * float(screw_stubs.clearance)
             if not stub_d > 0:
-                errors["screw_stubs.clearance"] = "Screw stub clearance is too large"
+                errors.append(
+                    ValidationError(
+                        message="Screw stub clearance is too large",
+                        affected_params=("screw_stubs.clearance",),
+                    )
+                )
         return errors
 
     def data(self) -> CombinedStackedBaseplatesParamsData:
@@ -986,7 +1100,7 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             drawer=drawer or DrawerParams(),
         )
 
-    def validate(self) -> dict[str, str]:
+    def validate(self) -> list[ValidationError]:
         """Validate cross-group constraints."""
         errors = CombinedBaseplateParams(
             fundamentals=self.fundamentals,
@@ -998,13 +1112,33 @@ class CombinedDrawerBaseplateParams(CombinedParams):
         ).validate()
         drawer = self.drawer.data()
         if float(drawer.drawer_width) <= 0:
-            errors["drawer.drawer_width"] = "Drawer width must be greater than 0"
+            errors.append(
+                ValidationError(
+                    message="Drawer width must be greater than 0",
+                    affected_params=("drawer.drawer_width",),
+                )
+            )
         if float(drawer.drawer_depth) <= 0:
-            errors["drawer.drawer_depth"] = "Drawer depth must be greater than 0"
+            errors.append(
+                ValidationError(
+                    message="Drawer depth must be greater than 0",
+                    affected_params=("drawer.drawer_depth",),
+                )
+            )
         if float(drawer.printer_bed_width) <= 0:
-            errors["drawer.printer_bed_width"] = "Printer bed width must be greater than 0"
+            errors.append(
+                ValidationError(
+                    message="Printer bed width must be greater than 0",
+                    affected_params=("drawer.printer_bed_width",),
+                )
+            )
         if float(drawer.printer_bed_depth) <= 0:
-            errors["drawer.printer_bed_depth"] = "Printer bed depth must be greater than 0"
+            errors.append(
+                ValidationError(
+                    message="Printer bed depth must be greater than 0",
+                    affected_params=("drawer.printer_bed_depth",),
+                )
+            )
         return errors
 
     def baseplate_data(self) -> CombinedBaseplateParamsData:

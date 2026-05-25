@@ -907,6 +907,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             import FreeCAD as fc
             from gridfinity_workbench.param import CombinedBaseplateParams, ClickSpringsParams
+            from gridfinity_workbench.param_system import validation_errors_to_dict
 
             # ClickLength=18mm exceeds default max half-length (8.65mm) since 18/2 = 9mm
             params = CombinedBaseplateParams(
@@ -914,7 +915,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     enabled=True, click_length=fc.Units.Quantity("18 mm")
                 ),
             )
-            errors = params.validate()
+            errors = validation_errors_to_dict(params.validate())
             if "click_springs.click_length" in errors:
                 print("Invalid click spring geometry: ClickLength/2", file=sys.stderr)
             """,

@@ -21,9 +21,7 @@ from PySide.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
     QDoubleSpinBox,
-    QFormLayout,
     QLabel,
-    QLayout,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -534,10 +532,13 @@ class CreateDrawerBaseplateTaskPanel:
         return ", ".join(encoded_chunks)
 
     def _refresh_summary(self) -> None:
+        from .param_system import validation_errors_to_dict
+
         self._params.update_from_ui_owner(self)
         errors = self._params.validate()
         if errors:
-            msg = "\n".join(f"{k}: {v}" for k, v in sorted(errors.items()))
+            error_dict = validation_errors_to_dict(errors)
+            msg = "\n".join(f"{k}: {v}" for k, v in sorted(error_dict.items()))
             self.summary.setText(f"Validation errors:\n{msg}")
             return
         try:
@@ -606,14 +607,12 @@ class CreateDrawerBaseplateTaskPanel:
         self._preview_timer.start()
 
     def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:
-        from .param import CombinedDrawerBaseplateParams
-
         self._params.update_from_ui_owner(self)
         if preview_mode:
             self._params.click_springs.set_value("enabled", value=False)
             self._params.junction_screws.set_value("enabled", value=False)
             self._params.connecting_clips.set_value("enabled", value=False)
-        errors = dict(self._params.validate())
+        errors = self._params.validate()
         if errors:
             return None
         return self._params
@@ -713,8 +712,6 @@ class CreateBaseplateTaskPanel:
         self._created_preview_obj = False
         self._original_view: dict[str, Any] | None = None
         self._preview_applied = False
-        self._error_labels: dict[str, QLabel] = {}
-        self._error_containers: dict[str, QWidget] = {}
 
         # Initialize params - subclasses can set _params before calling super().__init__()
         if not hasattr(self, "_params"):
@@ -726,12 +723,10 @@ class CreateBaseplateTaskPanel:
         )
         layout = QVBoxLayout(self.form)
 
-        # Build UI using the param system
+        # Build UI using the param system (also creates error labels)
         controls, widget = self._params.build_ui(layout)
         for key, control in controls.items():
             setattr(self, key, control)
-
-        self._install_inline_error_rows()
 
         self._target_obj = utils.new_object(self._object_name)
         self._created_preview_obj = True
@@ -765,70 +760,11 @@ class CreateBaseplateTaskPanel:
 
     def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:  # noqa: ARG002
         self._params.update_from_ui_owner(self)
-        errors = dict(self._params.validate())
-        self._render_validation_errors(errors)
+        errors = self._params.validate()
+        self._params.render_errors(errors)
         if errors:
             return None
         return self._params
-
-    def _find_form_layout_for_widget(self, widget: QWidget) -> QFormLayout | None:
-        def visit(layout: QLayout) -> QFormLayout | None:
-            if isinstance(layout, QFormLayout):
-                row, _ = layout.getWidgetPosition(widget)
-                if row >= 0:
-                    return layout
-            for i in range(layout.count()):
-                item = layout.itemAt(i)
-                child_layout = item.layout()
-                if child_layout is None:
-                    continue
-                found = visit(child_layout)
-                if found is not None:
-                    return found
-            return None
-
-        root = self.form.layout()
-        if root is None:
-            return None
-        return visit(root)
-
-    def _install_inline_error_rows(self) -> None:
-        for key, widget in vars(self).items():
-            if not isinstance(widget, QWidget):
-                continue
-            if "__" not in key:
-                continue
-            layout = self._find_form_layout_for_widget(widget)
-            if layout is None:
-                continue
-            row, _ = layout.getWidgetPosition(widget)
-            if row < 0:
-                continue
-            container = QWidget()
-            box = QVBoxLayout(container)
-            box.setContentsMargins(0, 0, 0, 0)
-            box.setSpacing(2)
-            box.addWidget(widget)
-            label = QLabel("")
-            label.setStyleSheet("font-style: italic; font-size: 11px;")
-            label.hide()
-            box.addWidget(label)
-            layout.setWidget(row, QFormLayout.FieldRole, container)
-            self._error_labels[key] = label
-            self._error_containers[key] = container
-
-    def _render_validation_errors(self, errors: dict[str, str]) -> None:
-        normalized_errors = {key.replace(".", "__"): message for key, message in errors.items()}
-        for key, label in self._error_labels.items():
-            control = getattr(self, key)
-            if key in normalized_errors:
-                control.setStyleSheet("border: 1px solid #cc3d3d;")
-                label.setText(normalized_errors[key])
-                label.show()
-            else:
-                control.setStyleSheet("")
-                label.setText("")
-                label.hide()
 
     def _preview_style(self) -> tuple[tuple[float, float, float], int]:
         return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
