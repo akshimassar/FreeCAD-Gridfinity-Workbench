@@ -403,19 +403,23 @@ class CreateDrawerBaseplate(BaseCommand):
 
 
 class CreateDrawerBaseplateTaskPanel:
-    """Task panel for planning drawer baseplate splits (no geometry yet)."""
+    """Task panel for planning drawer baseplate splits."""
 
-    def __init__(  # noqa: PLR0915
+    def __init__(
         self,
         pixmap: Path | str,
         target_obj: fc.DocumentObject | None = None,
     ) -> None:
+        from .param import CombinedDrawerBaseplateParams
+
         self._pixmap = pixmap
         self._edit_obj = target_obj
         self._target_obj: fc.DocumentObject | None = None
         self._created_preview_obj = False
         self._preview_applied = False
         self._original_view: dict[str, Any] | None = None
+        self._params = CombinedDrawerBaseplateParams()
+
         self.form = QWidget()
         self.form.setWindowTitle(
             "Edit Drawer Fit Baseplates"
@@ -425,43 +429,8 @@ class CreateDrawerBaseplateTaskPanel:
 
         layout = QVBoxLayout(self.form)
 
-        layout.addWidget(_section_label("Drawer"))
-        drawer_form = QFormLayout()
-        drawer_form.setContentsMargins(20, 0, 0, 0)
-        self.drawer_width = _mm_spinbox(600.0, minimum=1.0, maximum=5000.0)
-        drawer_form.addRow("Drawer width", self.drawer_width)
-        self.drawer_depth = _mm_spinbox(600.0, minimum=1.0, maximum=5000.0)
-        drawer_form.addRow("Drawer depth", self.drawer_depth)
-
-        self.width_alignment = QComboBox()
-        self.width_alignment.addItems(["Left", "Right", "Both"])
-        self.width_alignment.setCurrentText("Right")
-        drawer_form.addRow("Width filler alignment", self.width_alignment)
-
-        self.depth_alignment = QComboBox()
-        self.depth_alignment.addItems(["Bottom", "Top", "Both"])
-        self.depth_alignment.setCurrentText("Top")
-        drawer_form.addRow("Depth filler alignment", self.depth_alignment)
-        self.split_algorithm = QComboBox()
-        self.split_algorithm.addItems(["Balanced", "Greedy"])
-        self.split_algorithm.setCurrentText("Balanced")
-        drawer_form.addRow("Split algorithm", self.split_algorithm)
-        layout.addLayout(drawer_form)
-
-        layout.addWidget(_section_label("Printer bed"))
-        bed_form = QFormLayout()
-        bed_form.setContentsMargins(20, 0, 0, 0)
-        self.bed_width = _mm_spinbox(256.0, minimum=1.0, maximum=2000.0)
-        bed_form.addRow("Bed width", self.bed_width)
-        self.bed_depth = _mm_spinbox(240.0, minimum=1.0, maximum=2000.0)
-        bed_form.addRow("Bed depth", self.bed_depth)
-        layout.addLayout(bed_form)
-
-        controls: dict[str, QWidget] = {}
-        controls.update(_build_fundamentals_section(layout, show_note=False))
-        controls.update(
-            _build_baseplate_section(layout),
-        )
+        # Build UI using the param system
+        controls, _ = self._params.build_ui(layout)
         for key, widget in controls.items():
             setattr(self, key, widget)
 
@@ -479,20 +448,18 @@ class CreateDrawerBaseplateTaskPanel:
                 with contextlib.suppress(Exception):
                     view_object.ShowInTree = False
         features.DrawerBaseplate(self._target_obj)
+
         if self._edit_obj is not None:
-            self._restore_object_values(
-                self._target_obj,
-                self._capture_object_values(self._edit_obj),
-            )
+            self._params = self._params.from_obj(self._edit_obj)
+            self._params.to_obj(self._target_obj)
 
         self._preview_timer = QTimer(self.form)
         self._preview_timer.setSingleShot(True)
         self._preview_timer.setInterval(500)
         self._preview_timer.timeout.connect(self._update_preview)
 
-        self._connect_signals()
-        if self._target_obj is not None:
-            self._load_from_object(self._target_obj)
+        self._connect_signals(controls)
+        self._params.apply_to_ui_owner(self)
 
         self._capture_and_set_preview_visuals()
 
@@ -548,71 +515,8 @@ class CreateDrawerBaseplateTaskPanel:
             with contextlib.suppress(Exception):
                 view.ShowInTree = visible
 
-    def _capture_object_values(self, obj: fc.DocumentObject) -> dict[str, Any]:
-        return {
-            "DrawerWidth": obj.DrawerWidth,
-            "DrawerDepth": obj.DrawerDepth,
-            "WidthFillerAlignment": str(obj.WidthFillerAlignment),
-            "DepthFillerAlignment": str(obj.DepthFillerAlignment),
-            "SplitAlgorithm": str(getattr(obj, "SplitAlgorithm", "Balanced")),
-            "PrinterBedWidth": obj.PrinterBedWidth,
-            "PrinterBedDepth": obj.PrinterBedDepth,
-            "BaseplateParams": CombinedBaseplateParams().from_obj(obj),
-            "PreviewBuildMode": bool(getattr(obj, "PreviewBuildMode", False)),
-        }
-
-    def _restore_object_values(self, obj: fc.DocumentObject, values: dict[str, Any]) -> None:
-        baseplate_params = values.get("BaseplateParams")
-        if baseplate_params is not None:
-            baseplate_params.to_obj(obj)
-        for key, value in values.items():
-            if key == "BaseplateParams":
-                continue
-            if hasattr(obj, key):
-                setattr(obj, key, value)
-
-    def _load_from_object(self, obj: fc.DocumentObject) -> None:
-        if hasattr(obj, "DrawerWidth"):
-            self.drawer_width.setValue(float(obj.DrawerWidth))
-        if hasattr(obj, "DrawerDepth"):
-            self.drawer_depth.setValue(float(obj.DrawerDepth))
-        if hasattr(obj, "WidthFillerAlignment"):
-            self.width_alignment.setCurrentText(str(obj.WidthFillerAlignment))
-        if hasattr(obj, "DepthFillerAlignment"):
-            self.depth_alignment.setCurrentText(str(obj.DepthFillerAlignment))
-        if hasattr(obj, "SplitAlgorithm"):
-            self.split_algorithm.setCurrentText(str(obj.SplitAlgorithm))
-        if hasattr(obj, "PrinterBedWidth"):
-            self.bed_width.setValue(float(obj.PrinterBedWidth))
-        if hasattr(obj, "PrinterBedDepth"):
-            self.bed_depth.setValue(float(obj.PrinterBedDepth))
-
-        params = CombinedBaseplateParams().from_obj(obj)
-        params.apply_to_ui_owner(self)
-
     def getStandardButtons(self) -> int:
         return _standard_buttons_ok_cancel()
-
-    def _set_validation_visuals(self, errors: dict[str, str]) -> None:
-        mapping = {
-            "top_crop": self.baseplate_core__top_crop,
-            "click_thickness": self.click_springs__click_thickness,
-            "click_length": self.click_springs__click_length,
-            "junction_screw_diameter": self.junction_screws__screw_diameter,
-            "junction_counterbore_diameter": self.junction_screws__counterbore_diameter,
-            "junction_counterbore_depth": self.junction_screws__counterbore_depth,
-            **(
-                {"screw_stubs_clearance": self.screw_stubs__clearance}
-                if hasattr(self, "screw_stubs__clearance")
-                else {}
-            ),
-            "clip_length": self.connecting_clips__clip_length,
-        }
-        for key, widget in mapping.items():
-            if key in errors:
-                widget.setStyleSheet("border: 1px solid #cc3d3d;")
-            else:
-                widget.setStyleSheet("")
 
     def _format_axis(
         self,
@@ -630,19 +534,19 @@ class CreateDrawerBaseplateTaskPanel:
         return ", ".join(encoded_chunks)
 
     def _refresh_summary(self) -> None:
-        validation = self._baseplate_params_from_ui(preview_mode=False)
-        errors = validation.validate()
-        self._set_validation_visuals(errors)
+        self._params.update_from_ui_owner(self)
+        errors = self._params.validate()
         if errors:
             msg = "\n".join(f"{k}: {v}" for k, v in sorted(errors.items()))
             self.summary.setText(f"Validation errors:\n{msg}")
             return
         try:
-            grid_mm = float(self.fundamentals__grid_size.value())
-            drawer_w = float(self.drawer_width.value())
-            drawer_d = float(self.drawer_depth.value())
-            bed_w = float(self.bed_width.value())
-            bed_d = float(self.bed_depth.value())
+            data = self._params.data()
+            grid_mm = float(data.fundamentals.grid_size)
+            drawer_w = float(data.drawer.drawer_width)
+            drawer_d = float(data.drawer.drawer_depth)
+            bed_w = float(data.drawer.printer_bed_width)
+            bed_d = float(data.drawer.printer_bed_depth)
             if drawer_w <= 0 or drawer_d <= 0:
                 self.summary.setText("Drawer dimensions must be > 0")
                 return
@@ -650,29 +554,29 @@ class CreateDrawerBaseplateTaskPanel:
                 self.summary.setText("Bed dimensions must be > 0")
                 return
             x_chunks = split_axis_into_printable_chunks(
-                length_mm=float(self.drawer_width.value()),
-                bed_mm=float(self.bed_width.value()),
+                length_mm=drawer_w,
+                bed_mm=bed_w,
                 grid_mm=grid_mm,
                 alignment=(
                     "low"
-                    if self.width_alignment.currentText() == "Left"
-                    else ("high" if self.width_alignment.currentText() == "Right" else "both")
+                    if data.drawer.width_filler_alignment == "Left"
+                    else ("high" if data.drawer.width_filler_alignment == "Right" else "both")
                 ),
                 algorithm=(
-                    "greedy" if self.split_algorithm.currentText() == "Greedy" else "balanced"
+                    "greedy" if data.drawer.split_algorithm == "Greedy" else "balanced"
                 ),
             )
             y_chunks = split_axis_into_printable_chunks(
-                length_mm=float(self.drawer_depth.value()),
-                bed_mm=float(self.bed_depth.value()),
+                length_mm=drawer_d,
+                bed_mm=bed_d,
                 grid_mm=grid_mm,
                 alignment=(
                     "low"
-                    if self.depth_alignment.currentText() == "Bottom"
-                    else ("high" if self.depth_alignment.currentText() == "Top" else "both")
+                    if data.drawer.depth_filler_alignment == "Bottom"
+                    else ("high" if data.drawer.depth_filler_alignment == "Top" else "both")
                 ),
                 algorithm=(
-                    "greedy" if self.split_algorithm.currentText() == "Greedy" else "balanced"
+                    "greedy" if data.drawer.split_algorithm == "Greedy" else "balanced"
                 ),
             )
         except ValueError as exc:
@@ -688,35 +592,31 @@ class CreateDrawerBaseplateTaskPanel:
             f"Total printable pieces: {pieces}",
         )
 
-    def _connect_signals(self) -> None:
-        controls: list[QWidget] = [
-            self.drawer_width,
-            self.drawer_depth,
-            self.bed_width,
-            self.bed_depth,
-            self.fundamentals__grid_size,
-            self.width_alignment,
-            self.depth_alignment,
-            self.split_algorithm,
-        ]
-        for control in controls:
+    def _connect_signals(self, controls: dict[str, QWidget]) -> None:
+        for control in controls.values():
             if isinstance(control, QDoubleSpinBox):
                 control.valueChanged.connect(lambda *_: self._on_control_changed())
             elif isinstance(control, QComboBox):
                 control.currentIndexChanged.connect(lambda *_: self._on_control_changed())
+            elif isinstance(control, QCheckBox):
+                control.stateChanged.connect(lambda *_: self._on_control_changed())
 
     def _on_control_changed(self) -> None:
         self._refresh_summary()
         self._preview_timer.start()
 
-    def _baseplate_params_from_ui(self, *, preview_mode: bool) -> CombinedBaseplateParams:
-        params = CombinedBaseplateParams()
-        params.update_from_ui_owner(self)
+    def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:
+        from .param import CombinedDrawerBaseplateParams
+
+        self._params.update_from_ui_owner(self)
         if preview_mode:
-            params.click_springs.set_value("enabled", value=False)
-            params.junction_screws.set_value("enabled", value=False)
-            params.connecting_clips.set_value("enabled", value=False)
-        return params
+            self._params.click_springs.set_value("enabled", value=False)
+            self._params.junction_screws.set_value("enabled", value=False)
+            self._params.connecting_clips.set_value("enabled", value=False)
+        errors = dict(self._params.validate())
+        if errors:
+            return None
+        return self._params
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
         self._refresh_summary()
@@ -725,24 +625,15 @@ class CreateDrawerBaseplateTaskPanel:
         ):
             return False
 
-        params = self._baseplate_params_from_ui(preview_mode=preview_mode)
-        errors = params.validate()
-        if errors:
+        params = self._validate_controls(preview_mode=preview_mode)
+        if params is None:
             return False
         params.to_obj(obj)
 
-        obj.DrawerWidth = float(self.drawer_width.value()) * fc.Units.Quantity("1 mm")
-        obj.DrawerDepth = float(self.drawer_depth.value()) * fc.Units.Quantity("1 mm")
-        obj.WidthFillerAlignment = self.width_alignment.currentText()
-        obj.DepthFillerAlignment = self.depth_alignment.currentText()
-        if hasattr(obj, "SplitAlgorithm"):
-            obj.SplitAlgorithm = self.split_algorithm.currentText()
-        obj.PrinterBedWidth = float(self.bed_width.value()) * fc.Units.Quantity("1 mm")
-        obj.PrinterBedDepth = float(self.bed_depth.value()) * fc.Units.Quantity("1 mm")
-
+        data = params.data()
         base_label = self._format_drawer_baseplates_label(
-            float(self.drawer_width.value()),
-            float(self.drawer_depth.value()),
+            float(data.drawer.drawer_width),
+            float(data.drawer.drawer_depth),
         )
         obj.Label = self._format_preview_label(base_label) if preview_mode else base_label
         if hasattr(obj, "PreviewBuildMode"):
@@ -1153,9 +1044,10 @@ class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
 
         params.to_obj(base_obj)
 
+        data = params.data()
         base_label = self._format_simple_baseplate_label(
-            int(params.baseplate_size.x_grid_count),
-            int(params.baseplate_size.y_grid_count),
+            int(data.baseplate_size.x_grid_count),
+            int(data.baseplate_size.y_grid_count),
         )
         base_obj.Label = base_label
 

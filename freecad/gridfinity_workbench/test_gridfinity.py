@@ -39,6 +39,9 @@ class TestWithDocument(unittest.TestCase):
         sys.stderr = self._captured_stderr
         sys.stdout = self._captured_stdout
 
+        # Ensure no active dialog from previous tests
+        fcg.Control.closeDialog()
+
         fcg.activateWorkbench("GridfinityWorkbench")
         self.doc = fc.newDocument(DOC_NAME)
         self.filepath = f"{TEMPDIR / self.__class__.__name__!s}_{self._testMethodName}.FCStd"
@@ -265,3 +268,100 @@ class TestBaseplateDialogFields(TestWithDocument):
             self.fail(f"Missing dialog controls expected from params: {sorted(missing)}")
 
         panel.reject()
+
+
+class TestDrawerBaseplateTaskPanel(TestWithDocument):
+    """Test creating drawer baseplates through the task panel dialog."""
+
+    def test_create_drawer_baseplate_via_dialog(self) -> None:
+        """Test creating drawer baseplates with default settings."""
+        from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
+
+        # Open the task panel dialog
+        panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
+        fcg.Control.showDialog(panel)
+
+        # Accept the dialog to create the object
+        panel.accept()
+
+        # Verify object was created
+        self.assertEqual(len(self.doc.Objects), 1)
+        obj = self.doc.Objects[0]
+        self.assertIn("Drawer Baseplates", obj.Label)
+
+        # Verify shape is valid
+        self.assertTrue(obj.Shape.isValid())
+        self.assertGreater(obj.Shape.Volume, 0)
+        # Drawer baseplate is a compound of multiple solids
+        self.assertGreater(len(obj.Shape.Solids), 0)
+
+    def test_drawer_baseplate_custom_dimensions(self) -> None:
+        """Test drawer baseplate with custom drawer dimensions."""
+        from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
+
+        # Open the task panel dialog
+        panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
+        fcg.Control.showDialog(panel)
+
+        # Set custom drawer dimensions using param system control names
+        panel.drawer__drawer_width.setValue(300.0)
+        panel.drawer__drawer_depth.setValue(250.0)
+        panel.drawer__printer_bed_width.setValue(220.0)
+        panel.drawer__printer_bed_depth.setValue(220.0)
+
+        # Accept the dialog to create the object
+        panel.accept()
+
+        # Verify object was created
+        self.assertEqual(len(self.doc.Objects), 1)
+        obj = self.doc.Objects[0]
+
+        # Verify shape is valid
+        self.assertTrue(obj.Shape.isValid())
+        self.assertGreater(obj.Shape.Volume, 0)
+
+
+class TestStackedBaseplatesTaskPanel(TestWithDocument):
+    """Test creating stacked baseplates through the task panel dialog."""
+
+    def test_create_stacked_baseplates_via_dialog(self) -> None:
+        """Test creating stacked baseplates with default settings.
+
+        Stacked baseplates create two objects: base and support companion.
+        """
+        from .commands import ICONDIR, CreateStackedBaseplatesTaskPanel
+
+        # Open the task panel dialog
+        panel = CreateStackedBaseplatesTaskPanel(ICONDIR / "stacked-baseplates.svg")
+        fcg.Control.showDialog(panel)
+
+        # Accept the dialog to create the objects
+        panel.accept()
+
+        # Verify two objects were created (base + support companion)
+        self.assertEqual(len(self.doc.Objects), 2)
+
+        # Find base and support objects
+        base_obj = None
+        support_obj = None
+        for obj in self.doc.Objects:
+            if "Support" in obj.Label:
+                support_obj = obj
+            else:
+                base_obj = obj
+
+        self.assertIsNotNone(base_obj)
+        self.assertIsNotNone(support_obj)
+        self.assertIn("Stacked Baseplates", base_obj.Label)
+        self.assertIn("Support", support_obj.Label)
+
+        # Verify base shape is valid
+        self.assertTrue(base_obj.Shape.isValid())
+        self.assertGreater(base_obj.Shape.Volume, 0)
+
+        # Verify support shape is valid
+        self.assertTrue(support_obj.Shape.isValid())
+        self.assertGreater(support_obj.Shape.Volume, 0)
+
+        # Verify support references the base
+        self.assertEqual(support_obj.SourceStackedBaseplates, base_obj)
