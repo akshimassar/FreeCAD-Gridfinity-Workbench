@@ -105,7 +105,7 @@ get_freecad_mod_dir() {
   local version="$1"
   case "$version" in
     1.1) echo "$HOME/.local/share/FreeCAD/v1-1/Mod" ;;
-    link) echo "$HOME/.local/share/FreeCAD/link/Mod" ;;
+    link) echo "$HOME/.local/share/FreeCAD/Mod" ;;
     *) echo "" ;;
   esac
 }

@@ -1156,7 +1156,13 @@ class CreateBaseplateTaskPanel:
             with contextlib.suppress(Exception):
                 view.ShowInTree = visible
 
+    def _stop_preview_timer(self) -> None:
+        """Stop the preview timer to prevent callbacks after cleanup."""
+        if hasattr(self, "_preview_timer") and self._preview_timer is not None:
+            self._preview_timer.stop()
+
     def accept(self) -> bool:
+        self._stop_preview_timer()
         if self._target_obj is None:
             return False
         params = self._validate_controls(preview_mode=False)
@@ -1180,6 +1186,7 @@ class CreateBaseplateTaskPanel:
         return True
 
     def reject(self) -> bool:
+        self._stop_preview_timer()
         if self._target_obj is not None:
             if self._created_preview_obj:
                 fc.ActiveDocument.removeObject(self._target_obj.Name)
