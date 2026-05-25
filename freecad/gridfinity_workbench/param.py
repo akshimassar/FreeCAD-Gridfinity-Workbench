@@ -27,6 +27,7 @@ from .param_system import (
     DefaultType,
     FloatParam,
     IntParam,
+    LayoutParam,
     LiteralParam,
     ParameterGroup,
     ParameterValidationError,
@@ -74,6 +75,8 @@ class BaseplateSizeParamsData:
     filler_top_width: fc.Units.Quantity
     filler_bottom_enabled: bool
     filler_bottom_width: fc.Units.Quantity
+    custom_layout_enabled: bool
+    custom_layout: list[list[bool]] | None
 
 
 @dataclass(frozen=True)
@@ -349,6 +352,8 @@ class BaseplateSizeParams(ParameterGroup):
                 fc.Units.Quantity("30 mm"),
                 positive_only=True,
             ),
+            BooleanParam("custom_layout_enabled", "Custom Layout Enabled"),
+            LayoutParam("custom_layout", "Custom Layout"),
         ]
 
         super().__init__(parameters)
@@ -367,6 +372,8 @@ class BaseplateSizeParams(ParameterGroup):
             filler_top_width=self.get_value("filler_top_width"),
             filler_bottom_enabled=self.get_value("filler_bottom_enabled"),
             filler_bottom_width=self.get_value("filler_bottom_width"),
+            custom_layout_enabled=self.get_value("custom_layout_enabled"),
+            custom_layout=self.get_value("custom_layout"),
         )
 
 
@@ -723,6 +730,18 @@ class CombinedBaseplateParams(CombinedParams):
         for enabled, width, key in filler_checks:
             if enabled and not (0 < width < grid_size):
                 errors[key] = "Filler width must be greater than 0 and less than grid size"
+
+        # Custom layout and fillers are mutually exclusive
+        any_filler_enabled = (
+            size.filler_left_enabled
+            or size.filler_right_enabled
+            or size.filler_top_enabled
+            or size.filler_bottom_enabled
+        )
+        if size.custom_layout_enabled and any_filler_enabled:
+            errors["baseplate_size.custom_layout_enabled"] = (
+                "Custom layout and fillers are mutually exclusive"
+            )
 
         two_radius = 2 * outer_radius
         if (

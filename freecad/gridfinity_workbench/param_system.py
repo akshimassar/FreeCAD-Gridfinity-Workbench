@@ -413,6 +413,69 @@ class IntParam(BaseParam):
         return not (self.positive_only and value <= 0)
 
 
+class LayoutParam(BaseParam):
+    """Layout parameter for storing 2D boolean grid layouts.
+
+    Maps to App::PropertyString in FreeCAD, storing the layout as JSON.
+    UI renders as a button that opens a layout editor dialog.
+
+    Example usage:
+        LayoutParam("custom_layout", "Custom Layout")
+    """
+
+    def __init__(
+        self,
+        name: str,
+        display_name: str,
+        freecad_property_type: str = "App::PropertyString",
+        description: str = "",
+    ) -> None:
+        """Initialize a layout parameter."""
+        super().__init__(
+            name,
+            display_name,
+            freecad_property_type,
+            description,
+        )
+
+    def default(self) -> None:  # type: ignore[override]
+        """Return the default value (None = no custom layout)."""
+
+    def default_value_type(self) -> type:
+        """Return the Python type for resolver lookups."""
+        return type(None)
+
+    def validate(self, value: ParamValue) -> bool:
+        """Validate value is None or a nested list of bools."""
+        if value is None:
+            return True
+        if not isinstance(value, list):
+            return False
+        for row in value:
+            if not isinstance(row, list):
+                return False
+            for cell in row:
+                if not isinstance(cell, bool):
+                    return False
+        return True
+
+    def to_json(self, value: list[list[bool]] | None) -> str:
+        """Convert layout to JSON string for FreeCAD property storage."""
+        import json
+
+        if value is None:
+            return ""
+        return json.dumps(value)
+
+    def from_json(self, json_str: str) -> list[list[bool]] | None:
+        """Convert JSON string from FreeCAD property to layout."""
+        import json
+
+        if not json_str:
+            return None
+        return json.loads(json_str)
+
+
 class ParameterGroup(ABC):
     """Base class for parameter groups with automatic UI, validation, and FreeCAD integration.
 
@@ -505,6 +568,10 @@ class ParameterGroup(ABC):
                 param.description or f"{param.display_name} parameter",
             )
 
+            # For LayoutParam, convert list to JSON string
+            if isinstance(param, LayoutParam):
+                value = param.to_json(value)
+
             # Set the value appropriately based on property type
             setattr(obj, property_name, value)
 
@@ -564,7 +631,11 @@ class ParameterGroup(ABC):
             # Use the direct property name mapping
             obj_property_name = self._property_name(param)
             if hasattr(obj, obj_property_name):
-                values[param_name] = getattr(obj, obj_property_name)
+                value = getattr(obj, obj_property_name)
+                # For LayoutParam, convert JSON string to list
+                if isinstance(param, LayoutParam):
+                    value = param.from_json(value)
+                values[param_name] = value
 
         # Create new instance with extracted values
         new_group = self.__class__()
@@ -577,6 +648,9 @@ class ParameterGroup(ABC):
             obj_property_name = self._property_name(param)
             if hasattr(obj, obj_property_name):
                 value = self.get_value(param_name)
+                # For LayoutParam, convert list to JSON string
+                if isinstance(param, LayoutParam):
+                    value = param.to_json(value)
                 setattr(obj, obj_property_name, value)
         # Update MEM defaults if this group uses MEM default_type
         if self._default_type == DefaultType.MEM:
@@ -684,6 +758,8 @@ class ParameterGroup(ABC):
             return "spinbox"
         if isinstance(param, LiteralParam):
             return "combo" if param.choices else "textbox"
+        if isinstance(param, LayoutParam):
+            return "button"
         return "textbox"
 
     def _to_ui_value(self, param: BaseParam, value: ParamValue) -> ParamValue:
@@ -735,13 +811,14 @@ class ParameterGroup(ABC):
         # This will be overridden by subclasses to return specific data classes
         raise NotImplementedError("Subclasses must implement data() method")
 
-    def get_ui_controls(self) -> dict[str, object]:  # noqa: C901, PLR0912
+    def get_ui_controls(self) -> dict[str, object]:  # noqa: C901, PLR0912, PLR0915
         """Generate and return UI controls for all parameters in this group."""
         try:
             from PySide.QtWidgets import (
                 QCheckBox,
                 QComboBox,
                 QDoubleSpinBox,
+                QPushButton,
             )
         except ImportError:
             # Fallback if GUI is not available
@@ -791,6 +868,24 @@ class ParameterGroup(ABC):
                     control.addItems(param.choices)
                     if str(default_value) in param.choices:
                         control.setCurrentText(str(default_value))
+            elif ui_field.control_type == "button":
+                control = QPushButton("Edit Layout...")
+                # Store current layout value on the button for retrieval
+                control.setProperty("layout_value", default_value)
+
+                # Create click handler that opens layout dialog
+                def make_handler(btn: QPushButton) -> None:
+                    def on_click() -> None:
+                        from freecad.gridfinity_workbench import custom_shape
+
+                        current = btn.property("layout_value")
+                        result = custom_shape.custom_bin_dialog([], current)
+                        if result is not None:
+                            btn.setProperty("layout_value", result.layout)
+
+                    btn.clicked.connect(on_click)
+
+                make_handler(control)
             else:
                 # Default to spinbox
                 control = QDoubleSpinBox()
@@ -813,7 +908,13 @@ class ParameterGroup(ABC):
 
         """
         try:
-            from PySide.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QSpinBox
+            from PySide.QtWidgets import (
+                QCheckBox,
+                QComboBox,
+                QDoubleSpinBox,
+                QPushButton,
+                QSpinBox,
+            )
         except ImportError:
             return
 
@@ -833,6 +934,9 @@ class ParameterGroup(ABC):
                     value = int(raw_value) if isinstance(param, IntParam) else raw_value
             elif isinstance(control, QComboBox):
                 value = control.currentText()
+            elif isinstance(control, QPushButton) and isinstance(param, LayoutParam):
+                # For layout buttons, get the stored layout value
+                value = control.property("layout_value")
             else:
                 continue
 
@@ -911,7 +1015,7 @@ class ParameterValidationError(Exception):
         )
 
 
-ControlType = Literal["spinbox", "checkbox", "combo", "textbox"]
+ControlType = Literal["spinbox", "checkbox", "combo", "textbox", "button"]
 
 
 class UIField:
@@ -921,7 +1025,7 @@ class UIField:
     parameter types. Used by UI builders to create appropriate widgets.
 
     Attributes:
-    - control_type: Widget type ("spinbox", "checkbox", "combo", "textbox")
+    - control_type: Widget type ("spinbox", "checkbox", "combo", "textbox", "button")
     - label: Display label from param.display_name
     - param_name: Internal parameter identifier
     - min_val/max_val/step: Optional numeric constraints

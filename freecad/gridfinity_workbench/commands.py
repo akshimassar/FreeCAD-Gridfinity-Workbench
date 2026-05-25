@@ -24,6 +24,7 @@ from PySide.QtWidgets import (
     QFormLayout,
     QLabel,
     QLayout,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -1081,6 +1082,9 @@ class CreateBaseplateTaskPanel:
         for control in controls:
             if isinstance(control, QDoubleSpinBox | QSpinBox):
                 control.valueChanged.connect(lambda *_: self._preview_timer.start())
+            elif isinstance(control, QPushButton):
+                # Layout edit buttons don't trigger preview directly
+                pass
             else:
                 control.stateChanged.connect(lambda *_: self._preview_timer.start())
 
@@ -1715,21 +1719,6 @@ class DrawBin(DrawCommand):
                     ("Bin Base", features.CustomBinBase),
                     ("Storage Bin", features.CustomStorageBin),
                     ("Eco Bin", features.CustomEcoBin),
-                ],
-            ),
-        )
-
-
-class DrawBaseplate(DrawCommand):
-    def __init__(self) -> None:
-        super().__init__(
-            name="CustomBaseplate",
-            pixmap=ICONDIR / "CustomBaseplate.svg",
-            menu_text="Custom Baseplate",
-            tooltip="Draw a custom baseplate.",
-            gridfinity_functions=OrderedDict(
-                [
-                    ("Simple Baseplate", features.CustomBaseplate),
                 ],
             ),
         )

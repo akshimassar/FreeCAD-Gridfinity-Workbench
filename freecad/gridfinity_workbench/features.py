@@ -24,7 +24,6 @@ from . import (
     label_shelf,
     utils,
 )
-from . import baseplate_feature_construction as baseplate_feat
 from . import feature_construction as feat
 from .custom_shape_features import (
     clean_up_layout,
@@ -369,10 +368,11 @@ class Baseplate(FoundationGridfinity):
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         params = CombinedBaseplateParams().from_obj(obj)
         data = params.data()
-        layout = [
-            [True] * data.baseplate_size.y_grid_count
-            for _ in range(data.baseplate_size.x_grid_count)
-        ]
+        size = data.baseplate_size
+        if size.custom_layout_enabled and size.custom_layout:
+            layout = size.custom_layout
+        else:
+            layout = [[True] * size.y_grid_count for _ in range(size.x_grid_count)]
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=data.junction_screws.enabled,
             include_clip_cutouts=data.connecting_clip.enabled,
@@ -1136,40 +1136,6 @@ class CustomStorageBin(FoundationGridfinity):
             fuse_total = fuse_total.fuse(scoop)
 
         return fuse_total.removeSplitter()
-
-    def dumps(self) -> dict:
-        """Needed for JSON Serialization when saving a file containing gridfinity object."""
-        return {"layout": self.layout}
-
-    def loads(self, state: dict) -> None:
-        """Needed for JSON Serialization when opening a file containing gridfinity object."""
-        self.layout = state["layout"]
-
-
-class CustomBaseplate(FoundationGridfinity):
-    """Gridfinity CustomBaseplate object."""
-
-    def __init__(self, obj: fc.DocumentObject, layout: list[list[bool]]) -> None:
-        super().__init__(obj)
-        self.layout = layout
-
-        grid_initial_layout.custom_shape_layout_properties(obj, baseplate_default=True)
-        baseplate_feat.solid_shape_properties(obj)
-        baseplate_feat.base_values_properties(obj)
-
-        obj.Proxy = self
-
-    def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        """Generate Baseplate Shape."""
-        obj.TotalHeight = obj.BaseProfileHeight
-        layout = clean_up_layout(self.layout)
-        grid_initial_layout.make_custom_shape_layout(obj, layout)
-        options = baseplate_builder.BaseplateBuildOptions(
-            include_junction_screws=bool(getattr(obj, "JunctionScrewHoles", False)),
-            include_clip_cutouts=bool(getattr(obj, "ClipCutoutsEnabled", False)),
-            include_snap_springs=bool(getattr(obj, "ClickSpringsEnabled", False)),
-        )
-        return baseplate_builder.build_simple_baseplate(obj, layout, options)
 
     def dumps(self) -> dict:
         """Needed for JSON Serialization when saving a file containing gridfinity object."""
