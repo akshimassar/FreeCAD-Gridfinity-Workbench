@@ -717,7 +717,7 @@ def make_post_replication_cutter(
     if options.include_clip_cutouts:
         connecting_clip_cutouts = baseplate_feat.make_clip_cutouts_from_params(
             params.fundamentals,
-            params.connecting_clip,
+            params.connecting_clips,
             geometry=geometry,
         )
         if connecting_clip_cutouts is not None:

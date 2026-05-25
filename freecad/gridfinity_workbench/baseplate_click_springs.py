@@ -12,7 +12,7 @@ from . import utils
 from .baseplate_full_layout import BoolMatrix2x2, ShapeMatrix2x2, expand_seed_to_shape_matrix
 
 if TYPE_CHECKING:
-    from .param import BaseplateCoreParamsData, ClickSpringParamsData, FundamentalsParamsData
+    from .param import BaseplateCoreParamsData, ClickSpringsParamsData, FundamentalsParamsData
 
 unitmm = fc.Units.Quantity("1 mm")
 
@@ -112,7 +112,7 @@ class SpringShapeSlots:
 
 def make_click_spring_seed_positive(
     fundamentals: FundamentalsParamsData,
-    click_springs: ClickSpringParamsData,
+    click_springs: ClickSpringsParamsData,
 ) -> Part.Shape:
     """Build the positive seed shape for a click spring."""
     x_vert_width = fundamentals.grid_size - 2 * fundamentals.main_half_width
@@ -155,7 +155,7 @@ def make_click_spring_seed_positive(
 
 def make_click_spring_seed_negative(
     fundamentals: FundamentalsParamsData,
-    click_springs: ClickSpringParamsData,
+    click_springs: ClickSpringsParamsData,
 ) -> Part.Shape:
     """Build the negative seed shape for a click spring."""
     total_height = float(fundamentals.main_height + fundamentals.main_half_width)
@@ -206,7 +206,7 @@ def make_click_spring_prototypes_from_seed(seed: Part.Shape) -> SpringShapeSlots
 
 def _validate_click_spring_geometry(
     fundamentals: FundamentalsParamsData,
-    click_springs: ClickSpringParamsData,
+    click_springs: ClickSpringsParamsData,
 ) -> None:
     if click_springs.click_thickness >= fundamentals.main_half_width:
         raise ValueError(
@@ -229,7 +229,7 @@ def _validate_click_spring_geometry(
 
 def make_click_spring_prototype_positive(
     fundamentals: FundamentalsParamsData,
-    click_springs: ClickSpringParamsData,
+    click_springs: ClickSpringsParamsData,
 ) -> SpringShapeSlots:
     """Build positive spring slot prototypes."""
     _validate_click_spring_geometry(fundamentals, click_springs)
@@ -239,7 +239,7 @@ def make_click_spring_prototype_positive(
 
 def make_click_spring_prototype_negative(
     fundamentals: FundamentalsParamsData,
-    click_springs: ClickSpringParamsData,
+    click_springs: ClickSpringsParamsData,
 ) -> SpringShapeSlots:
     """Build negative spring slot prototypes."""
     _validate_click_spring_geometry(fundamentals, click_springs)
@@ -251,7 +251,7 @@ def apply_click_spring_slots_to_cell(
     shape: Part.Shape,
     _fundamentals: FundamentalsParamsData,
     _core: BaseplateCoreParamsData,
-    _click_springs: ClickSpringParamsData,
+    _click_springs: ClickSpringsParamsData,
     negative_slots: SpringShapeSlots,
     positive_slots: SpringShapeSlots,
     mask: SpringSlotMask,

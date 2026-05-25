@@ -139,7 +139,7 @@ class TestBaseplateLayoutTaskPanel(TestWithDocument):
         # Step 2: Edit dialog - disable connecting clips and junction screws
         panel2 = CreateBaseplateTaskPanel(ICONDIR / "baseplate-obj.svg", target_obj=obj)
         fcg.Control.showDialog(panel2)
-        panel2.connecting_clip__enabled.setChecked(False)
+        panel2.connecting_clips__enabled.setChecked(False)
         panel2.junction_screws__enabled.setChecked(False)
         panel2.accept()
 
@@ -182,3 +182,86 @@ class TestBaseplateLayoutTaskPanel(TestWithDocument):
         self.assertAlmostEqual(volume_reference, 4721.70, places=2)
         self.assertAlmostEqual(volume_l_shape, 3515.67, places=2)
         self.assertAlmostEqual(volume_with_filler, 6755.42, places=2)
+
+
+class TestBaseplateDialogFields(TestWithDocument):
+    """Test that dialog fields match parameter definitions - no unexpected/duplicate fields."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        # Ensure no active dialog
+        fcg.Control.closeDialog()
+
+    def _extract_dialog_control_names(self, panel: object) -> set[str]:
+        """Extract all control names (with '__') from a task panel."""
+        from PySide.QtWidgets import QWidget
+
+        control_names = set()
+        for key, value in vars(panel).items():
+            if "__" in key and isinstance(value, QWidget):
+                control_names.add(key)
+        return control_names
+
+    def test_baseplate_dialog_fields_match_params(self) -> None:
+        """Verify CreateBaseplateTaskPanel has no unexpected or missing fields."""
+        from .commands import ICONDIR, CreateBaseplateTaskPanel
+        from .param import CombinedBaseplateParams
+
+        # Create panel
+        panel = CreateBaseplateTaskPanel(ICONDIR / "baseplate-obj.svg")
+        fcg.Control.showDialog(panel)
+
+        # Extract control names from panel
+        dialog_controls = self._extract_dialog_control_names(panel)
+
+        # Extract expected param names from CombinedBaseplateParams
+        # Prefixes now match group names exactly (derived from class names)
+        params = CombinedBaseplateParams()
+        expected_controls = set()
+        for group_name, group in params._param_groups.items():  # noqa: SLF001
+            for param_name in group._parameters:  # noqa: SLF001
+                expected_controls.add(f"{group_name}__{param_name}")
+
+        # Find unexpected controls (in dialog but not in params)
+        unexpected = dialog_controls - expected_controls
+        # Find missing controls (in params but not in dialog)
+        missing = expected_controls - dialog_controls
+
+        # Report any discrepancies
+        if unexpected:
+            self.fail(f"Unexpected dialog controls not in params: {sorted(unexpected)}")
+        if missing:
+            self.fail(f"Missing dialog controls expected from params: {sorted(missing)}")
+
+        panel.reject()
+
+    def test_stacked_baseplates_dialog_fields_match_params(self) -> None:
+        """Verify CreateStackedBaseplatesTaskPanel has no unexpected or missing fields."""
+        from .commands import ICONDIR, CreateStackedBaseplatesTaskPanel
+        from .param import CombinedStackedBaseplatesParams
+
+        # Create panel
+        panel = CreateStackedBaseplatesTaskPanel(ICONDIR / "stacked-baseplates.svg")
+        fcg.Control.showDialog(panel)
+
+        # Extract control names from panel
+        dialog_controls = self._extract_dialog_control_names(panel)
+
+        # Extract expected param names
+        # Prefixes now match group names exactly (derived from class names)
+        params = CombinedStackedBaseplatesParams()
+        expected_controls = set()
+        for group_name, group in params._param_groups.items():  # noqa: SLF001
+            for param_name in group._parameters:  # noqa: SLF001
+                expected_controls.add(f"{group_name}__{param_name}")
+
+        # Find discrepancies
+        unexpected = dialog_controls - expected_controls
+        missing = expected_controls - dialog_controls
+
+        if unexpected:
+            self.fail(f"Unexpected dialog controls not in params: {sorted(unexpected)}")
+        if missing:
+            self.fail(f"Missing dialog controls expected from params: {sorted(missing)}")
+
+        panel.reject()

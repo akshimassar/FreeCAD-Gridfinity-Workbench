@@ -82,7 +82,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             import FreeCAD as fc
             from gridfinity_workbench.param import (
                 CombinedBaseplateParams, FundamentalsParams, BaseplateSizeParams,
-                ClickSpringParams, JunctionScrewParams, ConnectingClipParams,
+                ClickSpringsParams, JunctionScrewsParams, ConnectingClipsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
                 build_simple_baseplate_from_params, BaseplateBuildOptions,
@@ -95,9 +95,9 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                         outer_radius=fc.Units.Quantity("3 mm"),
                     ),
                     baseplate_size=BaseplateSizeParams(x_grid_count=1, y_grid_count=1),
-                    click_springs=ClickSpringParams(enabled=click_springs),
-                    junction_screws=JunctionScrewParams(enabled=False),
-                    connecting_clip=ConnectingClipParams(enabled=False),
+                    click_springs=ClickSpringsParams(enabled=click_springs),
+                    junction_screws=JunctionScrewsParams(enabled=False),
+                    connecting_clips=ConnectingClipsParams(enabled=False),
                 )
                 layout = [[True]]
                 options = BaseplateBuildOptions(
@@ -164,7 +164,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             import FreeCAD as fc
             from gridfinity_workbench.param import (
-                CombinedBaseplateParams, BaseplateSizeParams, ClickSpringParams,
+                CombinedBaseplateParams, BaseplateSizeParams, ClickSpringsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
                 build_simple_baseplate_from_params, BaseplateBuildOptions,
@@ -179,7 +179,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                         filler_bottom_enabled=True, filler_bottom_width=fc.Units.Quantity("10 mm"),
                         filler_left_enabled=True, filler_left_width=fc.Units.Quantity("10 mm"),
                     ),
-                    click_springs=ClickSpringParams(enabled=click_springs),
+                    click_springs=ClickSpringsParams(enabled=click_springs),
                 )
                 layout = [[True, True], [True, True]]
                 options = BaseplateBuildOptions(include_snap_springs=click_springs)
@@ -550,7 +550,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             import FreeCAD as fc
             from gridfinity_workbench.param import (
                 CombinedBaseplateParams, BaseplateSizeParams,
-                ClickSpringParams, JunctionScrewParams, ConnectingClipParams,
+                ClickSpringsParams, JunctionScrewsParams, ConnectingClipsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
                 build_simple_baseplate_from_params, BaseplateBuildOptions,
@@ -562,9 +562,9 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     x_grid_count=0, y_grid_count=2,
                     filler_right_enabled=True, filler_right_width=fc.Units.Quantity("3 mm"),
                 ),
-                click_springs=ClickSpringParams(enabled=False),
-                junction_screws=JunctionScrewParams(enabled=False),
-                connecting_clip=ConnectingClipParams(enabled=False),
+                click_springs=ClickSpringsParams(enabled=False),
+                junction_screws=JunctionScrewsParams(enabled=False),
+                connecting_clips=ConnectingClipsParams(enabled=False),
             )
             layout = [[], []]  # 0 columns, 2 rows
             options = BaseplateBuildOptions(
@@ -750,7 +750,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             import FreeCAD as fc
             from gridfinity_workbench.param import (
                 CombinedBaseplateParams, FundamentalsParams, BaseplateSizeParams,
-                ClickSpringParams, JunctionScrewParams, ConnectingClipParams,
+                ClickSpringsParams, JunctionScrewsParams, ConnectingClipsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
                 build_simple_baseplate_from_params, BaseplateBuildOptions,
@@ -763,9 +763,9 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     x_grid_count=2, y_grid_count=2,
                     filler_right_enabled=True, filler_right_width=fc.Units.Quantity("5.1 mm"),
                 ),
-                click_springs=ClickSpringParams(enabled=False),
-                junction_screws=JunctionScrewParams(enabled=False),
-                connecting_clip=ConnectingClipParams(enabled=False),
+                click_springs=ClickSpringsParams(enabled=False),
+                junction_screws=JunctionScrewsParams(enabled=False),
+                connecting_clips=ConnectingClipsParams(enabled=False),
             )
             layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions(
@@ -865,7 +865,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             import FreeCAD as fc
             from gridfinity_workbench.param import (
-                CombinedBaseplateParams, FundamentalsParams, ClickSpringParams,
+                CombinedBaseplateParams, FundamentalsParams, ClickSpringsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
                 build_simple_baseplate_from_params, BaseplateBuildOptions,
@@ -875,7 +875,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             half_width = fc.Units.Quantity("2.15 mm")
             params = CombinedBaseplateParams(
                 fundamentals=FundamentalsParams(main_half_width=half_width),
-                click_springs=ClickSpringParams(enabled=True, click_thickness=half_width),
+                click_springs=ClickSpringsParams(enabled=True, click_thickness=half_width),
             )
             errors = params.validate()
             if "click_springs.click_thickness" in errors:
@@ -906,11 +906,11 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             sys.path.insert(0, {module_root})
 
             import FreeCAD as fc
-            from gridfinity_workbench.param import CombinedBaseplateParams, ClickSpringParams
+            from gridfinity_workbench.param import CombinedBaseplateParams, ClickSpringsParams
 
             # ClickLength=18mm exceeds default max half-length (8.65mm) since 18/2 = 9mm
             params = CombinedBaseplateParams(
-                click_springs=ClickSpringParams(
+                click_springs=ClickSpringsParams(
                     enabled=True, click_length=fc.Units.Quantity("18 mm")
                 ),
             )
@@ -941,7 +941,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             import FreeCAD as fc
             from gridfinity_workbench.param import (
-                CombinedBaseplateParams, BaseplateSizeParams, ConnectingClipParams,
+                CombinedBaseplateParams, BaseplateSizeParams, ConnectingClipsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
                 build_simple_baseplate_from_params, BaseplateBuildOptions,
@@ -955,7 +955,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                         filler_right_enabled=with_right_filler,
                         filler_right_width=fc.Units.Quantity(filler_width),
                     ),
-                    connecting_clip=ConnectingClipParams(enabled=False),
+                    connecting_clips=ConnectingClipsParams(enabled=False),
                 )
                 layout = [[True, True], [True, True]]
                 options = BaseplateBuildOptions(include_clip_cutouts=False)
@@ -1133,14 +1133,14 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 support_obj = doc.addObject("Part::FeaturePython", "StackedBaseplatesSupport")
                 features.StackedBaseplatesSupport(support_obj, base_obj)
 
-                base_obj.screw_stub_enabled = False
-                base_obj.junction_screw_enabled = True
+                base_obj.screw_stubs_enabled = False
+                base_obj.junction_screws_enabled = True
                 doc.recompute()
                 base_without_stubs = base_obj.Shape
                 support_without_stubs = support_obj.Shape
 
-                base_obj.screw_stub_enabled = True
-                base_obj.screw_stub_clearance = 0.15
+                base_obj.screw_stubs_enabled = True
+                base_obj.screw_stubs_clearance = 0.15
                 doc.recompute()
                 base_with_stubs = base_obj.Shape
                 support_with_stubs = support_obj.Shape

@@ -1176,10 +1176,10 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
     # CombinedSupportBaseplateParamsData doesn't have these
     junction_screws_data = getattr(params, "junction_screws", None)
     screw_stubs_data = getattr(params, "screw_stubs", None)
-    connecting_clip_data = getattr(params, "connecting_clip", None)
+    connecting_clips_data = getattr(params, "connecting_clips", None)
 
     # Build a CombinedBaseplateParamsData for build_full_layout
-    from .param import ConnectingClipParamsData, JunctionScrewParamsData, ScrewStubParamsData
+    from .param import ConnectingClipsParamsData, JunctionScrewsParamsData, ScrewStubsParamsData
 
     baseplate_params = CombinedBaseplateParamsData(
         fundamentals=params.fundamentals,
@@ -1187,15 +1187,15 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
         baseplate_core=params.baseplate_core,
         click_springs=params.click_springs,
         junction_screws=junction_screws_data
-        or JunctionScrewParamsData(
+        or JunctionScrewsParamsData(
             enabled=False,
             screw_diameter=zeromm,
             counterbore_diameter=zeromm,
             counterbore_depth=zeromm,
         ),
-        screw_stubs=screw_stubs_data or ScrewStubParamsData(enabled=False, clearance=zeromm),
-        connecting_clip=connecting_clip_data
-        or ConnectingClipParamsData(enabled=False, tolerance=zeromm, clip_length=zeromm),
+        screw_stubs=screw_stubs_data or ScrewStubsParamsData(enabled=False, clearance=zeromm),
+        connecting_clips=connecting_clips_data
+        or ConnectingClipsParamsData(enabled=False, tolerance=zeromm, clip_length=zeromm),
     )
 
     geometry = baseplate_full_layout.build_full_layout(

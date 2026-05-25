@@ -9,7 +9,7 @@ import Part
 
 if TYPE_CHECKING:
     from .baseplate_full_layout import GridfinityLayoutGeometry
-    from .param import JunctionScrewParamsData, ScrewStubParamsData
+    from .param import JunctionScrewsParamsData, ScrewStubsParamsData
 
 _JUNCTION_FULL_NEIGHBORS = 4
 
@@ -30,7 +30,7 @@ def iter_supported_junctions(geometry: GridfinityLayoutGeometry) -> list[tuple[f
 
 
 def holes_shape(
-    junction_screws: JunctionScrewParamsData,
+    junction_screws: JunctionScrewsParamsData,
     top_z: fc.Units.Quantity,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
@@ -67,8 +67,8 @@ def holes_shape(
 
 
 def stubs_shape(
-    junction_screws: JunctionScrewParamsData,
-    screw_stubs: ScrewStubParamsData,
+    junction_screws: JunctionScrewsParamsData,
+    screw_stubs: ScrewStubsParamsData,
     bottom_z: fc.Units.Quantity,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:

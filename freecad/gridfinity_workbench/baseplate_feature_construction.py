@@ -16,14 +16,14 @@ from . import junction_screws as junction_screw_shapes
 from . import magnet_hole as magnet_hole_module
 from .param import (
     BaseplateCoreParams,
-    ClickSpringParams,
-    ConnectingClipParams,
-    ConnectingClipParamsData,
+    ClickSpringsParams,
+    ConnectingClipsParams,
+    ConnectingClipsParamsData,
     FundamentalsParams,
     FundamentalsParamsData,
-    JunctionScrewParams,
-    JunctionScrewParamsData,
-    ScrewStubParams,
+    JunctionScrewsParams,
+    JunctionScrewsParamsData,
+    ScrewStubsParams,
 )
 
 if TYPE_CHECKING:
@@ -40,16 +40,16 @@ _fundamentals.load_saved_defaults()
 _core = BaseplateCoreParams()
 _core.load_saved_defaults()
 
-_click_springs = ClickSpringParams()
+_click_springs = ClickSpringsParams()
 _click_springs.load_saved_defaults()
 
-_junction_screws = JunctionScrewParams()
+_junction_screws = JunctionScrewsParams()
 _junction_screws.load_saved_defaults()
 
-_screw_stubs = ScrewStubParams()
+_screw_stubs = ScrewStubsParams()
 _screw_stubs.load_saved_defaults()
 
-_connecting_clip = ConnectingClipParams()
+_connecting_clip = ConnectingClipsParams()
 _connecting_clip.load_saved_defaults()
 
 
@@ -447,7 +447,7 @@ def make_clip_cutouts(  # noqa: C901, PLR0912, PLR0915
 
 def make_clip_cutouts_from_params(
     fundamentals: FundamentalsParamsData,
-    connecting_clip: ConnectingClipParamsData,
+    connecting_clip: ConnectingClipsParamsData,
     *,
     geometry: GridfinityLayoutGeometry,
 ) -> Part.Shape | None:
@@ -574,7 +574,7 @@ def make_junction_screw_holes(
 
 def make_junction_screw_holes_from_params(
     _fundamentals: FundamentalsParamsData,
-    junction_screws: JunctionScrewParamsData,
+    junction_screws: JunctionScrewsParamsData,
     top_z: fc.Units.Quantity,
     *,
     geometry: GridfinityLayoutGeometry,

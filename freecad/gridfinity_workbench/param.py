@@ -45,7 +45,7 @@ class FundamentalsParamsData:
 
 
 @dataclass(frozen=True)
-class ConnectingClipParamsData:
+class ConnectingClipsParamsData:
     """Immutable data container for connecting clip cutout parameters."""
 
     enabled: bool
@@ -54,11 +54,11 @@ class ConnectingClipParamsData:
 
 
 @dataclass(frozen=True)
-class CombinedConnectingClipParamsData:
+class CombinedConnectingClipsParamsData:
     """Immutable combined data for connecting clip geometry generation."""
 
     fundamentals: FundamentalsParamsData
-    connecting_clip: ConnectingClipParamsData
+    connecting_clips: ConnectingClipsParamsData
 
 
 @dataclass(frozen=True)
@@ -89,7 +89,7 @@ class BaseplateCoreParamsData:
 
 
 @dataclass(frozen=True)
-class ClickSpringParamsData:
+class ClickSpringsParamsData:
     """Immutable data container for click/snap spring parameters."""
 
     enabled: bool
@@ -99,7 +99,7 @@ class ClickSpringParamsData:
 
 
 @dataclass(frozen=True)
-class JunctionScrewParamsData:
+class JunctionScrewsParamsData:
     """Immutable data container for junction screw parameters."""
 
     enabled: bool
@@ -109,7 +109,7 @@ class JunctionScrewParamsData:
 
 
 @dataclass(frozen=True)
-class ScrewStubParamsData:
+class ScrewStubsParamsData:
     """Immutable data container for screw stub parameters."""
 
     enabled: bool
@@ -139,7 +139,7 @@ class CombinedSupportBaseplateParamsData:
     fundamentals: FundamentalsParamsData
     baseplate_size: BaseplateSizeParamsData
     baseplate_core: BaseplateCoreParamsData
-    click_springs: ClickSpringParamsData
+    click_springs: ClickSpringsParamsData
     support: SupportParamsData
 
 
@@ -150,10 +150,10 @@ class CombinedBaseplateParamsData:
     fundamentals: FundamentalsParamsData
     baseplate_size: BaseplateSizeParamsData
     baseplate_core: BaseplateCoreParamsData
-    click_springs: ClickSpringParamsData
-    junction_screws: JunctionScrewParamsData
-    screw_stubs: ScrewStubParamsData
-    connecting_clip: ConnectingClipParamsData
+    click_springs: ClickSpringsParamsData
+    junction_screws: JunctionScrewsParamsData
+    screw_stubs: ScrewStubsParamsData
+    connecting_clips: ConnectingClipsParamsData
 
 
 @dataclass(frozen=True)
@@ -163,19 +163,16 @@ class CombinedStackedBaseplatesParamsData:
     fundamentals: FundamentalsParamsData
     baseplate_size: BaseplateSizeParamsData
     baseplate_core: BaseplateCoreParamsData
-    click_springs: ClickSpringParamsData
-    junction_screws: JunctionScrewParamsData
-    screw_stubs: ScrewStubParamsData
+    click_springs: ClickSpringsParamsData
+    junction_screws: JunctionScrewsParamsData
+    screw_stubs: ScrewStubsParamsData
     support: SupportParamsData
     stacking: StackingParamsData
-    connecting_clip: ConnectingClipParamsData
+    connecting_clips: ConnectingClipsParamsData
 
 
 class FundamentalsParams(ParameterGroup):
     """Fundamental Gridfinity dimensions (grid size, radius, profile)."""
-
-    _category = "Gridfinity_Fundamentals"
-    _section_title = "Fundamentals"
 
     def __init__(self, **kwargs) -> None:
         """Initialize with grid size, outer radius, and profile dimensions."""
@@ -222,11 +219,8 @@ class FundamentalsParams(ParameterGroup):
         )
 
 
-class ConnectingClipParams(ParameterGroup):
+class ConnectingClipsParams(ParameterGroup):
     """Parameters for connecting clip cutout features on baseplates."""
-
-    _category = "Gridfinity_ConnectingClip"
-    _section_title = "Connecting Clip Cutouts"
 
     def __init__(self, **kwargs) -> None:
         """Initialize with clip enabled state, tolerance, and length."""
@@ -247,54 +241,54 @@ class ConnectingClipParams(ParameterGroup):
         super().__init__(parameters)
         self.set_all_values(kwargs)
 
-    def data(self) -> ConnectingClipParamsData:
+    def data(self) -> ConnectingClipsParamsData:
         """Return validated immutable data container."""
         errors = self.validate()
         if errors:
             raise ParameterValidationError(errors)
-        return ConnectingClipParamsData(
+        return ConnectingClipsParamsData(
             enabled=self.get_value("enabled"),
             tolerance=self.get_value("tolerance"),
             clip_length=self.get_value("clip_length"),
         )
 
 
-class CombinedConnectingClipParams(CombinedParams):
+class CombinedConnectingClipsParams(CombinedParams):
     """Combined parameters for connecting clip geometry (fundamentals + clip settings)."""
 
     def __init__(
         self,
         fundamentals: FundamentalsParams = None,
-        connecting_clip: ConnectingClipParams = None,
+        connecting_clips: ConnectingClipsParams = None,
     ) -> None:
         """Initialize with fundamentals and connecting clip parameter groups."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
-            connecting_clip=connecting_clip or ConnectingClipParams(),
+            connecting_clips=connecting_clips or ConnectingClipsParams(),
         )
 
     def validate(self) -> dict[str, str]:
         """Validate cross-group constraints."""
         errors = super().validate()
         try:
-            tolerance_val = float(self.connecting_clip.get_value("tolerance"))
-            clip_length_val = float(self.connecting_clip.get_value("clip_length"))
+            tolerance_val = float(self.connecting_clips.get_value("tolerance"))
+            clip_length_val = float(self.connecting_clips.get_value("clip_length"))
             if clip_length_val <= 2 * tolerance_val:
-                errors["connecting_clip.clip_length"] = (
+                errors["connecting_clips.clip_length"] = (
                     f"Clip length ({clip_length_val}) must be > 2 * tolerance ({2 * tolerance_val})"
                 )
         except (AttributeError, KeyError, TypeError, ValueError):
             pass
         return errors
 
-    def data(self) -> CombinedConnectingClipParamsData:
+    def data(self) -> CombinedConnectingClipsParamsData:
         """Return validated immutable combined data container."""
         errors = self.validate()
         if errors:
             raise ParameterValidationError(errors)
-        return CombinedConnectingClipParamsData(
+        return CombinedConnectingClipsParamsData(
             fundamentals=self.fundamentals.data(),
-            connecting_clip=self.connecting_clip.data(),
+            connecting_clips=self.connecting_clips.data(),
         )
 
 
@@ -305,8 +299,6 @@ class BaseplateSizeParams(ParameterGroup):
     creating a new baseplate defaults to the last used grid size.
     """
 
-    _category = "Gridfinity_BaseplateSize"
-    _section_title = "Size"
     _default_type = DefaultType.MEM
 
     def __init__(self, **kwargs) -> None:
@@ -380,9 +372,6 @@ class BaseplateSizeParams(ParameterGroup):
 class BaseplateCoreParams(ParameterGroup):
     """Core baseplate profile parameters (chamfer, top crop)."""
 
-    _category = "Gridfinity_Core"
-    _section_title = "Baseplate"
-
     def __init__(self, **kwargs) -> None:
         """Initialize with chamfer and top crop settings."""
         parameters = [
@@ -415,11 +404,8 @@ class BaseplateCoreParams(ParameterGroup):
         )
 
 
-class ClickSpringParams(ParameterGroup):
+class ClickSpringsParams(ParameterGroup):
     """Parameters for click/snap spring features."""
-
-    _category = "Gridfinity_ClickSpring"
-    _section_title = "Snap Springs"
 
     def __init__(self, **kwargs) -> None:
         """Initialize with spring thickness, length, and offset."""
@@ -449,9 +435,9 @@ class ClickSpringParams(ParameterGroup):
         super().__init__(parameters)
         self.set_all_values(kwargs)
 
-    def data(self) -> ClickSpringParamsData:
+    def data(self) -> ClickSpringsParamsData:
         """Return immutable data container."""
-        return ClickSpringParamsData(
+        return ClickSpringsParamsData(
             enabled=self.get_value("enabled"),
             click_thickness=self.get_value("click_thickness"),
             click_length=self.get_value("click_length"),
@@ -459,11 +445,8 @@ class ClickSpringParams(ParameterGroup):
         )
 
 
-class JunctionScrewParams(ParameterGroup):
+class JunctionScrewsParams(ParameterGroup):
     """Parameters for junction screw holes."""
-
-    _category = "Gridfinity_JunctionScrew"
-    _section_title = "Junction Screws"
 
     def __init__(self, **kwargs) -> None:
         """Initialize with screw diameter and counterbore settings."""
@@ -493,9 +476,9 @@ class JunctionScrewParams(ParameterGroup):
         super().__init__(parameters)
         self.set_all_values(kwargs)
 
-    def data(self) -> JunctionScrewParamsData:
+    def data(self) -> JunctionScrewsParamsData:
         """Return immutable data container."""
-        return JunctionScrewParamsData(
+        return JunctionScrewsParamsData(
             enabled=self.get_value("enabled"),
             screw_diameter=self.get_value("screw_diameter"),
             counterbore_diameter=self.get_value("counterbore_diameter"),
@@ -503,11 +486,8 @@ class JunctionScrewParams(ParameterGroup):
         )
 
 
-class ScrewStubParams(ParameterGroup):
+class ScrewStubsParams(ParameterGroup):
     """Parameters for screw stubs (clearance settings)."""
-
-    _category = "Gridfinity_ScrewStub"
-    _section_title = "Screw Stubs"
 
     def __init__(self, **kwargs) -> None:
         """Initialize with screw stub enabled state and clearance."""
@@ -527,9 +507,9 @@ class ScrewStubParams(ParameterGroup):
         super().__init__(parameters)
         self.set_all_values(kwargs)
 
-    def data(self) -> ScrewStubParamsData:
+    def data(self) -> ScrewStubsParamsData:
         """Return immutable data container."""
-        return ScrewStubParamsData(
+        return ScrewStubsParamsData(
             enabled=self.get_value("enabled"),
             clearance=self.get_value("clearance"),
         )
@@ -537,9 +517,6 @@ class ScrewStubParams(ParameterGroup):
 
 class SupportParams(ParameterGroup):
     """Parameters for overhang support generation."""
-
-    _category = "Gridfinity_Support"
-    _section_title = "Support"
 
     def __init__(self, **kwargs) -> None:
         """Initialize with overhang angle."""
@@ -562,9 +539,6 @@ class SupportParams(ParameterGroup):
 
 class StackingParams(ParameterGroup):
     """Parameters for stacking/instancing baseplates."""
-
-    _category = "Gridfinity_Stacking"
-    _section_title = "Stacking"
 
     def __init__(self, **kwargs) -> None:
         """Initialize with instance count and stitching settings."""
@@ -608,18 +582,18 @@ class CombinedBaseplateParams(CombinedParams):
         fundamentals: FundamentalsParams = None,
         baseplate_size: BaseplateSizeParams = None,
         baseplate_core: BaseplateCoreParams = None,
-        click_springs: ClickSpringParams = None,
-        junction_screws: JunctionScrewParams = None,
-        connecting_clip: ConnectingClipParams = None,
+        click_springs: ClickSpringsParams = None,
+        junction_screws: JunctionScrewsParams = None,
+        connecting_clips: ConnectingClipsParams = None,
     ) -> None:
         """Initialize with all baseplate parameter groups."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
             baseplate_size=baseplate_size or BaseplateSizeParams(),
             baseplate_core=baseplate_core or BaseplateCoreParams(),
-            click_springs=click_springs or ClickSpringParams(),
-            junction_screws=junction_screws or JunctionScrewParams(),
-            connecting_clip=connecting_clip or ConnectingClipParams(),
+            click_springs=click_springs or ClickSpringsParams(),
+            junction_screws=junction_screws or JunctionScrewsParams(),
+            connecting_clips=connecting_clips or ConnectingClipsParams(),
         )
 
     def validate(self) -> dict[str, str]:  # noqa: C901, PLR0912, PLR0915
@@ -630,7 +604,7 @@ class CombinedBaseplateParams(CombinedParams):
         core = self.baseplate_core.data()
         click = self.click_springs.data()
         junction = self.junction_screws.data()
-        clip = self.connecting_clip.data()
+        clip = self.connecting_clips.data()
 
         half_width = float(fundamentals.main_half_width)
         outer_radius = float(fundamentals.outer_radius)
@@ -680,13 +654,13 @@ class CombinedBaseplateParams(CombinedParams):
             clip_tolerance = float(clip.tolerance)
             max_clip = 2 * half_width
             if not clip_length > 0:
-                errors["connecting_clip.clip_length"] = "Clip length must be greater than 0"
+                errors["connecting_clips.clip_length"] = "Clip length must be greater than 0"
             if not clip_length < max_clip:
-                errors["connecting_clip.clip_length"] = (
+                errors["connecting_clips.clip_length"] = (
                     "Clip length must be less than 2 * main profile half width"
                 )
             if not clip_tolerance >= 0:
-                errors["connecting_clip.tolerance"] = (
+                errors["connecting_clips.tolerance"] = (
                     "Clip tolerance must be greater than or equal to 0"
                 )
 
@@ -787,8 +761,8 @@ class CombinedBaseplateParams(CombinedParams):
             baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
-            screw_stubs=ScrewStubParamsData(enabled=False, clearance=fc.Units.Quantity("0.15 mm")),
-            connecting_clip=self.connecting_clip.data(),
+            screw_stubs=ScrewStubsParamsData(enabled=False, clearance=fc.Units.Quantity("0.15 mm")),
+            connecting_clips=self.connecting_clips.data(),
         )
 
 
@@ -800,7 +774,7 @@ class CombinedSupportBaseplateParams(CombinedParams):
         fundamentals: FundamentalsParams = None,
         baseplate_size: BaseplateSizeParams = None,
         baseplate_core: BaseplateCoreParams = None,
-        click_springs: ClickSpringParams = None,
+        click_springs: ClickSpringsParams = None,
         support: SupportParams = None,
     ) -> None:
         """Initialize with fundamentals, size, core, click springs, and support."""
@@ -808,7 +782,7 @@ class CombinedSupportBaseplateParams(CombinedParams):
             fundamentals=fundamentals or FundamentalsParams(),
             baseplate_size=baseplate_size or BaseplateSizeParams(),
             baseplate_core=baseplate_core or BaseplateCoreParams(),
-            click_springs=click_springs or ClickSpringParams(),
+            click_springs=click_springs or ClickSpringsParams(),
             support=support or SupportParams(),
         )
 
@@ -848,24 +822,24 @@ class CombinedStackedBaseplatesParams(CombinedParams):
         fundamentals: FundamentalsParams = None,
         baseplate_size: BaseplateSizeParams = None,
         baseplate_core: BaseplateCoreParams = None,
-        click_springs: ClickSpringParams = None,
-        junction_screws: JunctionScrewParams = None,
-        screw_stubs: ScrewStubParams = None,
+        click_springs: ClickSpringsParams = None,
+        junction_screws: JunctionScrewsParams = None,
+        screw_stubs: ScrewStubsParams = None,
         support: SupportParams = None,
         stacking: StackingParams = None,
-        connecting_clip: ConnectingClipParams = None,
+        connecting_clips: ConnectingClipsParams = None,
     ) -> None:
         """Initialize with all stacked baseplates parameter groups."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
             baseplate_size=baseplate_size or BaseplateSizeParams(),
             baseplate_core=baseplate_core or BaseplateCoreParams(),
-            click_springs=click_springs or ClickSpringParams(),
-            junction_screws=junction_screws or JunctionScrewParams(),
-            screw_stubs=screw_stubs or ScrewStubParams(),
+            click_springs=click_springs or ClickSpringsParams(),
+            junction_screws=junction_screws or JunctionScrewsParams(),
+            screw_stubs=screw_stubs or ScrewStubsParams(),
             support=support or SupportParams(),
             stacking=stacking or StackingParams(),
-            connecting_clip=connecting_clip or ConnectingClipParams(),
+            connecting_clips=connecting_clips or ConnectingClipsParams(),
         )
 
     def validate(self) -> dict[str, str]:
@@ -876,7 +850,7 @@ class CombinedStackedBaseplatesParams(CombinedParams):
             baseplate_core=self.baseplate_core,
             click_springs=self.click_springs,
             junction_screws=self.junction_screws,
-            connecting_clip=self.connecting_clip,
+            connecting_clips=self.connecting_clips,
         ).validate()
         screw_stubs = self.screw_stubs.data()
         junction = self.junction_screws.data()
@@ -901,7 +875,7 @@ class CombinedStackedBaseplatesParams(CombinedParams):
             screw_stubs=self.screw_stubs.data(),
             support=self.support.data(),
             stacking=self.stacking.data(),
-            connecting_clip=self.connecting_clip.data(),
+            connecting_clips=self.connecting_clips.data(),
         )
 
 
@@ -925,9 +899,9 @@ class CombinedDrawerBaseplateParamsData:
     fundamentals: FundamentalsParamsData
     baseplate_size: BaseplateSizeParamsData
     baseplate_core: BaseplateCoreParamsData
-    click_springs: ClickSpringParamsData
-    junction_screws: JunctionScrewParamsData
-    connecting_clip: ConnectingClipParamsData
+    click_springs: ClickSpringsParamsData
+    junction_screws: JunctionScrewsParamsData
+    connecting_clips: ConnectingClipsParamsData
     drawer: DrawerParamsData
 
 
@@ -938,8 +912,6 @@ class DrawerParams(ParameterGroup):
     creating a new drawer baseplate defaults to the last used dimensions.
     """
 
-    _category = "Gridfinity_Drawer"
-    _section_title = "Drawer"
     _default_type = DefaultType.MEM
 
     def __init__(self, **kwargs) -> None:
@@ -1013,9 +985,9 @@ class CombinedDrawerBaseplateParams(CombinedParams):
         fundamentals: FundamentalsParams = None,
         baseplate_size: BaseplateSizeParams = None,
         baseplate_core: BaseplateCoreParams = None,
-        click_springs: ClickSpringParams = None,
-        junction_screws: JunctionScrewParams = None,
-        connecting_clip: ConnectingClipParams = None,
+        click_springs: ClickSpringsParams = None,
+        junction_screws: JunctionScrewsParams = None,
+        connecting_clips: ConnectingClipsParams = None,
         drawer: DrawerParams = None,
     ) -> None:
         """Initialize with all drawer baseplate parameter groups."""
@@ -1023,9 +995,9 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             fundamentals=fundamentals or FundamentalsParams(),
             baseplate_size=baseplate_size or BaseplateSizeParams(),
             baseplate_core=baseplate_core or BaseplateCoreParams(),
-            click_springs=click_springs or ClickSpringParams(),
-            junction_screws=junction_screws or JunctionScrewParams(),
-            connecting_clip=connecting_clip or ConnectingClipParams(),
+            click_springs=click_springs or ClickSpringsParams(),
+            junction_screws=junction_screws or JunctionScrewsParams(),
+            connecting_clips=connecting_clips or ConnectingClipsParams(),
             drawer=drawer or DrawerParams(),
         )
 
@@ -1037,7 +1009,7 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             baseplate_core=self.baseplate_core,
             click_springs=self.click_springs,
             junction_screws=self.junction_screws,
-            connecting_clip=self.connecting_clip,
+            connecting_clips=self.connecting_clips,
         ).validate()
         drawer = self.drawer.data()
         if float(drawer.drawer_width) <= 0:
@@ -1058,8 +1030,8 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
-            screw_stubs=ScrewStubParamsData(enabled=False, clearance=fc.Units.Quantity("0.15 mm")),
-            connecting_clip=self.connecting_clip.data(),
+            screw_stubs=ScrewStubsParamsData(enabled=False, clearance=fc.Units.Quantity("0.15 mm")),
+            connecting_clips=self.connecting_clips.data(),
         )
 
     def data(self) -> CombinedDrawerBaseplateParamsData:
@@ -1070,7 +1042,7 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
-            connecting_clip=self.connecting_clip.data(),
+            connecting_clips=self.connecting_clips.data(),
             drawer=self.drawer.data(),
         )
 
@@ -1082,8 +1054,6 @@ class PluginSettingsParams(ParameterGroup):
     survive across sessions. Changed via Edit Defaults UI.
     """
 
-    _category = "Gridfinity_PluginSettings"
-    _section_title = "Performance"
     _default_type = DefaultType.SAVED
 
     def __init__(self, **kwargs) -> None:

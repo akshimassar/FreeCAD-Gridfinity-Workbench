@@ -511,16 +511,14 @@ class ParameterGroup(ABC):
     a frozen data object for computation.
 
     Class attributes:
-    - _category: FreeCAD property category name (default: "Gridfinity")
-    - _section_title: Title for Edit Defaults UI section
     - _default_type: Default resolution strategy for all params in this group
       (VALUE, SAVED, or MEM). Subclasses override to change behavior.
+
+    Derived properties (from class name):
+    - category: FreeCAD property category (e.g., "Gridfinity_Baseplate_Size")
+    - section_title: UI section title (e.g., "Baseplate Size")
     """
 
-    # Class attribute to define the category/group name for FreeCAD properties
-    _category = "Gridfinity"
-    # Subclasses should override this for Edit Defaults UI
-    _section_title = ""
     # Subclasses override to change default resolution strategy for all params
     _default_type: DefaultType = DefaultType.VALUE
 
@@ -564,7 +562,7 @@ class ParameterGroup(ABC):
             obj.addProperty(
                 param.freecad_property_type,
                 property_name,
-                self._category,
+                self.category,
                 param.description or f"{param.display_name} parameter",
             )
 
@@ -697,6 +695,27 @@ class ParameterGroup(ABC):
         group_name = self.__class__.__name__.replace("Params", "")
         return re.sub(r"(?<!^)(?=[A-Z])", "_", group_name).lower()
 
+    @property
+    def category(self) -> str:
+        """Return FreeCAD property category derived from class name.
+
+        E.g., ClickSpringsParams -> "Gridfinity_Click_Springs"
+        """
+        base = self.__class__.__name__.replace("Params", "")
+        # Insert underscore before each capital letter (except first)
+        with_underscores = re.sub(r"(?<!^)(?=[A-Z])", "_", base)
+        return f"Gridfinity_{with_underscores}"
+
+    @property
+    def section_title(self) -> str:
+        """Return UI section title derived from class name.
+
+        E.g., ClickSpringsParams -> "Click Springs"
+        """
+        base = self.__class__.__name__.replace("Params", "")
+        # Insert space before each capital letter (except first)
+        return re.sub(r"(?<!^)(?=[A-Z])", " ", base)
+
     def validate(self) -> dict[str, str]:
         """Automatically validate all parameters in this group."""
         errors = {}
@@ -775,7 +794,10 @@ class ParameterGroup(ABC):
         if isinstance(param, FloatParam):
             if isinstance(ui_value, fc.Units.Quantity):
                 return ui_value
-            return float(ui_value) * fc.Units.Quantity("1 mm")
+            # Use the unit from the default value (handles mm, deg, etc.)
+            default_qty = param.default()
+            unit_qty = default_qty / float(default_qty) if float(default_qty) != 0 else default_qty
+            return float(ui_value) * unit_qty
         if isinstance(param, BooleanParam):
             return bool(ui_value)
         if isinstance(param, LiteralParam):
@@ -1187,11 +1209,15 @@ class CombinedParams:
             if not hasattr(group, "_parameters"):
                 continue
             group_payload: dict[str, ParamValue] = {}
-            for param_name in group._parameters:  # noqa: SLF001
+            for param_name, param in group._parameters.items():  # noqa: SLF001
                 control = getattr(owner, f"{group_name}__{param_name}", None)
                 if control is None:
                     continue
-                if hasattr(control, "isChecked"):
+                # Check for layout_value property first (QPushButton for LayoutParam)
+                if isinstance(param, LayoutParam) and hasattr(control, "property"):
+                    layout_val = control.property("layout_value")
+                    group_payload[param_name] = layout_val  # Can be None
+                elif type(control).__name__ == "QCheckBox":
                     group_payload[param_name] = control.isChecked()
                 elif hasattr(control, "value"):
                     group_payload[param_name] = control.value()
@@ -1279,10 +1305,8 @@ class CombinedParams:
 
     def add_all_properties_to_object(self, obj: fc.DocumentObject) -> None:
         """Add properties from all contained parameter groups to the FreeCAD object."""
-        for group_name, group in self._param_groups.items():
+        for group in self._param_groups.values():
             if hasattr(group, "add_properties_to_object"):
-                # Update the category to be specific to this group
-                group._category = f"Gridfinity_{group_name.title()}"  # noqa: SLF001
                 group.add_properties_to_object(obj)
 
     def build_ui(
@@ -1323,15 +1347,16 @@ class CombinedParams:
         all_controls = {}
         for group_name, group in self._param_groups.items():
             if hasattr(group, "build_ui"):
-                group_controls, group_widget = group.build_ui(None, "", show_description)
+                # Use group's section_title property if available
+                group_title = getattr(group, "section_title", "")
+                group_controls, group_widget = group.build_ui(None, group_title, show_description)
                 # Prefix control names with group name
-                prefixed_controls = {}
                 for param_name, control in group_controls.items():
-                    prefixed_controls[f"{group_name}__{param_name}"] = control
-                all_controls.update(prefixed_controls)
+                    all_controls[f"{group_name}__{param_name}"] = control
 
                 # Add the group widget to our container
-                container_layout.addWidget(group_widget)
+                if group_widget is not None:
+                    container_layout.addWidget(group_widget)
 
         # If a layout was provided, add our widget to it
         if layout:
@@ -1391,7 +1416,7 @@ class ParamSystemRouter:
         # Returns CombinedBaseplateParams populated from the object
 
     Supported object types:
-    - ConnectingClip -> CombinedConnectingClipParams
+    - ConnectingClip -> CombinedConnectingClipsParams
     - Baseplate -> CombinedBaseplateParams
     - StackedBaseplates -> CombinedStackedBaseplatesParams
     - Default fallback -> FundamentalsParams
@@ -1403,7 +1428,7 @@ class ParamSystemRouter:
         """Route to appropriate param conversion based on object type."""
         from .param import (
             CombinedBaseplateParams,
-            CombinedConnectingClipParams,
+            CombinedConnectingClipsParams,
             CombinedStackedBaseplatesParams,
             FundamentalsParams,
         )
@@ -1414,7 +1439,7 @@ class ParamSystemRouter:
             class_name = proxy.__class__.__name__
 
             if class_name == "ConnectingClip":
-                return CombinedConnectingClipParams().from_obj(obj)
+                return CombinedConnectingClipsParams().from_obj(obj)
             if class_name == "Baseplate":
                 return CombinedBaseplateParams().from_obj(obj)
             if class_name == "StackedBaseplates":

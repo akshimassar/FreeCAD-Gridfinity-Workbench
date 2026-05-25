@@ -48,7 +48,7 @@ def _standard_buttons_ok_cancel() -> int:
 if TYPE_CHECKING:
     import Part
 
-    from .param import CombinedConnectingClipParams
+    from .param import CombinedConnectingClipsParams
     from .param_system import CombinedParams
 
 ICONDIR = Path(__file__).parent / "icons"
@@ -195,7 +195,7 @@ def _build_size_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     # Prefix control names to match expected return format
     prefixed_controls = {}
     for param_name, control in controls.items():
-        prefixed_controls[f"size__{param_name}"] = control
+        prefixed_controls[f"baseplate_size__{param_name}"] = control
 
     return prefixed_controls
 
@@ -232,9 +232,9 @@ def _build_fundamentals_section(layout: QVBoxLayout, *, show_note: bool) -> dict
 def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     from .param import (
         BaseplateCoreParams,
-        ClickSpringParams,
-        ConnectingClipParams,
-        JunctionScrewParams,
+        ClickSpringsParams,
+        ConnectingClipsParams,
+        JunctionScrewsParams,
     )
 
     # Create the core baseplate param group and build its UI
@@ -247,10 +247,10 @@ def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
     # Add to main controls dict
     controls: dict[str, QWidget] = {}
     for param_name, control in core_controls.items():
-        controls[f"core__{param_name}"] = control
+        controls[f"baseplate_core__{param_name}"] = control
 
     # Create and add snap springs section
-    click_params = ClickSpringParams()
+    click_params = ClickSpringsParams()
     click_controls, click_widget = click_params.build_ui(
         None,
         "",
@@ -266,7 +266,7 @@ def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
         controls[f"click_springs__{param_name}"] = control
 
     # Create and add junction screws section
-    junction_params = JunctionScrewParams()
+    junction_params = JunctionScrewsParams()
     junction_controls, junction_widget = junction_params.build_ui(
         None,
         "",
@@ -282,7 +282,7 @@ def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
         controls[f"junction_screws__{param_name}"] = control
 
     # Create and add connecting clips section
-    clip_params = ConnectingClipParams()
+    clip_params = ConnectingClipsParams()
     clip_controls, clip_widget = clip_params.build_ui(
         None,
         "",
@@ -295,7 +295,7 @@ def _build_baseplate_section(layout: QVBoxLayout) -> dict[str, QWidget]:
 
     # Add clip controls to main dict
     for param_name, control in clip_controls.items():
-        controls[f"connecting_clip__{param_name}"] = control
+        controls[f"connecting_clips__{param_name}"] = control
 
     return controls
 
@@ -317,7 +317,7 @@ def _build_bin_section(layout: QVBoxLayout) -> dict[str, QWidget]:
 
 
 def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dict[str, QWidget]:
-    from .param import ScrewStubParams, SupportParams
+    from .param import ScrewStubsParams, SupportParams
 
     # Create the support params group
     support_params = SupportParams(overhang_angle=overhang_angle * fc.Units.Quantity("1 deg"))
@@ -331,7 +331,7 @@ def _build_support_section(layout: QVBoxLayout, *, overhang_angle: float) -> dic
     layout.addWidget(support_widget)
 
     # Create screw stub params group
-    screw_stub_params = ScrewStubParams()
+    screw_stub_params = ScrewStubsParams()
     screw_stub_controls, screw_stub_widget = screw_stub_params.build_ui(
         None,
         "",
@@ -682,18 +682,18 @@ class CreateDrawerBaseplateTaskPanel:
 
     def _set_validation_visuals(self, errors: dict[str, str]) -> None:
         mapping = {
-            "top_crop": self.core__top_crop,
+            "top_crop": self.baseplate_core__top_crop,
             "click_thickness": self.click_springs__click_thickness,
             "click_length": self.click_springs__click_length,
             "junction_screw_diameter": self.junction_screws__screw_diameter,
             "junction_counterbore_diameter": self.junction_screws__counterbore_diameter,
             "junction_counterbore_depth": self.junction_screws__counterbore_depth,
             **(
-                {"screw_stub_clearance": self.screw_stubs__clearance}
+                {"screw_stubs_clearance": self.screw_stubs__clearance}
                 if hasattr(self, "screw_stubs__clearance")
                 else {}
             ),
-            "clip_length": self.connecting_clip__clip_length,
+            "clip_length": self.connecting_clips__clip_length,
         }
         for key, widget in mapping.items():
             if key in errors:
@@ -802,7 +802,7 @@ class CreateDrawerBaseplateTaskPanel:
         if preview_mode:
             params.click_springs.set_value("enabled", value=False)
             params.junction_screws.set_value("enabled", value=False)
-            params.connecting_clip.set_value("enabled", value=False)
+            params.connecting_clips.set_value("enabled", value=False)
         return params
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
@@ -1099,8 +1099,8 @@ class CreateBaseplateTaskPanel:
             return
         params.to_obj(self._target_obj)
         base_label = self._format_simple_baseplate_label(
-            int(self.size__x_grid_count.value()),
-            int(self.size__y_grid_count.value()),
+            int(self.baseplate_size__x_grid_count.value()),
+            int(self.baseplate_size__y_grid_count.value()),
         )
         self._target_obj.Label = self._format_preview_label(base_label)
         status_bar = None
@@ -1121,7 +1121,7 @@ class CreateBaseplateTaskPanel:
         ]
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=data.junction_screws.enabled,
-            include_clip_cutouts=data.connecting_clip.enabled,
+            include_clip_cutouts=data.connecting_clips.enabled,
             include_snap_springs=data.click_springs.enabled,
         )
         shape = baseplate_builder.build_simple_baseplate_from_params(
@@ -1373,9 +1373,9 @@ class CreateConnectingClipTaskPanel:
         )
         layout = QVBoxLayout(self.form)
 
-        from .param import CombinedConnectingClipParams
+        from .param import CombinedConnectingClipsParams
 
-        params = CombinedConnectingClipParams()
+        params = CombinedConnectingClipsParams()
         self._controls_by_key = self._build_connecting_clip_controls(layout, params)
 
         # Create preview object
@@ -1406,15 +1406,15 @@ class CreateConnectingClipTaskPanel:
 
     def _load_from_object(self, obj: fc.DocumentObject) -> None:
         """Load values from an existing connecting clip object."""
-        from .param import CombinedConnectingClipParams
+        from .param import CombinedConnectingClipsParams
 
-        params = CombinedConnectingClipParams().from_obj(obj)
+        params = CombinedConnectingClipsParams().from_obj(obj)
         params.apply_to_ui_owner(self)
 
     def _build_connecting_clip_controls(
         self,
         layout: QVBoxLayout,
-        params: CombinedConnectingClipParams,
+        params: CombinedConnectingClipsParams,
     ) -> dict[str, QWidget]:
         controls: dict[str, QWidget] = {}
 
@@ -1439,19 +1439,19 @@ class CreateConnectingClipTaskPanel:
                 controls[key] = control
                 setattr(self, key, control)
 
-        # Use the new param system UI generation for clip section
-        if hasattr(params, "clip") and hasattr(params.clip, "build_ui"):
+        # Use the new param system UI generation for connecting clips section
+        if hasattr(params, "connecting_clips") and hasattr(params.connecting_clips, "build_ui"):
             # Add clip section
-            clip_controls, clip_widget = params.clip.build_ui(
+            clip_controls, clip_widget = params.connecting_clips.build_ui(
                 None,
-                "Connecting Clip",
+                "Connecting Clips",
                 show_description=True,
             )
             layout.addWidget(clip_widget)
 
             # Add controls with proper naming
             for param_name, control in clip_controls.items():
-                key = f"clip__{param_name}"
+                key = f"connecting_clips__{param_name}"
                 controls[key] = control
                 setattr(self, key, control)
 
@@ -1466,10 +1466,10 @@ class CreateConnectingClipTaskPanel:
             return
 
         # Apply values to the preview object using the new param system
-        from .param import CombinedConnectingClipParams
+        from .param import CombinedConnectingClipsParams
 
         # Create param object using values from controls
-        params = CombinedConnectingClipParams()
+        params = CombinedConnectingClipsParams()
 
         params.update_from_ui_owner(self)
 
@@ -1528,10 +1528,10 @@ class CreateConnectingClipTaskPanel:
             return False
 
         # Apply final values to the target object using the new param system
-        from .param import CombinedConnectingClipParams
+        from .param import CombinedConnectingClipsParams
 
         # Create param object using values from controls
-        params = CombinedConnectingClipParams()
+        params = CombinedConnectingClipsParams()
 
         params.update_from_ui_owner(self)
 
@@ -1599,10 +1599,10 @@ class GridfinitySettingsTaskPanel:
     def __init__(self) -> None:
         from .param import (
             BaseplateCoreParams,
-            ClickSpringParams,
-            ConnectingClipParams,
+            ClickSpringsParams,
+            ConnectingClipsParams,
             FundamentalsParams,
-            JunctionScrewParams,
+            JunctionScrewsParams,
             PluginSettingsParams,
         )
 
@@ -1614,9 +1614,9 @@ class GridfinitySettingsTaskPanel:
         self._groups = [
             FundamentalsParams(),
             BaseplateCoreParams(),
-            ClickSpringParams(),
-            JunctionScrewParams(),
-            ConnectingClipParams(),
+            ClickSpringsParams(),
+            JunctionScrewsParams(),
+            ConnectingClipsParams(),
             PluginSettingsParams(),
         ]
 
@@ -1625,8 +1625,7 @@ class GridfinitySettingsTaskPanel:
 
         for group in self._groups:
             group.load_saved_defaults()
-            title = getattr(group, "_section_title", "")
-            controls, widget = group.build_ui(None, title, show_description=True)
+            controls, widget = group.build_ui(None, group.section_title, show_description=True)
             layout.addWidget(widget)
             self._group_controls[group._group_name] = controls  # noqa: SLF001
 
