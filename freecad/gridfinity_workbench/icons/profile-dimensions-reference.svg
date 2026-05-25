@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="96" viewBox="0 0 192 96">
+  <!-- Reference sheet: profile dimensions -->
+  
+  <!-- 1. Half-width -->
+  <g transform="translate(0, 16)">
+    <svg width="64" height="64" viewBox="48 40 16 22">
+      <!-- Bin profile (center section, yellow) - shifted left for gap -->
+      <path d="M 5.167 38.300 L 5.167 10.300 L 12.167 10.300 L 12.167 31.300 A 7.000 7.000 0 0 0 19.167 38.300 L 44.833 38.300 A 7.000 7.000 0 0 0 51.833 31.300 L 51.833 10.300 L 58.833 10.300 L 58.833 38.300 L 48.800 48.333 L 48.800 56.733 L 45.533 60.000 L 18.467 60.000 L 15.200 56.733 L 15.200 48.333 L 5.167 38.300"
+        fill="#f0d400" stroke="#000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+        transform="translate(-1, 0)"/>
+      <!-- Green baseplate profile (right) -->
+      <path d="M 49.967 60.000 L 49.967 48.333 L 56.267 42.033 L 60.000 42.033 L 60.000 60.000 L 49.967 60.000"
+        fill="#2ea043" stroke="#000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Dimension arrow for half-width (at y=54, from x=49.967 to x=60) -->
+      <line x1="49.967" y1="54" x2="60" y2="54" stroke="#a31515" stroke-width="1.2"/>
+      <path d="M 49.967 54 L 51.5 52.5 L 51.5 55.5 Z" fill="#a31515"/>
+      <path d="M 60 54 L 58.5 52.5 L 58.5 55.5 Z" fill="#a31515"/>
+    </svg>
+  </g>
+  <text x="32" y="12" font-family="sans-serif" font-size="8" text-anchor="middle" fill="#000">1</text>
+  
+  <!-- 2. Height -->
+  <g transform="translate(64, 16)">
+    <svg width="64" height="64" viewBox="48 40 16 22">
+      <!-- Bin profile (center section, yellow) - shifted left for gap -->
+      <path d="M 5.167 38.300 L 5.167 10.300 L 12.167 10.300 L 12.167 31.300 A 7.000 7.000 0 0 0 19.167 38.300 L 44.833 38.300 A 7.000 7.000 0 0 0 51.833 31.300 L 51.833 10.300 L 58.833 10.300 L 58.833 38.300 L 48.800 48.333 L 48.800 56.733 L 45.533 60.000 L 18.467 60.000 L 15.200 56.733 L 15.200 48.333 L 5.167 38.300"
+        fill="#f0d400" stroke="#000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+        transform="translate(-1, 0)"/>
+      <!-- Green baseplate profile (right) -->
+      <path d="M 49.967 60.000 L 49.967 48.333 L 56.267 42.033 L 60.000 42.033 L 60.000 60.000 L 49.967 60.000"
+        fill="#2ea043" stroke="#000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Dimension arrow for height (at x=52, from y=48.333 to y=60) -->
+      <line x1="52" y1="48.333" x2="52" y2="60" stroke="#a31515" stroke-width="1.2"/>
+      <path d="M 52 48.333 L 50.5 50 L 53.5 50 Z" fill="#a31515"/>
+      <path d="M 52 60 L 50.5 58 L 53.5 58 Z" fill="#a31515"/>
+    </svg>
+  </g>
+  <text x="96" y="12" font-family="sans-serif" font-size="8" text-anchor="middle" fill="#000">2</text>
+  
+  <!-- Legend -->
+  <text x="140" y="30" font-family="sans-serif" font-size="9" fill="#000">Legend:</text>
+  <text x="140" y="45" font-family="sans-serif" font-size="8" fill="#000">1: half_width</text>
+  <text x="140" y="58" font-family="sans-serif" font-size="8" fill="#000">2: height</text>
+</svg>
