@@ -141,7 +141,7 @@ class ParamErrorDisplay:
     def show_error(self, message: str) -> None:
         """Display error with red text styling."""
         self.error_label.setText(message)
-        self.error_label.setStyleSheet("color: #cc3d3d; font-style: italic; font-size: 11px;")
+        self.error_label.setStyleSheet("color: #ff4d4d; font-style: italic; font-size: 11px;")
         self.error_label.show()
 
     def clear_error(self) -> None:
@@ -762,6 +762,136 @@ class OptionalQuantityParam(ParamCombination):
                 child.valueChanged.connect(lambda *_: callback())
 
 
+class OptionalLayoutParam(ParamCombination):
+    """Compound parameter: checkbox (enabled) + layout editor button.
+
+    Expands to two params: {name}{enabled_suffix} and {name}{layout_suffix}.
+    Renders as single UI row: [checkbox] Label [Edit Layout... button]
+
+    Example usage:
+        OptionalLayoutParam(
+            "custom_layout",
+            "Custom Layout",
+            enabled_suffix="_enabled",
+            layout_suffix="",  # empty suffix -> "custom_layout" itself
+        )
+        # Expands to: custom_layout_enabled (bool), custom_layout (list[list[bool]] | None)
+    """
+
+    def __init__(
+        self,
+        name: str,
+        display_name: str,
+        enabled_suffix: str = "_enabled",
+        layout_suffix: str = "",
+        default_enabled: bool = False,  # noqa: FBT001, FBT002
+    ) -> None:
+        """Initialize an optional layout parameter.
+
+        Args:
+            name: Base name (e.g., "custom_layout")
+            display_name: Human-readable label for UI
+            enabled_suffix: Suffix for the boolean param
+            layout_suffix: Suffix for the layout param (empty string for base name)
+            default_enabled: Whether enabled by default
+
+        """
+        self.name = name
+        self.display_name = display_name
+        self.enabled_suffix = enabled_suffix
+        self.layout_suffix = layout_suffix
+        self.default_enabled = default_enabled
+
+    @property
+    def enabled_name(self) -> str:
+        """Full name for the enabled param."""
+        return f"{self.name}{self.enabled_suffix}"
+
+    @property
+    def layout_name(self) -> str:
+        """Full name for the layout param."""
+        return f"{self.name}{self.layout_suffix}"
+
+    def expand(self) -> list[BaseParam]:
+        """Return enabled (bool) and layout params."""
+        return [
+            BooleanParam(
+                self.enabled_name,
+                f"{self.display_name} Enabled",
+                self.default_enabled,
+            ),
+            LayoutParam(
+                self.layout_name,
+                self.display_name,
+            ),
+        ]
+
+    def build_control(self, values: dict[str, ParamValue]) -> QWidget:
+        """Build checkbox + layout button in horizontal layout."""
+        from PySide.QtWidgets import QCheckBox, QHBoxLayout, QPushButton, QWidget
+
+        enabled_val = values.get(self.enabled_name, self.default_enabled)
+        layout_val = values.get(self.layout_name)
+
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        checkbox = QCheckBox()
+        checkbox.setChecked(bool(enabled_val))
+        checkbox.setObjectName("enabled")
+
+        button = QPushButton("Edit Layout...")
+        button.setObjectName("layout_button")
+        button.setProperty("layout_value", layout_val)
+
+        def on_click() -> None:
+            from freecad.gridfinity_workbench import custom_shape
+
+            current = button.property("layout_value")
+            result = custom_shape.custom_bin_dialog([], current)
+            if result is not None:
+                button.setProperty("layout_value", result.layout)
+
+        button.clicked.connect(on_click)
+
+        layout.addWidget(checkbox)
+        layout.addWidget(button)
+
+        return widget
+
+    def read_control(self, widget: QWidget) -> dict[str, ParamValue]:
+        """Extract enabled and layout values from combined widget."""
+        checkbox = widget.findChild(widget.__class__, "enabled")
+        button = widget.findChild(widget.__class__, "layout_button")
+
+        # Fallback to searching by type if objectName search fails
+        if checkbox is None or button is None:
+            from PySide.QtWidgets import QCheckBox, QPushButton
+
+            for child in widget.children():
+                if isinstance(child, QCheckBox):
+                    checkbox = child
+                elif isinstance(child, QPushButton):
+                    button = child
+
+        enabled = checkbox.isChecked() if checkbox else self.default_enabled
+        layout_value = button.property("layout_value") if button else None
+
+        return {
+            self.enabled_name: enabled,
+            self.layout_name: layout_value,
+        }
+
+    def connect_signals(self, widget: QWidget, callback: Callable[[], None]) -> None:
+        """Connect checkbox signal to callback."""
+        from PySide.QtWidgets import QCheckBox
+
+        for child in widget.children():
+            if isinstance(child, QCheckBox):
+                child.stateChanged.connect(lambda *_: callback())
+
+
 class ParameterGroup(ABC):
     """Base class for parameter groups with automatic UI, validation, and FreeCAD integration.
 
@@ -1196,30 +1326,49 @@ class ParameterGroup(ABC):
                 if isinstance(default_value, bool):
                     control.setChecked(default_value)
             elif ui_field.control_type == "spinbox":
-                control = QDoubleSpinBox()
-                # Handle min/max values safely for numeric params
-                if isinstance(param, FloatParam | IntParam):
+                # Use QSpinBox for IntParam, QDoubleSpinBox for FloatParam
+                if isinstance(param, IntParam):
+                    from PySide.QtWidgets import QSpinBox
+                    control = QSpinBox()
                     if param.min_value is not None:
-                        try:
-                            control.setMinimum(float(param.min_value))
-                        except (TypeError, ValueError):
-                            control.setMinimum(0)
+                        control.setMinimum(param.min_value)
+                    elif param.positive_only:
+                        control.setMinimum(1)
                     else:
-                        control.setMinimum(0)
+                        control.setMinimum(-999999)
                     if param.max_value is not None:
-                        try:
-                            control.setMaximum(float(param.max_value))
-                        except (TypeError, ValueError):
-                            control.setMaximum(999999)
+                        control.setMaximum(param.max_value)
                     else:
                         control.setMaximum(999999)
+                    try:
+                        control.setValue(int(default_value))
+                    except (TypeError, ValueError):
+                        control.setValue(0)
                 else:
-                    control.setMinimum(0)
-                    control.setMaximum(999999)
-                try:
-                    control.setValue(float(default_value))
-                except (TypeError, ValueError):
-                    control.setValue(0.0)
+                    control = QDoubleSpinBox()
+                    # Handle min/max values safely for numeric params
+                    if isinstance(param, FloatParam):
+                        if param.min_value is not None:
+                            try:
+                                control.setMinimum(float(param.min_value))
+                            except (TypeError, ValueError):
+                                control.setMinimum(0)
+                        else:
+                            control.setMinimum(0)
+                        if param.max_value is not None:
+                            try:
+                                control.setMaximum(float(param.max_value))
+                            except (TypeError, ValueError):
+                                control.setMaximum(999999)
+                        else:
+                            control.setMaximum(999999)
+                    else:
+                        control.setMinimum(0)
+                        control.setMaximum(999999)
+                    try:
+                        control.setValue(float(default_value))
+                    except (TypeError, ValueError):
+                        control.setValue(0.0)
             elif ui_field.control_type == "combo":
                 control = QComboBox()
                 if isinstance(param, LiteralParam) and param.choices:

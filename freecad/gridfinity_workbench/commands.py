@@ -834,10 +834,11 @@ class CreateBaseplateTaskPanel:
         start = time.perf_counter()
         # Directly build preview shape instead of relying on recompute
         data = params.data()
-        layout = [
-            [True] * data.baseplate_size.y_grid_count
-            for _ in range(data.baseplate_size.x_grid_count)
-        ]
+        size = data.baseplate_size
+        if size.custom_layout_enabled and size.custom_layout:
+            layout = size.custom_layout
+        else:
+            layout = [[True] * size.y_grid_count for _ in range(size.x_grid_count)]
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=data.junction_screws.enabled,
             include_clip_cutouts=data.connecting_clips.enabled,

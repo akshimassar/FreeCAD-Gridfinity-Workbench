@@ -28,8 +28,8 @@ from .param_system import (
     DefaultType,
     FloatParam,
     IntParam,
-    LayoutParam,
     LiteralParam,
+    OptionalLayoutParam,
     OptionalQuantityParam,
     ParamCombination,
     ParameterGroup,
@@ -315,8 +315,8 @@ class BaseplateSizeParams(ParameterGroup):
     def __init__(self, **kwargs) -> None:
         """Initialize with grid counts and filler dimensions."""
         parameters: list[BaseParam | ParamCombination] = [
-            IntParam("x_grid_count", "X Grid Count", 2, positive_only=True),
-            IntParam("y_grid_count", "Y Grid Count", 2, positive_only=True),
+            IntParam("x_grid_count", "X Grid Count", 2, min_value=0),
+            IntParam("y_grid_count", "Y Grid Count", 2, min_value=0),
             OptionalQuantityParam(
                 "filler_top", "Top Filler",
                 enabled_suffix="_enabled",
@@ -341,8 +341,12 @@ class BaseplateSizeParams(ParameterGroup):
                 quantity_suffix="_width",
                 default_quantity=fc.Units.Quantity("30 mm"),
             ),
-            BooleanParam("custom_layout_enabled", "Custom Layout Enabled"),
-            LayoutParam("custom_layout", "Custom Layout"),
+            OptionalLayoutParam(
+                "custom_layout",
+                "Custom Layout",
+                enabled_suffix="_enabled",
+                layout_suffix="",
+            ),
         ]
 
         super().__init__(parameters)
@@ -759,8 +763,17 @@ class CombinedBaseplateParams(CombinedParams):
                     )
                 )
 
-        # Custom layout and fillers are mutually exclusive - show error on all affected params
+        # Custom layout validation
         if size.custom_layout_enabled:
+            # Require layout to be defined when enabled
+            if not size.custom_layout:
+                errors.append(
+                    ValidationError(
+                        message="Custom layout must be defined when enabled",
+                        affected_params=("baseplate_size.custom_layout",),
+                    )
+                )
+            # Custom layout and fillers are mutually exclusive
             conflicting_fillers: list[str] = []
             if size.filler_left_enabled:
                 conflicting_fillers.append("baseplate_size.filler_left_enabled")
