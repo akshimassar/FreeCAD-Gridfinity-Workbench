@@ -853,6 +853,8 @@ class OptionalLayoutParam(ParamCombination):
             result = custom_shape.custom_bin_dialog([], current)
             if result is not None:
                 button.setProperty("layout_value", result.layout)
+                # Enable the checkbox when a layout is accepted
+                checkbox.setChecked(True)
                 # Trigger preview update callback if set
                 if button._layout_changed_callback is not None:  # noqa: SLF001
                     button._layout_changed_callback()  # noqa: SLF001
