@@ -40,6 +40,7 @@ class TestWithDocument(unittest.TestCase):
     def get_debug_log(self) -> str:
         """Get all debug messages as a single string."""
         return "\n".join(self._debug_log)
+
     _captured_stdout: StringIO | None = None
 
     def setUp(self) -> None:

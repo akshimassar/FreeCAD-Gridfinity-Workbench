@@ -560,9 +560,7 @@ class CreateDrawerBaseplateTaskPanel:
                     if data.drawer.width_filler_alignment == "Left"
                     else ("high" if data.drawer.width_filler_alignment == "Right" else "both")
                 ),
-                algorithm=(
-                    "greedy" if data.drawer.split_algorithm == "Greedy" else "balanced"
-                ),
+                algorithm=("greedy" if data.drawer.split_algorithm == "Greedy" else "balanced"),
             )
             y_chunks = split_axis_into_printable_chunks(
                 length_mm=drawer_d,
@@ -573,9 +571,7 @@ class CreateDrawerBaseplateTaskPanel:
                     if data.drawer.depth_filler_alignment == "Bottom"
                     else ("high" if data.drawer.depth_filler_alignment == "Top" else "both")
                 ),
-                algorithm=(
-                    "greedy" if data.drawer.split_algorithm == "Greedy" else "balanced"
-                ),
+                algorithm=("greedy" if data.drawer.split_algorithm == "Greedy" else "balanced"),
             )
         except ValueError as exc:
             self.summary.setText(f"Error: {exc}")

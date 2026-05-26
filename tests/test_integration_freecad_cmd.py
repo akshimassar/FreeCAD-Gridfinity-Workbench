@@ -1295,9 +1295,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         )
         data = json.loads(line[len(RESULT_PREFIX) :])
 
-        print(f"\n5x5 baseplate with top+right fillers: {data['elapsed_s']:.3f}s")
-        print(f"  Volume: {data['volume']:.2f} mm³")
-        print(f"  Solids: {data['solids']}")
+        # Performance info: {elapsed_s:.3f}s, Volume: {volume:.2f} mm³, Solids: {solids}
 
         self.assertTrue(bool(data["valid"]))
         self.assertGreater(float(data["volume"]), 0.0)

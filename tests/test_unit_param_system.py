@@ -35,9 +35,7 @@ class OptionalLayoutParamTest(unittest.TestCase):
             QApplication([])
 
         param = OptionalLayoutParam("custom_layout", "Custom Layout")
-        widget = param.build_control(
-            {"custom_layout_enabled": False, "custom_layout": None}
-        )
+        widget = param.build_control({"custom_layout_enabled": False, "custom_layout": None})
 
         # Find children by type
         checkbox = None
@@ -60,9 +58,7 @@ class OptionalLayoutParamTest(unittest.TestCase):
             QApplication([])
 
         param = OptionalLayoutParam("custom_layout", "Custom Layout")
-        widget = param.build_control(
-            {"custom_layout_enabled": False, "custom_layout": None}
-        )
+        widget = param.build_control({"custom_layout_enabled": False, "custom_layout": None})
 
         callback_called = [False]
 
@@ -93,9 +89,7 @@ class OptionalLayoutParamTest(unittest.TestCase):
             QApplication([])
 
         param = OptionalLayoutParam("custom_layout", "Custom Layout")
-        widget = param.build_control(
-            {"custom_layout_enabled": False, "custom_layout": None}
-        )
+        widget = param.build_control({"custom_layout_enabled": False, "custom_layout": None})
 
         callback_called = [False]
 
@@ -132,9 +126,7 @@ class OptionalLayoutParamTest(unittest.TestCase):
             QApplication([])
 
         param = OptionalLayoutParam("custom_layout", "Custom Layout")
-        widget = param.build_control(
-            {"custom_layout_enabled": True, "custom_layout": [[True]]}
-        )
+        widget = param.build_control({"custom_layout_enabled": True, "custom_layout": [[True]]})
 
         values = param.read_control(widget)
 

@@ -279,8 +279,7 @@ class CombinedConnectingClipsParams(CombinedParams):
             clip_length_val = float(self.connecting_clips.get_value("clip_length"))
             if clip_length_val <= 2 * tolerance_val:
                 msg = (
-                    f"Clip length ({clip_length_val}) must be > 2 * tolerance "
-                    f"({2 * tolerance_val})"
+                    f"Clip length ({clip_length_val}) must be > 2 * tolerance ({2 * tolerance_val})"
                 )
                 errors.append(
                     ValidationError(
@@ -318,25 +317,29 @@ class BaseplateSizeParams(ParameterGroup):
             IntParam("x_grid_count", "X Grid Count", 2, min_value=0),
             IntParam("y_grid_count", "Y Grid Count", 2, min_value=0),
             OptionalQuantityParam(
-                "filler_top", "Top Filler",
+                "filler_top",
+                "Top Filler",
                 enabled_suffix="_enabled",
                 quantity_suffix="_width",
                 default_quantity=fc.Units.Quantity("30 mm"),
             ),
             OptionalQuantityParam(
-                "filler_right", "Right Filler",
+                "filler_right",
+                "Right Filler",
                 enabled_suffix="_enabled",
                 quantity_suffix="_width",
                 default_quantity=fc.Units.Quantity("30 mm"),
             ),
             OptionalQuantityParam(
-                "filler_bottom", "Bottom Filler",
+                "filler_bottom",
+                "Bottom Filler",
                 enabled_suffix="_enabled",
                 quantity_suffix="_width",
                 default_quantity=fc.Units.Quantity("30 mm"),
             ),
             OptionalQuantityParam(
-                "filler_left", "Left Filler",
+                "filler_left",
+                "Left Filler",
                 enabled_suffix="_enabled",
                 quantity_suffix="_width",
                 default_quantity=fc.Units.Quantity("30 mm"),
@@ -377,7 +380,8 @@ class BaseplateCoreParams(ParameterGroup):
         """Initialize with chamfer and top crop settings."""
         parameters: list[BaseParam | ParamCombination] = [
             OptionalQuantityParam(
-                "lower_chamfer", "Lower Chamfer",
+                "lower_chamfer",
+                "Lower Chamfer",
                 enabled_suffix="_enabled",
                 quantity_suffix="_size",
                 default_quantity=fc.Units.Quantity("0.7 mm"),

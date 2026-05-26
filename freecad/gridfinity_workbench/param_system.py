@@ -638,7 +638,7 @@ class OptionalQuantityParam(ParamCombination):
         # Expands to: filler_top_enabled (bool), filler_top_width (Quantity)
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         name: str,
         display_name: str,
@@ -740,9 +740,7 @@ class OptionalQuantityParam(ParamCombination):
         enabled = checkbox.isChecked() if checkbox else self.default_enabled
         if spinbox:
             unit = spinbox.property("unit")
-            quantity = (
-                spinbox.value() * unit if unit else fc.Units.Quantity(spinbox.value(), "mm")
-            )
+            quantity = spinbox.value() * unit if unit else fc.Units.Quantity(spinbox.value(), "mm")
         else:
             quantity = self.default_quantity
 
@@ -1338,6 +1336,7 @@ class ParameterGroup(ABC):
                 # Use QSpinBox for IntParam, QDoubleSpinBox for FloatParam
                 if isinstance(param, IntParam):
                     from PySide.QtWidgets import QSpinBox
+
                     control = QSpinBox()
                     if param.min_value is not None:
                         control.setMinimum(param.min_value)
@@ -1416,7 +1415,7 @@ class ParameterGroup(ABC):
 
         return controls
 
-    def update_from_ui_controls(self, controls: dict[str, Any]) -> None:
+    def update_from_ui_controls(self, controls: dict[str, Any]) -> None:  # noqa: C901
         """Update parameter values from UI controls.
 
         Args:
@@ -1782,7 +1781,7 @@ class CombinedParams:
                     continue
                 control.setValue(value)
 
-    def apply_to_ui_owner(self, owner: object) -> None:
+    def apply_to_ui_owner(self, owner: object) -> None:  # noqa: C901
         """Apply values to UI owner attributes keyed as `group__param`."""
         payload = self.to_ui_payload()
 
@@ -1834,7 +1833,7 @@ class CombinedParams:
                 quantity_val = values.get(cp.expanded_names()[1], 0)
                 child.setValue(float(quantity_val))
 
-    def update_from_ui_controls(self, controls_by_key: dict[str, object]) -> None:
+    def update_from_ui_controls(self, controls_by_key: dict[str, object]) -> None:  # noqa: C901
         """Update parameters from controls keyed as `group__param`."""
         payload: dict[str, dict[str, ParamValue]] = {}
         for group_name, group in self._param_groups.items():
@@ -1864,7 +1863,7 @@ class CombinedParams:
             payload[group_name] = group_payload
         self.from_ui_payload(payload)
 
-    def update_from_ui_owner(self, owner: object) -> None:
+    def update_from_ui_owner(self, owner: object) -> None:  # noqa: C901
         """Update parameters from UI owner attributes keyed as `group__param`."""
         payload: dict[str, dict[str, ParamValue]] = {}
         for group_name, group in self._param_groups.items():
@@ -2067,9 +2066,7 @@ class CombinedParams:
             # Filter controls for this group (keys are "group_name__param_name")
             prefix = f"{group_name}__"
             group_controls = {
-                key[len(prefix):]: ctrl
-                for key, ctrl in controls.items()
-                if key.startswith(prefix)
+                key[len(prefix) :]: ctrl for key, ctrl in controls.items() if key.startswith(prefix)
             }
             if group_controls and hasattr(group, "connect_control_signals"):
                 group.connect_control_signals(group_controls, callback)
