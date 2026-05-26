@@ -22,6 +22,24 @@ GridfinityLayout = list[list[bool]]
 
 unitmm = fc.Units.Quantity("1 mm")
 
+# Detect FreeCAD version compatibility for makeLoft keyword args
+_LOFT_USES_POSITIONAL: bool | None = None
+
+
+def make_loft(profiles: list[Part.Wire], *, solid: bool = True) -> Part.Shape:
+    """Create a loft between profiles, compatible with all FreeCAD versions."""
+    global _LOFT_USES_POSITIONAL  # noqa: PLW0603
+    if _LOFT_USES_POSITIONAL is None:
+        try:
+            Part.makeLoft(profiles, solid)
+            _LOFT_USES_POSITIONAL = True
+        except TypeError:
+            _LOFT_USES_POSITIONAL = False
+            return Part.makeLoft(profiles, solid=solid)
+    if _LOFT_USES_POSITIONAL:
+        return Part.makeLoft(profiles, solid)
+    return Part.makeLoft(profiles, solid=solid)
+
 
 def new_object(name: str) -> fc.DocumentObject:
     """Create a new FreeCAD object.
@@ -244,11 +262,7 @@ def rounded_rectangle_chamfer(  # noqa: PLR0913
         zsketchplane + height,
         upper_radius,
     )
-    # Compatibility: older FreeCAD/LinkStable builds often reject keyword args for OCC bindings.
-    try:
-        return Part.makeLoft([w1, w2], True)  # noqa: FBT003
-    except TypeError:
-        return Part.makeLoft([w1, w2], solid=True)
+    return make_loft([w1, w2], solid=True)
 
 
 def rounded_rectangle_extrude(

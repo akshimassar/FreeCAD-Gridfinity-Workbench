@@ -1316,7 +1316,7 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
                 pb: Part.Wire = profile_b,
                 pa: Part.Wire = profile_a,
             ) -> Part.Shape:
-                return Part.makeLoft([pb, pa], solid=True)
+                return utils.make_loft([pb, pa], solid=True)
 
             cutter = baseplate_cell_cache.get_or_build(cutter_key, _build_cutter)
             cutter.translate(cell_center)
