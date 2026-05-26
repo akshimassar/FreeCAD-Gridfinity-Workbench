@@ -534,9 +534,10 @@ class DrawerBaseplate(FoundationGridfinity):
                 fc.Console.PrintMessage(f"[Gridfinity] {progress_msg}\n")
                 if status_bar is not None:
                     status_bar.showMessage(progress_msg)
-                if fc.GuiUp and fcg is not None:
+                    # Force status bar repaint without full event processing
+                    # (avoids recursive recompute triggered by processEvents)
                     with contextlib.suppress(Exception):
-                        fcg.updateGui()
+                        status_bar.repaint()
 
         obj.PieceNames = baseplate_names
         if status_bar is not None:
