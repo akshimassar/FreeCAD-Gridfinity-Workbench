@@ -467,3 +467,25 @@ class TestStackedBaseplatesTaskPanel(TestWithDocument):
 
         # Verify support references the base
         self.assertEqual(support_obj.SourceStackedBaseplates, base_obj)
+
+
+class TestGridfinitySettingsTaskPanel(TestWithDocument):
+    """Test the Gridfinity default settings dialog."""
+
+    def test_grid_size_change_persists(self) -> None:
+        """Test that changing grid_size in settings dialog persists after reopen."""
+        from .commands import GridfinitySettingsTaskPanel
+
+        # Open settings dialog and change grid_size to 44
+        panel = GridfinitySettingsTaskPanel()
+        fcg.Control.showDialog(panel)
+        grid_size_control = panel._group_controls["fundamentals"]["grid_size"]  # noqa: SLF001
+        grid_size_control.setValue(44.0)
+        panel.accept()
+
+        # Reopen dialog and verify the value persisted
+        panel2 = GridfinitySettingsTaskPanel()
+        fcg.Control.showDialog(panel2)
+        grid_size_control2 = panel2._group_controls["fundamentals"]["grid_size"]  # noqa: SLF001
+        self.assertAlmostEqual(grid_size_control2.value(), 44.0, places=1)
+        panel2.reject()

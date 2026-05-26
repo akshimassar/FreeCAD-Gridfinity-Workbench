@@ -178,6 +178,8 @@ class CombinedStackedBaseplatesParamsData:
 class FundamentalsParams(ParameterGroup):
     """Fundamental Gridfinity dimensions (grid size, radius, profile)."""
 
+    _default_type = DefaultType.SAVED
+
     def __init__(self, **kwargs) -> None:
         """Initialize with grid size, outer radius, and profile dimensions."""
         parameters = [
@@ -225,6 +227,8 @@ class FundamentalsParams(ParameterGroup):
 
 class ConnectingClipsParams(ParameterGroup):
     """Parameters for connecting clip cutout features on baseplates."""
+
+    _default_type = DefaultType.SAVED
 
     def __init__(self, **kwargs) -> None:
         """Initialize with clip enabled state, tolerance, and length."""
@@ -376,6 +380,8 @@ class BaseplateSizeParams(ParameterGroup):
 class BaseplateCoreParams(ParameterGroup):
     """Core baseplate profile parameters (chamfer, top crop)."""
 
+    _default_type = DefaultType.SAVED
+
     def __init__(self, **kwargs) -> None:
         """Initialize with chamfer and top crop settings."""
         parameters: list[BaseParam | ParamCombination] = [
@@ -407,6 +413,8 @@ class BaseplateCoreParams(ParameterGroup):
 
 class ClickSpringsParams(ParameterGroup):
     """Parameters for click/snap spring features."""
+
+    _default_type = DefaultType.SAVED
 
     def __init__(self, **kwargs) -> None:
         """Initialize with spring thickness, length, and offset."""
@@ -448,6 +456,8 @@ class ClickSpringsParams(ParameterGroup):
 
 class JunctionScrewsParams(ParameterGroup):
     """Parameters for junction screw holes."""
+
+    _default_type = DefaultType.SAVED
 
     def __init__(self, **kwargs) -> None:
         """Initialize with screw diameter and counterbore settings."""

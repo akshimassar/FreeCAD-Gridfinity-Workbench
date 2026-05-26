@@ -299,6 +299,20 @@ class BaseParam:
         """Return the Python type of the default value for resolver lookups."""
         return type(self.default())
 
+    def to_storage(self, value: ParamValue) -> bool | int | float | str:
+        """Convert parameter value to primitive type for FreeCAD prefs storage.
+
+        Subclasses should override if their values need conversion (e.g., Quantity → float).
+        """
+        return value  # type: ignore[return-value]
+
+    def from_storage(self, stored: bool | float | str) -> ParamValue:
+        """Convert stored primitive back to parameter value type.
+
+        Subclasses should override if their values need conversion (e.g., float → Quantity).
+        """
+        return stored
+
     def validate(self, value: ParamValue) -> bool:  # noqa: ARG002
         """Validate the given value."""
         return True
@@ -381,6 +395,20 @@ class FloatParam(BaseParam):
     def default(self) -> fc.Units.Quantity:
         """Return the default quantity value."""
         return self.default_value
+
+    def default_value_type(self) -> type:
+        """Return float for resolver lookups (prefs store floats, not Quantities)."""
+        return float
+
+    def to_storage(self, value: ParamValue) -> float:
+        """Convert Quantity to float for storage."""
+        if hasattr(value, "Value"):
+            return float(value.Value)
+        return float(value)
+
+    def from_storage(self, stored: bool | float | str) -> fc.Units.Quantity:
+        """Convert stored float back to Quantity with correct unit."""
+        return fc.Units.Quantity(float(stored), self.default_value.Unit)
 
     def validate(self, value: ParamValue) -> bool:
         """Validate number is within bounds if specified and is numeric."""
@@ -1034,12 +1062,14 @@ class ParameterGroup(ABC):
             return fallback
 
         if dt == DefaultType.SAVED:
-            return self._resolver.get_saved(
+            fallback_storage = param.to_storage(fallback)
+            saved = self._resolver.get_saved(
                 self._group_name,
                 param.name,
-                fallback,
+                fallback_storage,
                 param.default_value_type(),
             )
+            return param.from_storage(saved)
 
         if dt == DefaultType.MEM:
             return self._resolver.get_runtime(self._group_name, param.name, fallback)
@@ -1097,29 +1127,22 @@ class ParameterGroup(ABC):
 
     def save_as_defaults(self) -> None:
         """Save current values as SAVED defaults (for Edit Defaults command)."""
-        for param_name in self._parameters:
+        for param_name, param in self._parameters.items():
             value = self.get_value(param_name)
-            # Convert Quantity to float for storage
-            if hasattr(value, "Value"):
-                value = float(value.Value)
-            self._resolver.set_saved(self._group_name, param_name, value)
+            storage_value = param.to_storage(value)
+            self._resolver.set_saved(self._group_name, param_name, storage_value)
 
     def load_saved_defaults(self) -> ParameterGroup:
         """Load SAVED defaults into _values (for Edit Defaults UI initialization)."""
         for param_name, param in self._parameters.items():
-            fallback = param.default()
-            # Convert Quantity to float for comparison
-            fallback_for_lookup = float(fallback.Value) if hasattr(fallback, "Value") else fallback
+            fallback_storage = param.to_storage(param.default())
             saved = self._resolver.get_saved(
                 self._group_name,
                 param_name,
-                fallback_for_lookup,
+                fallback_storage,
                 param.default_value_type(),
             )
-            # For FloatParams, convert back to Quantity if needed
-            if hasattr(fallback, "Value") and isinstance(saved, int | float):
-                saved = fc.Units.Quantity(saved, fallback.Unit)
-            self._values[param_name] = saved
+            self._values[param_name] = param.from_storage(saved)
         return self
 
     def _property_name(self, param: BaseParam) -> str:
