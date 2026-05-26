@@ -26,7 +26,6 @@ from PySide.QtWidgets import (
 )
 
 from . import baseplate_builder, custom_shape, features, utils
-from .drawer_split import split_axis_into_printable_chunks
 from .param import CombinedBaseplateParams
 
 
@@ -429,11 +428,6 @@ class CreateDrawerBaseplateTaskPanel:
         for key, widget in controls.items():
             setattr(self, key, widget)
 
-        self.summary = QLabel("")
-        self.summary.setWordWrap(True)
-        layout.addWidget(_section_label("Drawer fit plan"))
-        layout.addWidget(self.summary)
-
         self._target_obj = utils.new_object("DrawerBaseplates")
         self._created_preview_obj = True
         if fc.GuiUp:
@@ -457,8 +451,6 @@ class CreateDrawerBaseplateTaskPanel:
         self._params.apply_to_ui_owner(self)
 
         self._capture_and_set_preview_visuals()
-
-        self._refresh_summary()
         self._update_preview()
 
     def _preview_style(self) -> tuple[tuple[float, float, float], int]:
@@ -513,81 +505,7 @@ class CreateDrawerBaseplateTaskPanel:
     def getStandardButtons(self) -> int:
         return _standard_buttons_ok_cancel()
 
-    def _format_axis(
-        self,
-        *,
-        chunks: list[Any],
-    ) -> str:
-        encoded_chunks: list[str] = []
-        for chunk in chunks:
-            encoded = f"{chunk.cells}G"
-            if chunk.low_fill_mm > 0:
-                encoded = f"F+{encoded}"
-            if chunk.high_fill_mm > 0:
-                encoded = f"{encoded}+F"
-            encoded_chunks.append(encoded)
-        return ", ".join(encoded_chunks)
-
-    def _refresh_summary(self) -> None:
-        from .param_system import validation_errors_to_dict
-
-        self._params.update_from_ui_owner(self)
-        errors = self._params.validate()
-        if errors:
-            error_dict = validation_errors_to_dict(errors)
-            msg = "\n".join(f"{k}: {v}" for k, v in sorted(error_dict.items()))
-            self.summary.setText(f"Validation errors:\n{msg}")
-            return
-        try:
-            data = self._params.data()
-            grid_mm = float(data.fundamentals.grid_size)
-            drawer_w = float(data.drawer.drawer_width)
-            drawer_d = float(data.drawer.drawer_depth)
-            bed_w = float(data.drawer.printer_bed_width)
-            bed_d = float(data.drawer.printer_bed_depth)
-            if drawer_w <= 0 or drawer_d <= 0:
-                self.summary.setText("Drawer dimensions must be > 0")
-                return
-            if bed_w <= 0 or bed_d <= 0:
-                self.summary.setText("Bed dimensions must be > 0")
-                return
-            x_chunks = split_axis_into_printable_chunks(
-                length_mm=drawer_w,
-                bed_mm=bed_w,
-                grid_mm=grid_mm,
-                alignment=(
-                    "low"
-                    if data.drawer.width_filler_alignment == "Left"
-                    else ("high" if data.drawer.width_filler_alignment == "Right" else "both")
-                ),
-                algorithm=("greedy" if data.drawer.split_algorithm == "Greedy" else "balanced"),
-            )
-            y_chunks = split_axis_into_printable_chunks(
-                length_mm=drawer_d,
-                bed_mm=bed_d,
-                grid_mm=grid_mm,
-                alignment=(
-                    "low"
-                    if data.drawer.depth_filler_alignment == "Bottom"
-                    else ("high" if data.drawer.depth_filler_alignment == "Top" else "both")
-                ),
-                algorithm=("greedy" if data.drawer.split_algorithm == "Greedy" else "balanced"),
-            )
-        except ValueError as exc:
-            self.summary.setText(f"Error: {exc}")
-            return
-
-        x_desc = self._format_axis(chunks=x_chunks)
-        y_desc = self._format_axis(chunks=y_chunks)
-        pieces = len(x_chunks) * len(y_chunks)
-        self.summary.setText(
-            f"X printable chunks: {len(x_chunks)} [{x_desc}]\n"
-            f"Y printable chunks: {len(y_chunks)} [{y_desc}]\n"
-            f"Total printable pieces: {pieces}",
-        )
-
     def _on_control_changed(self) -> None:
-        self._refresh_summary()
         self._preview_timer.start()
 
     def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:
@@ -602,12 +520,6 @@ class CreateDrawerBaseplateTaskPanel:
         return self._params
 
     def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
-        self._refresh_summary()
-        if self.summary.text().startswith("Error:") or self.summary.text().startswith(
-            "Validation errors:",
-        ):
-            return False
-
         params = self._validate_controls(preview_mode=preview_mode)
         if params is None:
             return False

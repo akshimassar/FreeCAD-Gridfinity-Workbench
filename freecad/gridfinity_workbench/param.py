@@ -1004,8 +1004,14 @@ class DrawerParamsData:
     width_filler_alignment: str
     depth_filler_alignment: str
     split_algorithm: str
-    printer_bed_width: fc.Units.Quantity
-    printer_bed_depth: fc.Units.Quantity
+
+
+@dataclass(frozen=True)
+class PrinterParamsData:
+    """Immutable data container for printer bed parameters."""
+
+    bed_width: fc.Units.Quantity
+    bed_depth: fc.Units.Quantity
 
 
 @dataclass(frozen=True)
@@ -1019,6 +1025,7 @@ class CombinedDrawerBaseplateParamsData:
     junction_screws: JunctionScrewsParamsData
     connecting_clips: ConnectingClipsParamsData
     drawer: DrawerParamsData
+    printer: PrinterParamsData
 
 
 class DrawerParams(ParameterGroup):
@@ -1063,18 +1070,6 @@ class DrawerParams(ParameterGroup):
                 "Balanced",
                 choices=["Balanced", "Greedy"],
             ),
-            FloatParam(
-                "printer_bed_width",
-                "Printer Bed Width",
-                fc.Units.Quantity("256 mm"),
-                positive_only=True,
-            ),
-            FloatParam(
-                "printer_bed_depth",
-                "Printer Bed Depth",
-                fc.Units.Quantity("240 mm"),
-                positive_only=True,
-            ),
         ]
 
         super().__init__(parameters)
@@ -1088,8 +1083,42 @@ class DrawerParams(ParameterGroup):
             width_filler_alignment=self.get_value("width_filler_alignment"),
             depth_filler_alignment=self.get_value("depth_filler_alignment"),
             split_algorithm=self.get_value("split_algorithm"),
-            printer_bed_width=self.get_value("printer_bed_width"),
-            printer_bed_depth=self.get_value("printer_bed_depth"),
+        )
+
+
+class PrinterParams(ParameterGroup):
+    """Printer bed parameters.
+
+    Uses SAVED default type - values persist across sessions.
+    """
+
+    _default_type = DefaultType.SAVED
+
+    def __init__(self, **kwargs) -> None:
+        """Initialize with printer bed dimensions."""
+        parameters = [
+            FloatParam(
+                "bed_width",
+                "Bed Width",
+                fc.Units.Quantity("256 mm"),
+                positive_only=True,
+            ),
+            FloatParam(
+                "bed_depth",
+                "Bed Depth",
+                fc.Units.Quantity("240 mm"),
+                positive_only=True,
+            ),
+        ]
+
+        super().__init__(parameters)
+        self.set_all_values(kwargs)
+
+    def data(self) -> PrinterParamsData:
+        """Return immutable data container."""
+        return PrinterParamsData(
+            bed_width=self.get_value("bed_width"),
+            bed_depth=self.get_value("bed_depth"),
         )
 
 
@@ -1099,61 +1128,66 @@ class CombinedDrawerBaseplateParams(CombinedParams):
     def __init__(  # noqa: PLR0913
         self,
         fundamentals: FundamentalsParams = None,
-        baseplate_size: BaseplateSizeParams = None,
         baseplate_core: BaseplateCoreParams = None,
         click_springs: ClickSpringsParams = None,
         junction_screws: JunctionScrewsParams = None,
         connecting_clips: ConnectingClipsParams = None,
         drawer: DrawerParams = None,
+        printer: PrinterParams = None,
     ) -> None:
         """Initialize with all drawer baseplate parameter groups."""
+        # Drawer first in UI, then printer, then baseplate options
         super().__init__(
+            drawer=drawer or DrawerParams(),
+            printer=printer or PrinterParams(),
             fundamentals=fundamentals or FundamentalsParams(),
-            baseplate_size=baseplate_size or BaseplateSizeParams(),
             baseplate_core=baseplate_core or BaseplateCoreParams(),
             click_springs=click_springs or ClickSpringsParams(),
             junction_screws=junction_screws or JunctionScrewsParams(),
             connecting_clips=connecting_clips or ConnectingClipsParams(),
-            drawer=drawer or DrawerParams(),
         )
+        # Internal defaults for baseplate_size (not shown in UI - computed from drawer dims)
+        self._baseplate_size_defaults = BaseplateSizeParams()
 
     def validate(self) -> list[ValidationError]:
         """Validate cross-group constraints."""
         errors = CombinedBaseplateParams(
             fundamentals=self.fundamentals,
-            baseplate_size=self.baseplate_size,
+            baseplate_size=self._baseplate_size_defaults,
             baseplate_core=self.baseplate_core,
             click_springs=self.click_springs,
             junction_screws=self.junction_screws,
             connecting_clips=self.connecting_clips,
         ).validate()
         drawer = self.drawer.data()
-        if float(drawer.drawer_width) <= 0:
+        printer = self.printer.data()
+        grid_size = float(self.fundamentals.data().grid_size)
+        if float(drawer.drawer_width) < grid_size:
             errors.append(
                 ValidationError(
-                    message="Drawer width must be greater than 0",
+                    message=f"Drawer width must be at least {grid_size} mm (grid size)",
                     affected_params=("drawer.drawer_width",),
                 )
             )
-        if float(drawer.drawer_depth) <= 0:
+        if float(drawer.drawer_depth) < grid_size:
             errors.append(
                 ValidationError(
-                    message="Drawer depth must be greater than 0",
+                    message=f"Drawer depth must be at least {grid_size} mm (grid size)",
                     affected_params=("drawer.drawer_depth",),
                 )
             )
-        if float(drawer.printer_bed_width) <= 0:
+        if float(printer.bed_width) < grid_size:
             errors.append(
                 ValidationError(
-                    message="Printer bed width must be greater than 0",
-                    affected_params=("drawer.printer_bed_width",),
+                    message=f"Printer bed width must be at least {grid_size} mm (grid size)",
+                    affected_params=("printer.bed_width",),
                 )
             )
-        if float(drawer.printer_bed_depth) <= 0:
+        if float(printer.bed_depth) < grid_size:
             errors.append(
                 ValidationError(
-                    message="Printer bed depth must be greater than 0",
-                    affected_params=("drawer.printer_bed_depth",),
+                    message=f"Printer bed depth must be at least {grid_size} mm (grid size)",
+                    affected_params=("printer.bed_depth",),
                 )
             )
         return errors
@@ -1162,7 +1196,7 @@ class CombinedDrawerBaseplateParams(CombinedParams):
         """Return baseplate-only data container for builder compatibility."""
         return CombinedBaseplateParamsData(
             fundamentals=self.fundamentals.data(),
-            baseplate_size=self.baseplate_size.data(),
+            baseplate_size=self._baseplate_size_defaults.data(),
             baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
@@ -1174,12 +1208,13 @@ class CombinedDrawerBaseplateParams(CombinedParams):
         """Return validated immutable combined data container."""
         return CombinedDrawerBaseplateParamsData(
             fundamentals=self.fundamentals.data(),
-            baseplate_size=self.baseplate_size.data(),
+            baseplate_size=self._baseplate_size_defaults.data(),
             baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
             connecting_clips=self.connecting_clips.data(),
             drawer=self.drawer.data(),
+            printer=self.printer.data(),
         )
 
 

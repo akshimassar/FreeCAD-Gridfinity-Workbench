@@ -408,7 +408,7 @@ class DrawerBaseplate(FoundationGridfinity):
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         return self.fit_drawer_with_printable_baseplates(obj)
 
-    def fit_drawer_with_printable_baseplates(  # noqa: PLR0915
+    def fit_drawer_with_printable_baseplates(  # noqa: PLR0915, C901
         self,
         obj: fc.DocumentObject,
     ) -> Part.Shape:
@@ -423,10 +423,16 @@ class DrawerBaseplate(FoundationGridfinity):
         )
 
         grid_mm = float(full_data.fundamentals.grid_size)
-        split_algorithm = "greedy" if full_data.drawer.split_algorithm == "Greedy" else "balanced"
+        algo = full_data.drawer.split_algorithm
+        if algo == "Balanced":
+            split_algorithm = "balanced"
+        elif algo == "Greedy":
+            split_algorithm = "greedy"
+        else:
+            raise ValueError(f"Unknown split algorithm: {algo}")
         x_axis_chunks = split_axis_into_printable_chunks(
             length_mm=float(full_data.drawer.drawer_width),
-            bed_mm=float(full_data.drawer.printer_bed_width),
+            bed_mm=float(full_data.printer.bed_width),
             grid_mm=grid_mm,
             alignment=(
                 "low"
@@ -437,7 +443,7 @@ class DrawerBaseplate(FoundationGridfinity):
         )
         y_axis_chunks = split_axis_into_printable_chunks(
             length_mm=float(full_data.drawer.drawer_depth),
-            bed_mm=float(full_data.drawer.printer_bed_depth),
+            bed_mm=float(full_data.printer.bed_depth),
             grid_mm=grid_mm,
             alignment=(
                 "low"
@@ -453,8 +459,8 @@ class DrawerBaseplate(FoundationGridfinity):
         y_chunk_count = len(y_axis_chunks_for_rows)
         baseplate_names: list[str] = []
         baseplate_shapes: list[Part.Shape] = []
-        bed_w = float(full_data.drawer.printer_bed_width)
-        bed_d = float(full_data.drawer.printer_bed_depth)
+        bed_w = float(full_data.printer.bed_width)
+        bed_d = float(full_data.printer.bed_depth)
         plate_gap_x = 42.0
         plate_gap_y = 42.0
         total_baseplates = x_chunk_count * y_chunk_count

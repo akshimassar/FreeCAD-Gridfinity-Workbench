@@ -1892,6 +1892,8 @@ class CombinedParams:
                     group_payload[param_name] = layout_val  # Can be None
                 elif type(control).__name__ == "QCheckBox":
                     group_payload[param_name] = control.isChecked()
+                elif type(control).__name__ == "QComboBox":
+                    group_payload[param_name] = control.currentText()
                 elif hasattr(control, "value"):
                     group_payload[param_name] = control.value()
             payload[group_name] = group_payload

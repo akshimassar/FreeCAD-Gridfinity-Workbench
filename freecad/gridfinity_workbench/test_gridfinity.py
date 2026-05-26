@@ -433,8 +433,8 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
         # Set custom drawer dimensions using param system control names
         panel.drawer__drawer_width.setValue(300.0)
         panel.drawer__drawer_depth.setValue(250.0)
-        panel.drawer__printer_bed_width.setValue(220.0)
-        panel.drawer__printer_bed_depth.setValue(220.0)
+        panel.printer__bed_width.setValue(220.0)
+        panel.printer__bed_depth.setValue(220.0)
 
         # Accept the dialog to create the object
         panel.accept()
@@ -446,6 +446,32 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
         # Verify shape is valid
         self.assertTrue(obj.Shape.isValid())
         self.assertGreater(obj.Shape.Volume, 0)
+
+    def test_drawer_baseplate_greedy_algorithm(self) -> None:
+        """Test drawer baseplate with greedy split algorithm."""
+        from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
+
+        panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
+        fcg.Control.showDialog(panel)
+
+        # Set dimensions that will produce different splits with greedy vs balanced
+        panel.drawer__drawer_width.setValue(500.0)
+        panel.drawer__drawer_depth.setValue(400.0)
+        panel.printer__bed_width.setValue(200.0)
+        panel.printer__bed_depth.setValue(200.0)
+
+        # Switch to Greedy algorithm
+        combo = panel.drawer__split_algorithm
+        greedy_index = combo.findText("Greedy")
+        self.assertGreaterEqual(greedy_index, 0, "Greedy option not found")
+        combo.setCurrentIndex(greedy_index)
+
+        panel.accept()
+
+        self.assertEqual(len(self.doc.Objects), 1)
+        obj = self.doc.Objects[0]
+        self.assertTrue(obj.Shape.isValid())
+        self.assertEqual(obj.drawer_split_algorithm, "Greedy")
 
 
 class TestStackedBaseplatesTaskPanel(TestWithDocument):

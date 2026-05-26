@@ -401,8 +401,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
                 obj.drawer_drawer_width = 600
                 obj.drawer_drawer_depth = 500
-                obj.drawer_printer_bed_width = 256
-                obj.drawer_printer_bed_depth = 240
+                obj.printer_bed_width = 256
+                obj.printer_bed_depth = 240
                 obj.drawer_width_filler_alignment = "Right"
                 obj.drawer_depth_filler_alignment = "Top"
                 obj.PreviewBuildMode = True
