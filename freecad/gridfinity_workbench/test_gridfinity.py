@@ -28,9 +28,24 @@ class TestWithDocument(unittest.TestCase):
     _original_stderr: Any = None
     _original_stdout: Any = None
     _captured_stderr: StringIO | None = None
+    _debug_log: list[str]
+
+    def log(self, msg: str) -> None:
+        """Log debug message that will be shown on test failure."""
+        self._debug_log.append(msg)
+        # Also print to original stderr so it's visible in real-time
+        if self._original_stderr:
+            print(f"[DEBUG] {msg}", file=self._original_stderr)
+
+    def get_debug_log(self) -> str:
+        """Get all debug messages as a single string."""
+        return "\n".join(self._debug_log)
     _captured_stdout: StringIO | None = None
 
     def setUp(self) -> None:
+        # Initialize debug log
+        self._debug_log = []
+
         # Capture stdout/stderr to detect tracebacks
         self._original_stderr = sys.stderr
         self._original_stdout = sys.stdout
@@ -185,6 +200,99 @@ class TestBaseplateLayoutTaskPanel(TestWithDocument):
         self.assertAlmostEqual(volume_reference, 4721.70, places=2)
         self.assertAlmostEqual(volume_l_shape, 3515.67, places=2)
         self.assertAlmostEqual(volume_with_filler, 6755.42, places=2)
+
+    def test_baseplate_origin_2x2_vs_1x1(self) -> None:
+        """Test that 2x2 and 1x1 baseplates both start at origin (0,0).
+
+        This is a regression test for a bug where small baseplates had
+        incorrect BBox positioning.
+        """
+        from .commands import ICONDIR, CreateBaseplateTaskPanel
+
+        # Create 2x2 baseplate with springs disabled
+        panel_2x2 = CreateBaseplateTaskPanel(ICONDIR / "baseplate-obj.svg")
+        fcg.Control.showDialog(panel_2x2)
+        panel_2x2.click_springs__enabled.setChecked(False)
+        panel_2x2.accept()
+
+        obj_2x2 = self.doc.Objects[0]
+        self.doc.recompute()
+        bbox_2x2 = obj_2x2.Shape.BoundBox
+
+        # Create 1x1 baseplate with springs disabled
+        panel_1x1 = CreateBaseplateTaskPanel(ICONDIR / "baseplate-obj.svg")
+        fcg.Control.showDialog(panel_1x1)
+        panel_1x1.click_springs__enabled.setChecked(False)
+        panel_1x1.baseplate_size__x_grid_count.setValue(1)
+        panel_1x1.baseplate_size__y_grid_count.setValue(1)
+        panel_1x1.accept()
+
+        obj_1x1 = self.doc.Objects[1]
+        self.doc.recompute()
+        bbox_1x1 = obj_1x1.Shape.BoundBox
+
+        # Both should start at origin (0, 0)
+        self.assertAlmostEqual(bbox_2x2.XMin, 0.0, places=2, msg="2x2 XMin should be 0")
+        self.assertAlmostEqual(bbox_2x2.YMin, 0.0, places=2, msg="2x2 YMin should be 0")
+        self.assertAlmostEqual(bbox_1x1.XMin, 0.0, places=2, msg="1x1 XMin should be 0")
+        self.assertAlmostEqual(bbox_1x1.YMin, 0.0, places=2, msg="1x1 YMin should be 0")
+
+    def test_custom_layout_origin_and_placement(self) -> None:
+        """Test that custom layouts have correct origin AND Placement stays at (0,0,0).
+
+        Regression test for bug where shape.translate() was used to move custom layouts
+        to origin, but translate() only modifies Placement rather than transforming
+        geometry. When fp.Shape is assigned, FreeCAD strips the Placement, leaving
+        the shape at wrong coordinates.
+
+        Fix: Use shape.transformGeometry() instead of shape.translate().
+        """
+        import json
+
+        from . import features
+
+        # Test case 1: Single cell at (4,5) in 10x10 grid
+        layout_single = [[False] * 10 for _ in range(10)]
+        layout_single[4][5] = True
+
+        obj_single = self.doc.addObject("Part::FeaturePython", "SingleCellLayout")
+        features.Baseplate(obj_single)
+        obj_single.baseplate_size_x_grid_count = 10
+        obj_single.baseplate_size_y_grid_count = 10
+        obj_single.baseplate_size_custom_layout_enabled = True
+        obj_single.baseplate_size_custom_layout = json.dumps(layout_single)
+        obj_single.click_springs_enabled = False
+
+        # Test case 2: 2x1 L-shape at positions (3,5) and (4,5)
+        layout_2x1 = [[False] * 10 for _ in range(10)]
+        layout_2x1[3][5] = True
+        layout_2x1[4][5] = True
+
+        obj_2x1 = self.doc.addObject("Part::FeaturePython", "TwoCellLayout")
+        features.Baseplate(obj_2x1)
+        obj_2x1.baseplate_size_x_grid_count = 10
+        obj_2x1.baseplate_size_y_grid_count = 10
+        obj_2x1.baseplate_size_custom_layout_enabled = True
+        obj_2x1.baseplate_size_custom_layout = json.dumps(layout_2x1)
+        obj_2x1.click_springs_enabled = False
+
+        self.doc.recompute()
+
+        # Check single cell - shape should start at origin with no Placement offset
+        bbox_single = obj_single.Shape.BoundBox
+        placement_single = obj_single.Placement
+        self.assertAlmostEqual(placement_single.Base.x, 0.0, places=2)
+        self.assertAlmostEqual(placement_single.Base.y, 0.0, places=2)
+        self.assertAlmostEqual(bbox_single.XMin, 0.0, places=2)
+        self.assertAlmostEqual(bbox_single.YMin, 0.0, places=2)
+
+        # Check 2x1 layout - shape should start at origin with no Placement offset
+        bbox_2x1 = obj_2x1.Shape.BoundBox
+        placement_2x1 = obj_2x1.Placement
+        self.assertAlmostEqual(placement_2x1.Base.x, 0.0, places=2)
+        self.assertAlmostEqual(placement_2x1.Base.y, 0.0, places=2)
+        self.assertAlmostEqual(bbox_2x1.XMin, 0.0, places=2)
+        self.assertAlmostEqual(bbox_2x1.YMin, 0.0, places=2)
 
 
 class TestBaseplateDialogFields(TestWithDocument):

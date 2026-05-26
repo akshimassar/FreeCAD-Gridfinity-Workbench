@@ -160,6 +160,20 @@ def _layout_dims(layout: GridfinityLayout, params: CombinedBaseplateParamsData) 
     return nx, len(layout[0])
 
 
+def _layout_min_indices(layout: GridfinityLayout) -> tuple[int, int]:
+    """Find minimum x and y indices that have True cells in the layout."""
+    min_x = None
+    min_y = None
+    for x, col in enumerate(layout):
+        for y, cell in enumerate(col):
+            if cell:
+                if min_x is None or x < min_x:
+                    min_x = x
+                if min_y is None or y < min_y:
+                    min_y = y
+    return (min_x or 0, min_y or 0)
+
+
 def _matrix_not(mask: list[list[bool]]) -> list[list[bool]]:
     return [[not mask[x][y] for y in range(2)] for x in range(2)]
 
@@ -907,6 +921,16 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
         if timing_on:
             _timing_print("baseplate.roundover", time.perf_counter() - t_round)
     if preview:
+        # Translate shape so bounding box starts at origin (0, 0)
+        # Must bake translation into geometry (not just Placement)
+        min_x, min_y = _layout_min_indices(layout)
+        if min_x > 0 or min_y > 0:
+            grid_size = float(params.fundamentals.grid_size)
+            shape.translate(fc.Vector(-min_x * grid_size, -min_y * grid_size, 0))
+            # Bake Placement: reset first, then transformGeometry to avoid double-apply
+            placement = shape.Placement
+            shape.Placement = fc.Placement()
+            shape = shape.transformGeometry(placement.toMatrix())
         if timing_on:
             _timing_print("baseplate.total", time.perf_counter() - t_total)
         return shape
@@ -921,6 +945,20 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
         shape = shape.cut(post_cutter)
     if timing_on:
         _timing_print("baseplate.post_cutter", time.perf_counter() - t_post)
+
+    # Translate shape so bounding box starts at origin (0, 0)
+    # Must bake translation into geometry (not just Placement)
+    # because fp.Shape assignment strips Placement
+    min_x, min_y = _layout_min_indices(layout)
+    if min_x > 0 or min_y > 0:
+        grid_size = float(params.fundamentals.grid_size)
+        shape.translate(fc.Vector(-min_x * grid_size, -min_y * grid_size, 0))
+        # Bake Placement: reset first, then transformGeometry to avoid double-apply
+        placement = shape.Placement
+        shape.Placement = fc.Placement()
+        shape = shape.transformGeometry(placement.toMatrix())
+
+    if timing_on:
         _timing_print("baseplate.total", time.perf_counter() - t_total)
 
     return shape

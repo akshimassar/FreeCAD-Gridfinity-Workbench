@@ -173,7 +173,29 @@ if [[ "$RUN_GUI" == "true" ]]; then
     ensure_plugin_symlink "$version"
     # Use -a for auto display selection, -e to capture errors, set Qt to use X11 via xvfb
     GUI_ERROR_FILE=$(mktemp)
-    if ! xvfb-run -a -e "$GUI_ERROR_FILE" -s "-screen 0 1280x1024x24" env QT_QPA_PLATFORM=xcb "$freecad_cmd" -t freecad.gridfinity_workbench.test_gridfinity; then
+    
+    # Build test module path - if TEST_NAME is set, run specific test
+    if [[ -n "$TEST_NAME" ]]; then
+      # Find which test class contains the test method by looking for class lines before the method
+      TEST_MODULE="freecad.gridfinity_workbench.test_gridfinity"
+      TEST_FILE="freecad/gridfinity_workbench/test_gridfinity.py"
+      # Get line number of test method, then find last class before it
+      TEST_LINE=$(grep -n "def $TEST_NAME" "$TEST_FILE" | head -1 | cut -d: -f1)
+      if [[ -n "$TEST_LINE" ]]; then
+        TEST_CLASS=$(head -n "$TEST_LINE" "$TEST_FILE" | grep "^class " | tail -1 | sed 's/class \([^(]*\).*/\1/')
+      fi
+      if [[ -n "$TEST_CLASS" ]]; then
+        TEST_TARGET="${TEST_MODULE}.${TEST_CLASS}.${TEST_NAME}"
+        echo "Running specific test: $TEST_TARGET"
+      else
+        echo "Warning: Could not find test class for $TEST_NAME, running all GUI tests"
+        TEST_TARGET="${TEST_MODULE}"
+      fi
+    else
+      TEST_TARGET="freecad.gridfinity_workbench.test_gridfinity"
+    fi
+    
+    if ! xvfb-run -a -e "$GUI_ERROR_FILE" -s "-screen 0 1280x1024x24" env QT_QPA_PLATFORM=xcb "$freecad_cmd" -t "$TEST_TARGET"; then
       echo "GUI tests failed. Xvfb/FreeCAD errors:"
       cat "$GUI_ERROR_FILE"
       rm -f "$GUI_ERROR_FILE"

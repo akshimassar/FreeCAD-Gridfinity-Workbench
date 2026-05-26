@@ -279,13 +279,20 @@ def multi_fuse(lst: list[Part.Shape]) -> Part.Shape:
     """Fuses all shapes in the list into a single shape.
 
     Raises `ValueError` if the list is empty. If there is only one shape on the list, returns
-    a reference to that shape. Otherwise returns a new shape that is a fusion of all shapes from
-    the list.
+    that shape with Placement baked into geometry. Otherwise returns a new shape that is a
+    fusion of all shapes from the list (multiFuse bakes in placements automatically).
     """
     if not lst:
         raise ValueError("The list is empty")
     if len(lst) == 1:
-        return lst[0]
+        shape = lst[0]
+        # Bake Placement into geometry for consistency with multiFuse
+        # Must reset Placement first, then transformGeometry, to avoid double-applying
+        if not shape.Placement.isIdentity():
+            placement = shape.Placement
+            shape.Placement = fc.Placement()
+            shape = shape.transformGeometry(placement.toMatrix())
+        return shape
     return lst[0].multiFuse(lst[1:])
 
 
