@@ -1092,6 +1092,9 @@ def make_complex_bin_base_single_from_params(
         return Part.Shape()
     if lower_enabled and (x_bt_cmf_width <= 0 or y_bt_cmf_width <= 0):
         return Part.Shape()
+    # Cell too small for corner radius - treat as tiny cell
+    if x_vert_width < 2 * bin_vertical_radius or y_vert_width < 2 * bin_vertical_radius:
+        return Part.Shape()
 
     vertical_section = utils.rounded_rectangle_extrude(
         x_vert_width,

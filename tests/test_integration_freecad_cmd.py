@@ -1299,3 +1299,189 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
         self.assertTrue(bool(data["valid"]))
         self.assertGreater(float(data["volume"]), 0.0)
+
+    def test_baseplate_filler_3mm_tiny_cell_builds(self) -> None:
+        """Test baseplate with 3mm top filler - too small for bin cutout, becomes tiny cell."""
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc
+            from gridfinity_workbench.param import (
+                CombinedBaseplateParams, BaseplateSizeParams, ConnectingClipsParams,
+            )
+            from gridfinity_workbench.baseplate_builder import (
+                build_simple_baseplate_from_params, BaseplateBuildOptions,
+            )
+
+            params = CombinedBaseplateParams(
+                baseplate_size=BaseplateSizeParams(
+                    x_grid_count=2, y_grid_count=2,
+                    filler_top_enabled=True,
+                    filler_top_width=fc.Units.Quantity("3 mm"),
+                ),
+                connecting_clips=ConnectingClipsParams(enabled=False),
+            )
+            layout = [[True, True], [True, True]]
+            options = BaseplateBuildOptions(include_clip_cutouts=False)
+            shape = build_simple_baseplate_from_params(params.data(), layout, options)
+            result = {{
+                "volume": float(shape.Volume),
+                "solids": int(len(shape.Solids)),
+                "valid": bool(shape.isValid()),
+            }}
+            print("GRIDFINITY_RESULT=" + json.dumps(result))
+            """,
+        ).format(module_root=repr(freecad_module_root))
+
+        proc = _run_freecad_script(freecad_cmd, script)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        self.assertEqual(int(data["solids"]), 1)
+        self.assertTrue(bool(data["valid"]))
+        self.assertGreater(float(data["volume"]), 0.0)
+
+    def test_baseplate_filler_6mm_tiny_roundover_builds(self) -> None:
+        """Test baseplate with 6mm top filler - too small for roundover, becomes tiny cell."""
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc
+            from gridfinity_workbench.param import (
+                CombinedBaseplateParams, BaseplateSizeParams, ConnectingClipsParams,
+            )
+            from gridfinity_workbench.baseplate_builder import (
+                build_simple_baseplate_from_params, BaseplateBuildOptions,
+            )
+
+            params = CombinedBaseplateParams(
+                baseplate_size=BaseplateSizeParams(
+                    x_grid_count=2, y_grid_count=2,
+                    filler_top_enabled=True,
+                    filler_top_width=fc.Units.Quantity("6 mm"),
+                ),
+                connecting_clips=ConnectingClipsParams(enabled=False),
+            )
+            layout = [[True, True], [True, True]]
+            options = BaseplateBuildOptions(include_clip_cutouts=False)
+            shape = build_simple_baseplate_from_params(params.data(), layout, options)
+            result = {{
+                "volume": float(shape.Volume),
+                "solids": int(len(shape.Solids)),
+                "valid": bool(shape.isValid()),
+            }}
+            print("GRIDFINITY_RESULT=" + json.dumps(result))
+            """,
+        ).format(module_root=repr(freecad_module_root))
+
+        proc = _run_freecad_script(freecad_cmd, script)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        self.assertEqual(int(data["solids"]), 1)
+        self.assertTrue(bool(data["valid"]))
+        self.assertGreater(float(data["volume"]), 0.0)
+
+    def test_baseplate_filler_9mm_normal_filler_builds(self) -> None:
+        """Test baseplate with 9mm top filler - large enough for normal filler with bin cutout."""
+        freecad_cmd = _resolve_freecad_cmd()
+        if not freecad_cmd:
+            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+
+        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
+
+        script = textwrap.dedent(
+            """
+            import json
+            import sys
+
+            sys.path.insert(0, {module_root})
+
+            import FreeCAD as fc
+            from gridfinity_workbench.param import (
+                CombinedBaseplateParams, BaseplateSizeParams, ConnectingClipsParams,
+            )
+            from gridfinity_workbench.baseplate_builder import (
+                build_simple_baseplate_from_params, BaseplateBuildOptions,
+            )
+
+            params = CombinedBaseplateParams(
+                baseplate_size=BaseplateSizeParams(
+                    x_grid_count=2, y_grid_count=2,
+                    filler_top_enabled=True,
+                    filler_top_width=fc.Units.Quantity("9 mm"),
+                ),
+                connecting_clips=ConnectingClipsParams(enabled=False),
+            )
+            layout = [[True, True], [True, True]]
+            options = BaseplateBuildOptions(include_clip_cutouts=False)
+            shape = build_simple_baseplate_from_params(params.data(), layout, options)
+            result = {{
+                "volume": float(shape.Volume),
+                "solids": int(len(shape.Solids)),
+                "valid": bool(shape.isValid()),
+            }}
+            print("GRIDFINITY_RESULT=" + json.dumps(result))
+            """,
+        ).format(module_root=repr(freecad_module_root))
+
+        proc = _run_freecad_script(freecad_cmd, script)
+
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
+        self.assertIsNotNone(
+            line,
+            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+        data = json.loads(line[len(RESULT_PREFIX) :])
+
+        self.assertEqual(int(data["solids"]), 1)
+        self.assertTrue(bool(data["valid"]))
+        self.assertGreater(float(data["volume"]), 0.0)
