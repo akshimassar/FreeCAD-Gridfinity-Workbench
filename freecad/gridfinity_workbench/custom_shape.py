@@ -62,6 +62,10 @@ class GridDialog(QDialog):
         self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
+
+        self.clearButton = self.buttonBox.addButton("Clear", QDialogButtonBox.ResetRole)
+        self.clearButton.clicked.connect(self._clear_selection)
+
         layout.addWidget(self.buttonBox)
 
         self.setLayout(layout)
@@ -161,6 +165,13 @@ class GridDialog(QDialog):
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: ARG002, D102, N802
         self.pen = None
+
+    def _clear_selection(self) -> None:
+        """Deselect all cells in the grid."""
+        for x in range(self.x):
+            for y in range(self.y):
+                self.grid_layout[x][y] = False
+        self._recompute()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: D102, N802
         if self.pen is None:
