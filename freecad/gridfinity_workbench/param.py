@@ -1254,6 +1254,11 @@ class PluginSettingsParams(ParameterGroup):
                 min_value=0,
                 max_value=4096,
             ),
+            BooleanParam(
+                "add_to_part_design",
+                "Add to Part Design Workbench",
+                default_value=False,
+            ),
         ]
 
         super().__init__(parameters)
