@@ -1131,19 +1131,38 @@ class GridfinitySettingsTaskPanel:
             controls, widget = group.build_ui(None, group.section_title, show_description=True)
             layout.addWidget(widget)
             self._group_controls[group._group_name] = controls  # noqa: SLF001
+            # Connect signals to trigger validation and warnings on change
+            group.connect_control_signals(controls, self._on_control_changed)
+
+        # Initial validation and warnings display
+        self._update_feedback()
+
+    def _on_control_changed(self) -> None:
+        """Handle control value changes - update validation and warnings."""
+        self._update_feedback()
+
+    def _update_feedback(self) -> None:
+        """Validate all groups and display errors/warnings."""
+        for group in self._groups:
+            controls = self._group_controls.get(group._group_name, {})  # noqa: SLF001
+            group.update_from_ui_controls(controls)
+            errors = group.validate()
+            warnings = group.warn_non_defaults()
+            group.render_errors(errors, warnings)
 
     def getStandardButtons(self) -> int:
         return _standard_buttons_ok_cancel()
 
     def accept(self) -> bool:
-        # Update group values from UI controls, then save
+        # Update group values from UI controls, validate, and save
         for group in self._groups:
             controls = self._group_controls.get(group._group_name, {})  # noqa: SLF001
             group.update_from_ui_controls(controls)
             errors = group.validate()
             if errors:
-                # NOTE: Could show validation errors in UI dialog
-                fc.Console.PrintError(f"Validation errors: {errors}\n")
+                # Show validation errors in UI
+                warnings = group.warn_non_defaults()
+                group.render_errors(errors, warnings)
                 return False
             group.save_as_defaults()
 

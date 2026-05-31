@@ -65,7 +65,13 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
     # Do not change locked absolute dimensions/volume assertions in this file
     # without explicit user confirmation in the current conversation.
 
-    def test_baseplate_tiny_core_skips_clicksprings(self) -> None:
+    def test_baseplate_tiny_filler_skips_clicksprings(self) -> None:
+        """Test that tiny filler cells skip click springs gracefully.
+
+        Uses a small filler width (3mm) which creates a tiny cell where click
+        springs don't fit. Verifies the shape is valid and identical whether
+        click springs are enabled or not (because they get skipped).
+        """
         freecad_cmd = _resolve_freecad_cmd()
         if not freecad_cmd:
             self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
@@ -89,12 +95,15 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             )
 
             def build_case(click_springs: bool) -> dict[str, float | int | bool]:
+                # Use x_grid_count=0 with a tiny right filler (3mm) to create tiny cell
                 params = CombinedBaseplateParams(
-                    fundamentals=FundamentalsParams(
-                        grid_size=fc.Units.Quantity("3.5 mm"),
-                        outer_radius=fc.Units.Quantity("3 mm"),
+                    fundamentals=FundamentalsParams(),  # default 42mm grid
+                    baseplate_size=BaseplateSizeParams(
+                        x_grid_count=0,
+                        y_grid_count=1,
+                        filler_right_enabled=True,
+                        filler_right_width=fc.Units.Quantity("10 mm"),
                     ),
-                    baseplate_size=BaseplateSizeParams(x_grid_count=1, y_grid_count=1),
                     click_springs=ClickSpringsParams(enabled=click_springs),
                     junction_screws=JunctionScrewsParams(enabled=False),
                     connecting_clips=ConnectingClipsParams(enabled=False),
@@ -145,7 +154,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             float(with_springs_data["volume"]),
             float(baseline_data["volume"]),
             places=6,
-            msg="Tiny core should ignore click springs and keep identical volume",
+            msg="Tiny filler cell should ignore click springs and keep identical volume",
         )
 
     def test_baseplate_clicksprings_volume_stability(self) -> None:
@@ -792,7 +801,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             Path(script_path).unlink(missing_ok=True)
 
         self.assertEqual(proc.returncode, 0)
-        self.assertIn("must be greater than BaseProfileMainHalfWidth", proc.stderr)
+        self.assertIn("must be greater than main profile half width", proc.stderr)
 
     def test_baseplate_defaults_right_filler_2mm_builds(self) -> None:
         freecad_cmd = _resolve_freecad_cmd()

@@ -489,3 +489,82 @@ class TestGridfinitySettingsTaskPanel(TestWithDocument):
         grid_size_control2 = panel2._group_controls["fundamentals"]["grid_size"]  # noqa: SLF001
         self.assertAlmostEqual(grid_size_control2.value(), 44.0, places=1)
         panel2.reject()
+
+    def test_restart_warning_shown_immediately(self) -> None:
+        """Test that restart warning for add_to_part_design is shown on dialog open."""
+        from .commands import GridfinitySettingsTaskPanel
+
+        panel = GridfinitySettingsTaskPanel()
+        fcg.Control.showDialog(panel)
+
+        # Find the plugin_settings group and check warning display
+        plugin_group = None
+        for group in panel._groups:  # noqa: SLF001
+            if group._group_name == "plugin_settings":  # noqa: SLF001
+                plugin_group = group
+                break
+
+        self.assertIsNotNone(plugin_group, "plugin_settings group not found")
+        warning_displays = getattr(plugin_group, "_warning_displays", {})
+        self.assertIn("add_to_part_design", warning_displays)
+
+        # Check that warning label text contains restart message
+        # Note: isVisible() may return False in headless test environment
+        # even when widget is correctly configured, so we check text content
+        warning_display = warning_displays["add_to_part_design"]
+        warning_text = warning_display.warning_label.text()
+        self.assertIn(
+            "restart",
+            warning_text.lower(),
+            f"Warning label should contain restart message, got: '{warning_text}'",
+        )
+
+        panel.reject()
+
+    def test_validation_error_shown_for_invalid_outer_radius(self) -> None:
+        """Test that validation error is shown when outer_radius <= main_half_width."""
+        from .commands import GridfinitySettingsTaskPanel
+
+        panel = GridfinitySettingsTaskPanel()
+        fcg.Control.showDialog(panel)
+
+        # Set outer_radius to 1.0mm (less than default main_half_width of 2.15mm)
+        outer_radius_control = panel._group_controls["fundamentals"]["outer_radius"]  # noqa: SLF001
+        outer_radius_control.setValue(1.0)
+
+        # Trigger update (simulates user changing value)
+        panel._on_control_changed()  # noqa: SLF001
+
+        # Find fundamentals group and check error display
+        fundamentals_group = None
+        for group in panel._groups:  # noqa: SLF001
+            if group._group_name == "fundamentals":  # noqa: SLF001
+                fundamentals_group = group
+                break
+
+        self.assertIsNotNone(fundamentals_group)
+        error_displays = getattr(fundamentals_group, "_error_displays", {})
+        self.assertIn("outer_radius", error_displays)
+
+        # Check that error label shows actual error (not just warning)
+        # - Error text should mention the validation issue
+        # - Error styling is red (#ff4d4d), warning styling is amber (#ffaa00)
+        error_display = error_displays["outer_radius"]
+        label = error_display.error_label
+        error_text = label.text()
+        style = label.styleSheet()
+
+        # Verify it's an error (red color) not a warning (amber)
+        self.assertIn(
+            "#ff4d4d",
+            style.lower(),
+            f"Expected red error styling, got style: '{style}', text: '{error_text}'",
+        )
+        # Verify error message content
+        self.assertIn(
+            "must be greater than",
+            error_text.lower(),
+            f"Expected validation error message, got: '{error_text}'",
+        )
+
+        panel.reject()

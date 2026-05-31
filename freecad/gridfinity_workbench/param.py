@@ -212,6 +212,32 @@ class FundamentalsParams(ParameterGroup):
         super().__init__(parameters)
         self.set_all_values(kwargs)
 
+    def validate(self) -> list[ValidationError]:
+        """Validate fundamental parameter constraints."""
+        errors = super().validate()
+
+        grid_size = float(self.get_value("grid_size"))
+        outer_radius = float(self.get_value("outer_radius"))
+        main_half_width = float(self.get_value("main_half_width"))
+
+        if not outer_radius > main_half_width:
+            errors.append(
+                ValidationError(
+                    message="Outer radius must be greater than main profile half width",
+                    affected_params=("outer_radius",),
+                )
+            )
+
+        if not grid_size > 2 * outer_radius:
+            errors.append(
+                ValidationError(
+                    message=f"Grid size must be > 2 * outer radius ({2 * outer_radius:.2f} mm)",
+                    affected_params=("grid_size",),
+                )
+            )
+
+        return errors
+
     def data(self) -> FundamentalsParamsData:
         """Return validated immutable data container."""
         errors = self.validate()
@@ -629,13 +655,6 @@ class CombinedBaseplateParams(CombinedParams):
                     affected_params=("baseplate_core.top_crop",),
                 )
             )
-        if not outer_radius > half_width:
-            errors.append(
-                ValidationError(
-                    message="Outer radius must be greater than main profile half width",
-                    affected_params=("fundamentals.outer_radius",),
-                )
-            )
 
         if click.enabled:
             if not float(click.click_thickness) < half_width:
@@ -895,7 +914,6 @@ class CombinedSupportBaseplateParams(CombinedParams):
         fundamentals = self.fundamentals.data()
         core = self.baseplate_core.data()
         half_width = float(fundamentals.main_half_width)
-        outer_radius = float(fundamentals.outer_radius)
         top_crop = float(core.top_crop)
 
         if not top_crop < half_width:
@@ -903,13 +921,6 @@ class CombinedSupportBaseplateParams(CombinedParams):
                 ValidationError(
                     message="Top crop must be less than main profile half width",
                     affected_params=("baseplate_core.top_crop",),
-                )
-            )
-        if not outer_radius > half_width:
-            errors.append(
-                ValidationError(
-                    message="Outer radius must be greater than main profile half width",
-                    affected_params=("fundamentals.outer_radius",),
                 )
             )
         return errors
@@ -1275,3 +1286,9 @@ class PluginSettingsParams(ParameterGroup):
             int(self.get_value("baseplate_cache_size")),
         )
         baseplate_builder.set_cell_shape_cache_max_entries(int(self.get_value("cell_cache_size")))
+
+    def warn_non_defaults(self) -> dict[str, str]:
+        """Add restart warning for add_to_part_design setting."""
+        warnings = super().warn_non_defaults()
+        warnings["add_to_part_design"] = "Requires restart of FreeCAD"
+        return warnings

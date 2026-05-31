@@ -150,6 +150,30 @@ class ParamErrorDisplay:
         self.error_label.hide()
 
 
+@dataclass
+class ParamWarningDisplay:
+    """Manages warning display state for a parameter control.
+
+    Similar to ParamErrorDisplay but for non-error messages like
+    default values, restart requirements, help hints, etc.
+    Shares the same label space as errors - errors take precedence.
+    """
+
+    control: QWidget
+    warning_label: QLabel
+
+    def show_warning(self, message: str) -> None:
+        """Display warning with amber text styling."""
+        self.warning_label.setText(message)
+        self.warning_label.setStyleSheet("color: #ffaa00; font-style: italic; font-size: 11px;")
+        self.warning_label.show()
+
+    def clear_warning(self) -> None:
+        """Hide warning label and clear text."""
+        self.warning_label.setText("")
+        self.warning_label.hide()
+
+
 class DefaultType(Enum):
     """Types of default values for parameters.
 
@@ -317,6 +341,10 @@ class BaseParam:
         """Validate the given value."""
         return True
 
+    def format_default(self) -> str:
+        """Return human-readable string representation of the default value."""
+        return str(self.default())
+
 
 class BooleanParam(BaseParam):
     """Boolean parameter for on/off flags and feature toggles.
@@ -352,6 +380,10 @@ class BooleanParam(BaseParam):
     def validate(self, value: ParamValue) -> bool:
         """Validate value is boolean."""
         return isinstance(value, bool)
+
+    def format_default(self) -> str:
+        """Return human-readable string for boolean default."""
+        return "enabled" if self.default_value else "disabled"
 
 
 class FloatParam(BaseParam):
@@ -423,6 +455,10 @@ class FloatParam(BaseParam):
         else:
             return not (self.positive_only and float_val <= 0)
 
+    def format_default(self) -> str:
+        """Return human-readable string for quantity default."""
+        return str(self.default_value)
+
 
 class LiteralParam(BaseParam):
     """String parameter with optional enumeration constraint.
@@ -463,6 +499,10 @@ class LiteralParam(BaseParam):
         if not isinstance(value, str):
             return False
         return not (self.choices is not None and value not in self.choices)
+
+    def format_default(self) -> str:
+        """Return the default string value."""
+        return self.default_value
 
 
 class IntParam(BaseParam):
@@ -518,6 +558,10 @@ class IntParam(BaseParam):
         if self.max_value is not None and value > self.max_value:
             return False
         return not (self.positive_only and value <= 0)
+
+    def format_default(self) -> str:
+        """Return human-readable string for integer default."""
+        return str(self.default_value)
 
 
 class LayoutParam(BaseParam):
@@ -581,6 +625,10 @@ class LayoutParam(BaseParam):
         if not json_str:
             return None
         return json.loads(json_str)
+
+    def format_default(self) -> str:
+        """Return human-readable string for layout default."""
+        return "none"
 
 
 class ParamCombination(ABC):
@@ -646,6 +694,11 @@ class ParamCombination(ABC):
             callback: Function to call when any value changes.
 
         """
+        ...
+
+    @abstractmethod
+    def format_default(self) -> str:
+        """Return human-readable string representation of the default values."""
         ...
 
 
@@ -787,6 +840,12 @@ class OptionalQuantityParam(ParamCombination):
             elif isinstance(child, QDoubleSpinBox):
                 child.valueChanged.connect(lambda *_: callback())
 
+    def format_default(self) -> str:
+        """Return human-readable string for compound default."""
+        if self.default_enabled:
+            return f"enabled, {self.default_quantity}"
+        return "disabled"
+
 
 class OptionalLayoutParam(ParamCombination):
     """Compound parameter: checkbox (enabled) + layout editor button.
@@ -925,6 +984,12 @@ class OptionalLayoutParam(ParamCombination):
             elif isinstance(child, QPushButton):
                 # Store callback as Python attr so layout dialog can trigger preview
                 child._layout_changed_callback = callback  # noqa: SLF001
+
+    def format_default(self) -> str:
+        """Return human-readable string for layout compound default."""
+        if self.default_enabled:
+            return "enabled"
+        return "disabled"
 
 
 class ParameterGroup(ABC):
@@ -1506,7 +1571,8 @@ class ParameterGroup(ABC):
                    and widget is the container widget
 
         Side effects:
-            Populates self._error_displays with ParamErrorDisplay for each parameter.
+            Populates self._error_displays and self._warning_displays for each parameter.
+            Both displays share the same label (errors take precedence over warnings).
 
         """
         try:
@@ -1517,8 +1583,9 @@ class ParameterGroup(ABC):
 
         _ = show_description  # Reserved for future use
 
-        # Initialize error displays storage
+        # Initialize error and warning displays storage (shared label)
         self._error_displays: dict[str, ParamErrorDisplay] = {}
+        self._warning_displays: dict[str, ParamWarningDisplay] = {}
 
         widget = QWidget()
         container_layout = QVBoxLayout(widget)
@@ -1552,15 +1619,19 @@ class ParameterGroup(ABC):
             # Add the control widget
             field_layout.addWidget(control)  # type: ignore[arg-type]
 
-            # Create hidden error label below the control
-            error_label = QLabel("")
-            error_label.hide()
-            field_layout.addWidget(error_label)
+            # Create hidden feedback label below the control (shared by errors and warnings)
+            feedback_label = QLabel("")
+            feedback_label.hide()
+            field_layout.addWidget(feedback_label)
 
-            # Store error display for this param
+            # Store error and warning display for this param (both use same label)
             self._error_displays[param_name] = ParamErrorDisplay(
                 control=control,  # type: ignore[arg-type]
-                error_label=error_label,
+                error_label=feedback_label,
+            )
+            self._warning_displays[param_name] = ParamWarningDisplay(
+                control=control,  # type: ignore[arg-type]
+                warning_label=feedback_label,
             )
 
             form_layout.addRow(ui_descriptors[param_name].label, field_container)
@@ -1573,18 +1644,27 @@ class ParameterGroup(ABC):
 
         return controls, widget
 
-    def render_errors(self, errors: list[ValidationError]) -> None:
-        """Render validation errors under the affected parameter controls.
+    def render_errors(
+        self,
+        errors: list[ValidationError],
+        warnings: dict[str, str] | None = None,
+    ) -> None:
+        """Render validation errors and warnings under affected parameter controls.
 
-        Call this after validate() to display errors in the UI.
-        Clears errors for parameters not in the error list.
+        Call this after validate() to display feedback in the UI.
+        Errors take precedence over warnings (same label space).
+        Clears feedback for parameters not in error or warning lists.
 
         Args:
             errors: List of ValidationError from validate().
+            warnings: Optional dict mapping param names to warning text.
 
         """
         if not hasattr(self, "_error_displays"):
             return
+
+        warnings = warnings or {}
+        warning_displays = getattr(self, "_warning_displays", {})
 
         # Build mapping from expanded param names to compound param names
         expanded_to_compound: dict[str, str] = {}
@@ -1595,11 +1675,23 @@ class ParameterGroup(ABC):
         error_dict = validation_errors_to_dict(errors)
         compound_errors = map_errors_to_compound_params(error_dict, expanded_to_compound)
 
-        for param_name, display in self._error_displays.items():
-            if param_name in compound_errors:
-                display.show_error(compound_errors[param_name])
+        for param_name, error_display in self._error_displays.items():
+            warning_display = warning_displays.get(param_name)
+            error_msg = compound_errors.get(param_name)
+            warning_msg = warnings.get(param_name)
+
+            if error_msg:
+                # Error takes precedence
+                error_display.show_error(error_msg)
+            elif warning_msg and warning_display:
+                # Show warning only if no error
+                error_display.clear_error()
+                warning_display.show_warning(warning_msg)
             else:
-                display.clear_error()
+                # Clear both
+                error_display.clear_error()
+                if warning_display:
+                    warning_display.clear_warning()
 
     def connect_control_signals(
         self, controls: dict[str, object], callback: Callable[[], None]
@@ -1637,6 +1729,40 @@ class ParameterGroup(ABC):
                 control.stateChanged.connect(lambda *_: callback())
             elif isinstance(control, QComboBox):
                 control.currentIndexChanged.connect(lambda *_: callback())
+
+    def warn_non_defaults(self) -> dict[str, str]:
+        """Return warnings for parameters differing from factory defaults.
+
+        Override this method to add permanent warnings (call super() first).
+        For example, to add a restart warning for a specific parameter.
+
+        Returns:
+            Dict mapping param names to warning text (e.g., "Default: disabled").
+
+        """
+        warnings: dict[str, str] = {}
+
+        # Check regular parameters
+        for param_name, param in self._parameters.items():
+            current = self._values.get(param_name)
+            default = param.default()
+            if current != default:
+                warnings[param_name] = f"Default: {param.format_default()}"
+
+        # Check compound parameters
+        for cp_name, cp in self._compound_params.items():
+            expanded = cp.expand()
+            has_difference = False
+            for exp_param in expanded:
+                current = self._values.get(exp_param.name)
+                default = exp_param.default()
+                if current != default:
+                    has_difference = True
+                    break
+            if has_difference:
+                warnings[cp_name] = f"Default: {cp.format_default()}"
+
+        return warnings
 
 
 class ParameterValidationError(Exception):
@@ -2007,6 +2133,15 @@ class CombinedParams:
             if hasattr(group, "add_properties_to_object"):
                 group.add_properties_to_object(obj)
 
+    def _aggregate_feedback_displays(self, group_name: str, group: ParameterGroup) -> None:
+        """Aggregate error and warning displays from a group with prefixed keys."""
+        if hasattr(group, "_error_displays"):
+            for param_name, display in group._error_displays.items():  # noqa: SLF001
+                self._error_displays[f"{group_name}.{param_name}"] = display
+        if hasattr(group, "_warning_displays"):
+            for param_name, display in group._warning_displays.items():  # noqa: SLF001
+                self._warning_displays[f"{group_name}.{param_name}"] = display
+
     def build_ui(
         self,
         layout: QLayout | None = None,
@@ -2035,8 +2170,9 @@ class CombinedParams:
             # Fallback if GUI is not available
             return {}, None
 
-        # Initialize aggregated error displays storage
+        # Initialize aggregated error and warning displays storage
         self._error_displays: dict[str, ParamErrorDisplay] = {}
+        self._warning_displays: dict[str, ParamWarningDisplay] = {}
 
         widget = QWidget()
         container_layout = QVBoxLayout(widget)
@@ -2059,10 +2195,8 @@ class CombinedParams:
                 for param_name, control in group_controls.items():
                     all_controls[f"{group_name}__{param_name}"] = control
 
-                # Aggregate error displays with prefixed keys (using . separator)
-                if hasattr(group, "_error_displays"):
-                    for param_name, display in group._error_displays.items():  # noqa: SLF001
-                        self._error_displays[f"{group_name}.{param_name}"] = display
+                # Aggregate feedback displays with prefixed keys (using . separator)
+                self._aggregate_feedback_displays(group_name, group)
 
                 # Add the group widget to our container
                 if group_widget is not None:
@@ -2096,19 +2230,28 @@ class CombinedParams:
             if group_controls and hasattr(group, "connect_control_signals"):
                 group.connect_control_signals(group_controls, callback)
 
-    def render_errors(self, errors: list[ValidationError]) -> None:
-        """Render validation errors under the affected parameter controls.
+    def render_errors(
+        self,
+        errors: list[ValidationError],
+        warnings: dict[str, str] | None = None,
+    ) -> None:
+        """Render validation errors and warnings under affected parameter controls.
 
-        Call this after validate() to display errors in the UI.
-        Clears errors for parameters not in the error list.
+        Call this after validate() to display feedback in the UI.
+        Errors take precedence over warnings (same label space).
+        Clears feedback for parameters not in error or warning lists.
 
         Args:
             errors: List of ValidationError from validate(). Keys should be
                 prefixed like "group_name.param_name".
+            warnings: Optional dict mapping prefixed param names to warning text.
 
         """
         if not hasattr(self, "_error_displays"):
             return
+
+        warnings = warnings or {}
+        warning_displays = getattr(self, "_warning_displays", {})
 
         # Build mapping from expanded param names to compound param names
         # Keys are like "group_name.expanded_name" -> "group_name.compound_name"
@@ -2124,11 +2267,38 @@ class CombinedParams:
         error_dict = validation_errors_to_dict(errors)
         compound_errors = map_errors_to_compound_params(error_dict, expanded_to_compound)
 
-        for param_key, display in self._error_displays.items():
-            if param_key in compound_errors:
-                display.show_error(compound_errors[param_key])
+        for param_key, error_display in self._error_displays.items():
+            warning_display = warning_displays.get(param_key)
+            error_msg = compound_errors.get(param_key)
+            warning_msg = warnings.get(param_key)
+
+            if error_msg:
+                # Error takes precedence
+                error_display.show_error(error_msg)
+            elif warning_msg and warning_display:
+                # Show warning only if no error
+                error_display.clear_error()
+                warning_display.show_warning(warning_msg)
             else:
-                display.clear_error()
+                # Clear both
+                error_display.clear_error()
+                if warning_display:
+                    warning_display.clear_warning()
+
+    def warn_non_defaults(self) -> dict[str, str]:
+        """Aggregate warnings from all parameter groups.
+
+        Returns:
+            Dict mapping prefixed param names (group_name.param_name) to warning text.
+
+        """
+        warnings: dict[str, str] = {}
+        for group_name, group in self._param_groups.items():
+            if hasattr(group, "warn_non_defaults"):
+                group_warnings = group.warn_non_defaults()
+                for param_name, warning_text in group_warnings.items():
+                    warnings[f"{group_name}.{param_name}"] = warning_text
+        return warnings
 
 
 class ParamConverter:
