@@ -1553,6 +1553,107 @@ class ParameterGroup(ABC):
 
             self.set_value(param_name, value)
 
+    def _has_enabled_first_param(self) -> bool:
+        """Check if first param is a BooleanParam named 'enabled'."""
+        if not self._ui_order:
+            return False
+        first_name = self._ui_order[0]
+        if first_name != "enabled":
+            return False
+        if first_name not in self._parameters:
+            return False
+        return isinstance(self._parameters[first_name], BooleanParam)
+
+    def _build_field_container(
+        self,
+        param_name: str,
+        control: object,
+    ) -> QWidget:
+        """Build a field container with control and feedback label.
+
+        Also registers error/warning displays for the parameter.
+        """
+        from PySide.QtWidgets import QLabel, QVBoxLayout, QWidget
+
+        field_container = QWidget()
+        field_layout = QVBoxLayout(field_container)
+        field_layout.setContentsMargins(0, 0, 0, 0)
+        field_layout.setSpacing(2)
+        field_layout.addWidget(control)  # type: ignore[arg-type]
+
+        feedback_label = QLabel("")
+        feedback_label.hide()
+        field_layout.addWidget(feedback_label)
+
+        self._error_displays[param_name] = ParamErrorDisplay(
+            control=control,  # type: ignore[arg-type]
+            error_label=feedback_label,
+        )
+        self._warning_displays[param_name] = ParamWarningDisplay(
+            control=control,  # type: ignore[arg-type]
+            warning_label=feedback_label,
+        )
+
+        return field_container
+
+    def _build_collapsible_ui(
+        self,
+        container_layout: QLayout,
+        controls: dict[str, object],
+        ui_descriptors: dict[str, UIField],
+    ) -> None:
+        """Build UI with collapsible section for params after 'enabled'."""
+        from PySide.QtWidgets import QFormLayout, QWidget
+
+        from freecad.gridfinity_workbench.widgets import CollapsibleSection
+
+        # Add enabled row to main layout
+        enabled_form = QFormLayout()
+        enabled_control = controls.get("enabled")
+        if enabled_control is not None:
+            enabled_container = self._build_field_container("enabled", enabled_control)
+            enabled_form.addRow(ui_descriptors["enabled"].label, enabled_container)
+        container_layout.addLayout(enabled_form)
+
+        # Build collapsible section for remaining params
+        collapsible = CollapsibleSection("Options...")
+        rest_widget = QWidget()
+        rest_form = QFormLayout(rest_widget)
+
+        for param_name, control in controls.items():
+            if param_name == "enabled" or param_name not in ui_descriptors:
+                continue
+            field_container = self._build_field_container(param_name, control)
+            rest_form.addRow(ui_descriptors[param_name].label, field_container)
+
+        collapsible.set_content(rest_widget)
+        # Always start collapsed on dialog open
+        # Connect enabled checkbox to expand/collapse
+        if enabled_control is not None:
+            enabled_control.toggled.connect(  # type: ignore[union-attr]
+                lambda checked: collapsible.set_collapsed(not checked)
+            )
+        container_layout.addWidget(collapsible)
+
+    def _build_standard_ui(
+        self,
+        container_layout: QLayout,
+        controls: dict[str, object],
+        ui_descriptors: dict[str, UIField],
+    ) -> None:
+        """Build standard non-collapsible form layout."""
+        from PySide.QtWidgets import QFormLayout
+
+        form_layout = QFormLayout()
+
+        for param_name, control in controls.items():
+            if param_name not in ui_descriptors:
+                continue
+            field_container = self._build_field_container(param_name, control)
+            form_layout.addRow(ui_descriptors[param_name].label, field_container)
+
+        container_layout.addLayout(form_layout)
+
     def build_ui(
         self,
         layout: QLayout | None = None,
@@ -1576,73 +1677,33 @@ class ParameterGroup(ABC):
 
         """
         try:
-            from PySide.QtWidgets import QFormLayout, QLabel, QVBoxLayout, QWidget
+            from PySide.QtWidgets import QGroupBox, QVBoxLayout
         except ImportError:
-            # Fallback if GUI is not available
             return {}, None
 
         _ = show_description  # Reserved for future use
 
-        # Initialize error and warning displays storage (shared label)
         self._error_displays: dict[str, ParamErrorDisplay] = {}
         self._warning_displays: dict[str, ParamWarningDisplay] = {}
 
-        widget = QWidget()
-        container_layout = QVBoxLayout(widget)
+        # Use QGroupBox for proper visual grouping with title
+        group_box = QGroupBox(section_title)
+        container_layout = QVBoxLayout(group_box)
 
-        # Add section title if provided
-        if section_title:
-            section_label = QLabel(section_title)
-            style = "font-weight: bold;"
-            section_label.setStyleSheet(style)
-            container_layout.addWidget(section_label)
-
-        # Create form layout for the parameters
-        form_layout = QFormLayout()
-        form_layout.setContentsMargins(20, 0, 0, 0)
-
-        # Generate controls for this group
         controls = self.get_ui_controls()
-
-        # Add each control to the form layout with error label support
         ui_descriptors = self.ui_descriptors()
-        for param_name, control in controls.items():
-            if param_name not in ui_descriptors:
-                continue
 
-            # Create a container for control + error label
-            field_container = QWidget()
-            field_layout = QVBoxLayout(field_container)
-            field_layout.setContentsMargins(0, 0, 0, 0)
-            field_layout.setSpacing(2)
-
-            # Add the control widget
-            field_layout.addWidget(control)  # type: ignore[arg-type]
-
-            # Create hidden feedback label below the control (shared by errors and warnings)
-            feedback_label = QLabel("")
-            feedback_label.hide()
-            field_layout.addWidget(feedback_label)
-
-            # Store error and warning display for this param (both use same label)
-            self._error_displays[param_name] = ParamErrorDisplay(
-                control=control,  # type: ignore[arg-type]
-                error_label=feedback_label,
-            )
-            self._warning_displays[param_name] = ParamWarningDisplay(
-                control=control,  # type: ignore[arg-type]
-                warning_label=feedback_label,
-            )
-
-            form_layout.addRow(ui_descriptors[param_name].label, field_container)
-
-        container_layout.addLayout(form_layout)
+        # Use collapsible pattern if first param is BooleanParam "enabled"
+        if self._has_enabled_first_param():
+            self._build_collapsible_ui(container_layout, controls, ui_descriptors)
+        else:
+            self._build_standard_ui(container_layout, controls, ui_descriptors)
 
         # If a layout was provided, add our widget to it
         if layout:
-            layout.addWidget(widget)
+            layout.addWidget(group_box)
 
-        return controls, widget
+        return controls, group_box
 
     def render_errors(
         self,
