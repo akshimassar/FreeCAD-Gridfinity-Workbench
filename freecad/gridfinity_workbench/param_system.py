@@ -413,6 +413,57 @@ class ParamDefaultResolver:
 default_resolver = ParamDefaultResolver()
 
 
+def build_tooltip_html(
+    text: str,
+    icon: str | None = None,
+    header: str | None = None,
+    aspect_ratio: float = 5.0,
+) -> str:
+    """Build HTML tooltip with optional header, text, and icon.
+
+    Width is calculated from text length to maintain approximately 4:1 aspect ratio
+    for the entire tooltip.
+
+    Args:
+        text: Tooltip text content
+        icon: Icon filename (resolved relative to icons/ directory)
+        header: Optional bold header text (typically display_name or section_title)
+        aspect_ratio: Target width:height ratio for entire tooltip (default 5.0)
+
+    Returns:
+        HTML string suitable for QWidget.setToolTip()
+
+    """
+    from pathlib import Path
+
+    # Build text content with optional header
+    header_html = f"<b>{header}</b><br>" if header else ""
+    text_content = f"{header_html}{text}"
+
+    # Calculate width to achieve target aspect ratio for entire tooltip
+    # Assume ~8px per character width, ~20px line height
+    # If text wraps at width w: lines ≈ (chars * 8) / w, height h ≈ lines * 20
+    # For ratio R: w/h = R, so w = R * h = R * (chars * 8 * 20) / w
+    # Solving: w² = R * chars * 160, so w = sqrt(R * chars * 160)
+    full_text = (header or "") + text
+    char_count = len(full_text)
+    width = int((aspect_ratio * char_count * 160) ** 0.5)
+    # Clamp to reasonable bounds
+    width = max(200, min(600, width))
+
+    if not icon:
+        return f'<div style="width: {width}px">{text_content}</div>'
+    icons_dir = Path(__file__).parent / "icons"
+    icon_path = icons_dir / icon
+    # For icon tooltips, use table with fixed width for entire tooltip
+    return (
+        f'<table style="width: {width}px"><tr>'
+        f"<td>{text_content}</td>"
+        f"<td><img src='{icon_path}'></td>"
+        f"</tr></table>"
+    )
+
+
 class BaseParam:
     """Base class for individual parameters with FreeCAD property mapping.
 
@@ -420,7 +471,8 @@ class BaseParam:
     - name: Internal identifier (snake_case, e.g., "wall_thickness")
     - display_name: Human-readable label for UI (e.g., "Wall Thickness")
     - freecad_property_type: The FreeCAD property type (e.g., "App::PropertyLength")
-    - description: Tooltip text for UI and property documentation
+    - tooltip_text: Optional tooltip text (rendered with display_name as header)
+    - tooltip_icon: Optional icon filename for tooltip
 
     Key responsibilities:
     - Generate canonical property names via property_name_for_group()
@@ -438,7 +490,8 @@ class BaseParam:
         name: str,
         display_name: str,
         freecad_property_type: str = "App::PropertyFloat",
-        description: str = "",
+        tooltip_text: str | None = None,
+        tooltip_icon: str | None = None,
     ) -> None:
         """Initialize a base parameter with name, display name, and property type."""
         self.name = name
@@ -446,7 +499,15 @@ class BaseParam:
         self.freecad_property_type = (
             freecad_property_type  # FreeCAD property type (e.g., "App::PropertyLength")
         )
-        self.description = description
+        self.tooltip_text = tooltip_text
+        self.tooltip_icon = tooltip_icon
+
+    @property
+    def tooltip(self) -> str | None:
+        """Build tooltip HTML with display_name as header."""
+        if not self.tooltip_text:
+            return None
+        return build_tooltip_html(self.tooltip_text, self.tooltip_icon, header=self.display_name)
 
     def property_name_for_group(self, group_class_name: str) -> str:
         """Generate canonical prefixed snake_case property name."""
@@ -495,20 +556,22 @@ class BooleanParam(BaseParam):
         BooleanParam("enabled", "Enabled", default_value=True)
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         name: str,
         display_name: str,
         default_value: bool = False,  # noqa: FBT001, FBT002
         freecad_property_type: str = "App::PropertyBool",
-        description: str = "",
+        tooltip_text: str | None = None,
+        tooltip_icon: str | None = None,
     ) -> None:
         """Initialize a boolean parameter."""
         super().__init__(
             name,
             display_name,
             freecad_property_type,
-            description,
+            tooltip_text,
+            tooltip_icon,
         )
         self.default_value = default_value
 
@@ -548,23 +611,22 @@ class FloatParam(BaseParam):
         min_value: fc.Units.Quantity | None = None,
         max_value: fc.Units.Quantity | None = None,
         freecad_property_type: str = "App::PropertyLength",  # Default to Length for measurements
-        description: str = "",
         positive_only: bool = False,  # noqa: FBT001, FBT002 - Whether this param should be positive
-        tooltip_icon: str
-        | None = None,  # Icon filename for tooltip (e.g., "tooltip-half-width.svg")
+        tooltip_text: str | None = None,
+        tooltip_icon: str | None = None,
     ) -> None:
         """Initialize a float/quantity parameter with optional bounds."""
         super().__init__(
             name,
             display_name,
             freecad_property_type,
-            description,
+            tooltip_text,
+            tooltip_icon,
         )
         self.default_value = default_value
         self.min_value = min_value
         self.max_value = max_value
         self.positive_only = positive_only
-        self.tooltip_icon = tooltip_icon
 
     def default(self) -> fc.Units.Quantity:
         """Return the default quantity value."""
@@ -620,14 +682,16 @@ class LiteralParam(BaseParam):
         default_value: str,
         choices: list[str] | None = None,
         freecad_property_type: str = "App::PropertyString",
-        description: str = "",
+        tooltip_text: str | None = None,
+        tooltip_icon: str | None = None,
     ) -> None:
         """Initialize a literal/string parameter with optional choices."""
         super().__init__(
             name,
             display_name,
             freecad_property_type,
-            description,
+            tooltip_text,
+            tooltip_icon,
         )
         self.default_value = default_value
         self.choices = choices
@@ -670,15 +734,17 @@ class IntParam(BaseParam):
         min_value: int | None = None,
         max_value: int | None = None,
         freecad_property_type: str = "App::PropertyInteger",
-        description: str = "",
         positive_only: bool = False,  # noqa: FBT001, FBT002
+        tooltip_text: str | None = None,
+        tooltip_icon: str | None = None,
     ) -> None:
         """Initialize an integer parameter with optional bounds."""
         super().__init__(
             name,
             display_name,
             freecad_property_type,
-            description,
+            tooltip_text,
+            tooltip_icon,
         )
         self.default_value = int(default_value)
         self.min_value = min_value
@@ -721,14 +787,16 @@ class LayoutParam(BaseParam):
         name: str,
         display_name: str,
         freecad_property_type: str = "App::PropertyString",
-        description: str = "",
+        tooltip_text: str | None = None,
+        tooltip_icon: str | None = None,
     ) -> None:
         """Initialize a layout parameter."""
         super().__init__(
             name,
             display_name,
             freecad_property_type,
-            description,
+            tooltip_text,
+            tooltip_icon,
         )
 
     def default(self) -> None:  # type: ignore[override]
@@ -1185,6 +1253,7 @@ class ParameterGroup(ABC):
         self,
         parameters: Sequence[BaseParam | ParamCombination | ParameterGroup] | None = None,
         resolver: ParamDefaultResolver | None = None,
+        tooltip_text: str | None = None,
     ) -> None:
         """Initialize a parameter group with optional parameters and resolver.
 
@@ -1192,8 +1261,10 @@ class ParameterGroup(ABC):
             parameters: List of BaseParam, ParamCombination, or child ParameterGroup.
                         Order is preserved for UI rendering.
             resolver: Optional resolver for default values.
+            tooltip_text: Optional tooltip text for the group header.
 
         """
+        self._tooltip_text = tooltip_text
         # Expand ParamCombination instances into their underlying params
         expanded_params: list[BaseParam] = []
         self._compound_params: dict[str, ParamCombination] = {}
@@ -1268,7 +1339,7 @@ class ParameterGroup(ABC):
                 param.freecad_property_type,
                 prop_name,
                 category,
-                param.description or f"{param.display_name} parameter",
+                param.tooltip or f"{param.display_name} parameter",
             )
 
             # For LayoutParam, convert list to JSON string
@@ -1485,6 +1556,13 @@ class ParameterGroup(ABC):
         base = self.__class__.__name__.replace("Params", "")
         # Insert space before each capital letter (except first)
         return re.sub(r"(?<!^)(?=[A-Z])", " ", base)
+
+    @property
+    def tooltip(self) -> str | None:
+        """Build tooltip HTML with section_title as header."""
+        if not self._tooltip_text:
+            return None
+        return build_tooltip_html(self._tooltip_text, header=self.section_title)
 
     def validate(self) -> list[ValidationError]:
         """Validate all parameters in this group and child groups.
@@ -1854,42 +1932,20 @@ class ParameterGroup(ABC):
             return False
         return isinstance(self._parameters[first_name], BooleanParam)
 
-    def _get_tooltip_html(self, param_name: str) -> str | None:
-        """Get tooltip HTML for a parameter if it has a tooltip_icon."""
-        from pathlib import Path
-
+    def _get_param_tooltip(self, param_name: str) -> str | None:
+        """Get tooltip for a parameter if set."""
         if param_name not in self._parameters:
             return None
-
-        param = self._parameters[param_name]
-        if not isinstance(param, FloatParam) or not param.tooltip_icon:
-            return None
-
-        icons_dir = Path(__file__).parent / "icons"
-        icon_path = icons_dir / param.tooltip_icon
-
-        # Two-cell layout: text left, image right
-        tooltip_html = f"""<table>
-<tr>
-<td>{param.description}</td>
-<td><img src='{icon_path}'></td>
-</tr>
-</table>"""
-
-        return tooltip_html
+        return self._parameters[param_name].tooltip
 
     def _apply_tooltip(self, widget: QWidget, param_name: str) -> None:
-        """Apply tooltip HTML to a widget if param has tooltip_icon."""
-        tooltip_html = self._get_tooltip_html(param_name)
-        if tooltip_html and hasattr(widget, "setToolTip"):
-            widget.setToolTip(tooltip_html)
+        """Apply tooltip to a widget if param has tooltip set."""
+        tooltip = self._get_param_tooltip(param_name)
+        if tooltip and hasattr(widget, "setToolTip"):
+            widget.setToolTip(tooltip)
 
     def _build_label_with_tooltip(self, param_name: str, label_text: str) -> QWidget:
-        """Build a label widget with optional tooltip icon.
-
-        If the parameter has a tooltip_icon, creates a label with rich HTML tooltip
-        containing description text and an embedded icon image.
-        """
+        """Build a label widget with optional tooltip."""
         from PySide.QtWidgets import QLabel
 
         label = QLabel(label_text)
@@ -1905,7 +1961,7 @@ class ParameterGroup(ABC):
         """Build a field container with control and feedback label.
 
         Also registers error/warning displays for the parameter.
-        Applies tooltip to control if parameter has tooltip_icon.
+        Applies tooltip to control if parameter has tooltip set.
         """
         from PySide.QtWidgets import QLabel, QVBoxLayout, QWidget
 
@@ -1976,7 +2032,8 @@ class ParameterGroup(ABC):
                     rest_layout.addWidget(child_widget)
             else:
                 field_container = self._build_field_container(param_name, control)
-                rest_form.addRow(ui_field.label, field_container)
+                label_widget = self._build_label_with_tooltip(param_name, ui_field.label)
+                rest_form.addRow(label_widget, field_container)
 
         # Add remaining form items
         if rest_form.rowCount() > 0:
@@ -2059,6 +2116,8 @@ class ParameterGroup(ABC):
 
         # Use QGroupBox for proper visual grouping with title
         group_box = QGroupBox(section_title)
+        if self.tooltip:
+            group_box.setToolTip(self.tooltip)
         container_layout = QVBoxLayout(group_box)
 
         controls = self.get_ui_controls()

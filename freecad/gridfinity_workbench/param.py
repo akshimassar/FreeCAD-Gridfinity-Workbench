@@ -188,7 +188,7 @@ class FundamentalsParams(ParameterGroup):
                 "Main Profile Half Width",
                 fc.Units.Quantity("2.15 mm"),
                 positive_only=True,
-                description="Half-width of the vertical base profile section",
+                tooltip_text="Half-width of the vertical base profile section",
                 tooltip_icon="tooltip-half-width.svg",
             ),
             FloatParam(
@@ -196,7 +196,7 @@ class FundamentalsParams(ParameterGroup):
                 "Main Profile Height",
                 fc.Units.Quantity("2.5 mm"),
                 positive_only=True,
-                description="Height of the vertical base profile section",
+                tooltip_text="Height of the vertical base profile section",
                 tooltip_icon="tooltip-height.svg",
             ),
         ]
@@ -592,6 +592,8 @@ class StackingParams(ParameterGroup):
                 "corner_stitching",
                 "Corner Stitching",
                 default_value=False,
+                tooltip_text="Connect corners of baseplates with thin strip of main material. "
+                "Helps to prevent corner lifting.",
             ),
             FloatParam(
                 "stitching_thickness",
@@ -604,7 +606,11 @@ class StackingParams(ParameterGroup):
             SupportParams(),
         ]
 
-        super().__init__(parameters)
+        super().__init__(
+            parameters,
+            tooltip_text="Multiple baseplates stacked vertically with intermediate supports. "
+            "Requires multi-material printing.",
+        )
         self.set_all_values(kwargs)
 
     def data(self) -> StackingParamsData:
