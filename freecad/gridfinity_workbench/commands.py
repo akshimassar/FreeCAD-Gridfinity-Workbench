@@ -97,17 +97,12 @@ class ViewProviderGridfinity:
         if isinstance(proxy, features.DrawerBaseplate):
             fcg.Control.showDialog(CreateDrawerBaseplateTaskPanel(self.icon_path, target_obj=obj))
             return True
-        # Keep subclass checks before Baseplate: StackedBaseplates inherits Baseplate,
-        # and generic dispatch here would skip stacked-specific relabeling/link handling.
-        if isinstance(proxy, features.StackedBaseplates):
-            fcg.Control.showDialog(CreateStackedBaseplatesTaskPanel(self.icon_path, target_obj=obj))
-            return True
-        if isinstance(proxy, features.StackedBaseplatesSupport):
-            source = getattr(obj, "SourceStackedBaseplates", None)
+        if isinstance(proxy, features.BaseplateSupport):
+            source = getattr(obj, "SourceBaseplate", None)
             if source is None:
                 return False
             fcg.Control.showDialog(
-                CreateStackedBaseplatesTaskPanel(self.icon_path, target_obj=source),
+                CreateBaseplateTaskPanel(self.icon_path, target_obj=source),
             )
             return True
         if isinstance(proxy, features.Baseplate):
@@ -745,7 +740,11 @@ class CreateBaseplateTaskPanel:
         x_cells: int,
         y_cells: int,
         custom_layout: list[list[bool]] | None = None,
+        *,
+        stacking_enabled: bool = False,
     ) -> str:
+        if stacking_enabled:
+            return f"Stacked Baseplates {x_cells} x {y_cells}"
         if custom_layout:
             cell_count = sum(sum(row) for row in custom_layout)
             return f"Baseplate Custom {cell_count}"
@@ -754,6 +753,47 @@ class CreateBaseplateTaskPanel:
     @staticmethod
     def _format_preview_label(base_label: str) -> str:
         return f"[Preview] {base_label}"
+
+    @staticmethod
+    def _support_label_for(base_label: str) -> str:
+        return f"{base_label} Support"
+
+    @staticmethod
+    def _find_support_companions(base_obj: fc.DocumentObject) -> list[fc.DocumentObject]:
+        doc = fc.ActiveDocument
+        if doc is None:
+            return []
+        companions: list[fc.DocumentObject] = []
+        for obj in doc.Objects:
+            proxy = getattr(obj, "Proxy", None)
+            if not isinstance(proxy, features.BaseplateSupport):
+                continue
+            if getattr(obj, "SourceBaseplate", None) is base_obj:
+                companions.append(obj)
+        return companions
+
+    def _resolve_or_create_support_companion(
+        self,
+        base_obj: fc.DocumentObject,
+    ) -> tuple[fc.DocumentObject, list[fc.DocumentObject]]:
+        companions = self._find_support_companions(base_obj)
+        if companions:
+            canonical = companions[0]
+            extras = companions[1:]
+            return canonical, extras
+
+        companion = utils.new_object("BaseplateSupport")
+        if fc.GuiUp:
+            view_object: fcg.ViewProviderDocumentObject = companion.ViewObject
+            ViewProviderGridfinity(view_object, str(self._pixmap))
+        features.BaseplateSupport(companion, base_obj)
+        return companion, []
+
+    def _remove_support_companions(self, base_obj: fc.DocumentObject) -> None:
+        """Remove all support companions for a baseplate."""
+        companions = self._find_support_companions(base_obj)
+        for companion in companions:
+            fc.ActiveDocument.removeObject(companion.Name)
 
     def _set_show_in_tree(self, obj: fc.DocumentObject, *, visible: bool) -> None:
         if not fc.GuiUp:
@@ -780,15 +820,32 @@ class CreateBaseplateTaskPanel:
             return False
         output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
         params.to_obj(output_obj)
+
+        stacking_enabled = params.stacking.get_value("enabled")
         custom_layout_enabled = params.baseplate_size.get_value("custom_layout_enabled")
         custom_layout = (
             params.baseplate_size.get_value("custom_layout") if custom_layout_enabled else None
         )
-        output_obj.Label = self._format_simple_baseplate_label(
+        base_label = self._format_simple_baseplate_label(
             int(params.baseplate_size.get_value("x_grid_count")),
             int(params.baseplate_size.get_value("y_grid_count")),
             custom_layout,
+            stacking_enabled=stacking_enabled,
         )
+        output_obj.Label = base_label
+
+        # Handle support companion for stacking
+        if stacking_enabled:
+            companion, extra_companions = self._resolve_or_create_support_companion(output_obj)
+            companion.Label = self._support_label_for(base_label)
+            companion.SourceBaseplate = output_obj
+            for extra in extra_companions:
+                extra.SourceBaseplate = None
+            self._set_show_in_tree(companion, visible=True)
+        else:
+            # Remove support companion if stacking was disabled
+            self._remove_support_companions(output_obj)
+
         if self._edit_obj is not None and self._created_preview_obj:
             fc.ActiveDocument.removeObject(self._target_obj.Name)
         else:
@@ -811,100 +868,6 @@ class CreateBaseplateTaskPanel:
         return True
 
 
-class CreateStackedBaseplatesTaskPanel(CreateBaseplateTaskPanel):
-    def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
-        from .param import CombinedStackedBaseplatesParams
-
-        # Set params before super().__init__() so base class uses correct type
-        self._params = CombinedStackedBaseplatesParams()
-        super().__init__(
-            pixmap,
-            target_obj,
-            object_name="StackedBaseplates",
-            label_name="Stacked Baseplates",
-            feature_ctor=features.StackedBaseplates,
-        )
-
-    @staticmethod
-    def _format_simple_baseplate_label(
-        x_cells: int,
-        y_cells: int,
-        custom_layout: list[list[bool]] | None = None,  # noqa: ARG004
-    ) -> str:
-        return f"Stacked Baseplates {x_cells} x {y_cells}"
-
-    @staticmethod
-    def _support_label_for(base_label: str) -> str:
-        return f"{base_label} Support"
-
-    @staticmethod
-    def _find_support_companions(base_obj: fc.DocumentObject) -> list[fc.DocumentObject]:
-        doc = fc.ActiveDocument
-        if doc is None:
-            return []
-        companions: list[fc.DocumentObject] = []
-        for obj in doc.Objects:
-            proxy = getattr(obj, "Proxy", None)
-            if not isinstance(proxy, features.StackedBaseplatesSupport):
-                continue
-            if getattr(obj, "SourceStackedBaseplates", None) is base_obj:
-                companions.append(obj)
-        return companions
-
-    def _resolve_or_create_support_companion(
-        self,
-        base_obj: fc.DocumentObject,
-    ) -> tuple[fc.DocumentObject, list[fc.DocumentObject]]:
-        companions = self._find_support_companions(base_obj)
-        if companions:
-            canonical = companions[0]
-            extras = companions[1:]
-            return canonical, extras
-
-        companion = utils.new_object("StackedBaseplatesSupport")
-        if fc.GuiUp:
-            view_object: fcg.ViewProviderDocumentObject = companion.ViewObject
-            ViewProviderGridfinity(view_object, str(self._pixmap))
-        features.StackedBaseplatesSupport(companion, base_obj)
-        return companion, []
-
-    def accept(self) -> bool:
-        if self._target_obj is None:
-            return False
-        params = self._validate_controls(preview_mode=False)
-        if params is None:
-            return False
-
-        base_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
-        companion, extra_companions = self._resolve_or_create_support_companion(base_obj)
-
-        params.to_obj(base_obj)
-
-        data = params.data()
-        base_label = self._format_simple_baseplate_label(
-            int(data.baseplate_size.x_grid_count),
-            int(data.baseplate_size.y_grid_count),
-        )
-        base_obj.Label = base_label
-
-        companion.Label = self._support_label_for(base_label)
-        companion.SourceStackedBaseplates = base_obj
-        for extra in extra_companions:
-            extra.SourceStackedBaseplates = None
-
-        if self._edit_obj is not None and self._created_preview_obj:
-            fc.ActiveDocument.removeObject(self._target_obj.Name)
-        else:
-            self._restore_preview_visuals()
-            self._set_show_in_tree(base_obj, visible=True)
-
-        self._set_show_in_tree(companion, visible=True)
-        fc.ActiveDocument.recompute()
-        fcg.SendMsgToActiveView("ViewFit")
-        fcg.Control.closeDialog()
-        return True
-
-
 class CreateSupportBaseplate(CreateCommand):
     def __init__(self) -> None:
         super().__init__(
@@ -912,18 +875,6 @@ class CreateSupportBaseplate(CreateCommand):
             gridfinity_function=features.SupportBaseplate,
             pixmap=ICONDIR / "support_baseplate.svg",
         )
-
-
-class CreateStackedBaseplates(CreateCommand):
-    def __init__(self) -> None:
-        super().__init__(
-            name="StackedBaseplates",
-            gridfinity_function=features.StackedBaseplates,
-            pixmap=ICONDIR / "baseplate-stacked.svg",
-        )
-
-    def Activated(self) -> None:
-        fcg.Control.showDialog(CreateStackedBaseplatesTaskPanel(self.pixmap))
 
 
 class CreateConnectingClipTaskPanel:

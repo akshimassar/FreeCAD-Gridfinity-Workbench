@@ -22,7 +22,6 @@ from . import magnet_hole as magnet_hole_module
 from .param import (
     BaseplateCoreParamsData,
     CombinedBaseplateParamsData,
-    CombinedStackedBaseplatesParamsData,
     CombinedSupportBaseplateParamsData,
     FundamentalsParamsData,
 )
@@ -1153,7 +1152,7 @@ def _top_planar_faces(shape: Part.Shape) -> list[Part.Face]:
 
 
 def make_baseplate_top_support(  # noqa: C901, PLR0915
-    params: CombinedStackedBaseplatesParamsData | CombinedSupportBaseplateParamsData,
+    params: CombinedBaseplateParamsData | CombinedSupportBaseplateParamsData,
     layout: GridfinityLayout,
     x_location_offset: float = 0.0,
     y_location_offset: float = 0.0,
@@ -1171,18 +1170,26 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
             "must be greater than BaseProfileTopCrop",
         )
 
-    loft_height = run / math.tan(math.radians(float(params.support.overhang_angle)))
+    # Support settings are now nested inside stacking
+    support_data = params.stacking.support
+    loft_height = run / math.tan(math.radians(float(support_data.overhang_angle)))
     if loft_height <= 0:
         raise ValueError("Invalid support geometry: computed loft height must be positive")
 
-    # Extract junction_screws and screw_stubs if available (CombinedStackedBaseplatesParamsData)
+    # Extract junction_screws if available (CombinedBaseplateParamsData)
     # CombinedSupportBaseplateParamsData doesn't have these
     junction_screws_data = getattr(params, "junction_screws", None)
-    screw_stubs_data = getattr(params, "screw_stubs", None)
+    stacking_data = params.stacking
     connecting_clips_data = getattr(params, "connecting_clips", None)
 
     # Build a CombinedBaseplateParamsData for build_full_layout
-    from .param import ConnectingClipsParamsData, JunctionScrewsParamsData, ScrewStubsParamsData
+    from .param import (
+        ConnectingClipsParamsData,
+        JunctionScrewsParamsData,
+        ScrewStubsParamsData,
+        StackingParamsData,
+        SupportParamsData,
+    )
 
     baseplate_params = CombinedBaseplateParamsData(
         fundamentals=params.fundamentals,
@@ -1196,7 +1203,15 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
             counterbore_diameter=zeromm,
             counterbore_depth=zeromm,
         ),
-        screw_stubs=screw_stubs_data or ScrewStubsParamsData(enabled=False, clearance=zeromm),
+        stacking=stacking_data
+        or StackingParamsData(
+            enabled=False,
+            instance_count=1,
+            corner_stitching=False,
+            stitching_thickness=zeromm,
+            screw_stubs=ScrewStubsParamsData(enabled=False, clearance=zeromm),
+            support=SupportParamsData(overhang_angle=support_data.overhang_angle),
+        ),
         connecting_clips=connecting_clips_data
         or ConnectingClipsParamsData(enabled=False, tolerance=zeromm, clip_length=zeromm),
     )
@@ -1329,6 +1344,7 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
     if cutters:
         support_solid = support_solid.cut(utils.multi_fuse(cutters))
 
+    screw_stubs_data = stacking_data.screw_stubs if stacking_data else None
     if (
         junction_screws_data is not None
         and screw_stubs_data is not None

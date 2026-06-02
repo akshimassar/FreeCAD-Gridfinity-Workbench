@@ -18,6 +18,20 @@ fc.Console.SetStatus("Console", "Wrn", True)  # noqa: FBT003
 fc.Console.SetStatus("Console", "Err", True)  # noqa: FBT003
 
 
+def setUpModule() -> None:
+    """Reset Gridfinity settings to factory defaults before all tests."""
+    from .param_system import default_resolver
+
+    default_resolver.reset_to_factory_defaults()
+
+
+def tearDownModule() -> None:
+    """Reset Gridfinity settings to factory defaults after all tests."""
+    from .param_system import default_resolver
+
+    default_resolver.reset_to_factory_defaults()
+
+
 class TestWithDocument(unittest.TestCase):
     """Base class for test that do everything on an open document.
 
@@ -172,8 +186,8 @@ class TestBaseplateLayoutTaskPanel(TestWithDocument):
         # Step 3: Set 3-cell L-shape custom layout
         # L-shape: [[True, True], [True, False]] = 3 cells out of 4
         l_shape_layout = [[True, True], [True, False]]
-        obj.baseplate_size_custom_layout_enabled = True
-        obj.baseplate_size_custom_layout = json.dumps(l_shape_layout)
+        obj.baseplate_size__custom_layout_enabled = True
+        obj.baseplate_size__custom_layout = json.dumps(l_shape_layout)
 
         self.doc.recompute()
         self.assertTrue(obj.Shape.isValid())
@@ -184,8 +198,8 @@ class TestBaseplateLayoutTaskPanel(TestWithDocument):
         self.assertAlmostEqual(ratio, 0.75, places=1)
 
         # Step 4: Enable top filler (uses default width), disable layout
-        obj.baseplate_size_filler_top_enabled = True
-        obj.baseplate_size_custom_layout_enabled = False
+        obj.baseplate_size__filler_top_enabled = True
+        obj.baseplate_size__custom_layout_enabled = False
 
         self.doc.recompute()
         self.assertTrue(obj.Shape.isValid())
@@ -258,11 +272,11 @@ class TestBaseplateLayoutTaskPanel(TestWithDocument):
 
         obj_single = self.doc.addObject("Part::FeaturePython", "SingleCellLayout")
         features.Baseplate(obj_single)
-        obj_single.baseplate_size_x_grid_count = 10
-        obj_single.baseplate_size_y_grid_count = 10
-        obj_single.baseplate_size_custom_layout_enabled = True
-        obj_single.baseplate_size_custom_layout = json.dumps(layout_single)
-        obj_single.click_springs_enabled = False
+        obj_single.baseplate_size__x_grid_count = 10
+        obj_single.baseplate_size__y_grid_count = 10
+        obj_single.baseplate_size__custom_layout_enabled = True
+        obj_single.baseplate_size__custom_layout = json.dumps(layout_single)
+        obj_single.click_springs__enabled = False
 
         # Test case 2: 2x1 L-shape at positions (3,5) and (4,5)
         layout_2x1 = [[False] * 10 for _ in range(10)]
@@ -271,11 +285,11 @@ class TestBaseplateLayoutTaskPanel(TestWithDocument):
 
         obj_2x1 = self.doc.addObject("Part::FeaturePython", "TwoCellLayout")
         features.Baseplate(obj_2x1)
-        obj_2x1.baseplate_size_x_grid_count = 10
-        obj_2x1.baseplate_size_y_grid_count = 10
-        obj_2x1.baseplate_size_custom_layout_enabled = True
-        obj_2x1.baseplate_size_custom_layout = json.dumps(layout_2x1)
-        obj_2x1.click_springs_enabled = False
+        obj_2x1.baseplate_size__x_grid_count = 10
+        obj_2x1.baseplate_size__y_grid_count = 10
+        obj_2x1.baseplate_size__custom_layout_enabled = True
+        obj_2x1.baseplate_size__custom_layout = json.dumps(layout_2x1)
+        obj_2x1.click_springs__enabled = False
 
         self.doc.recompute()
 
@@ -314,6 +328,24 @@ class TestBaseplateDialogFields(TestWithDocument):
                 control_names.add(key)
         return control_names
 
+    def _collect_expected_controls(self, group: object, prefix: str, expected: set[str]) -> None:
+        """Recursively collect expected control names from a parameter group."""
+        # Get expanded param names from compound params (these are NOT individual controls)
+        expanded_from_compound: set[str] = set()
+        for cp in group._compound_params.values():  # noqa: SLF001
+            expanded_from_compound.update(cp.expanded_names())
+        # Add individual params that are NOT from compound params
+        for param_name in group._parameters:  # noqa: SLF001
+            if param_name not in expanded_from_compound:
+                expected.add(f"{prefix}{param_name}")
+        # Add compound params (which render as single UI controls)
+        for cp_name in group._compound_params:  # noqa: SLF001
+            expected.add(f"{prefix}{cp_name}")
+        # Recursively handle child groups
+        for child_key, child_group in group._child_groups.items():  # noqa: SLF001
+            child_prefix = f"{prefix}{child_key}__"
+            self._collect_expected_controls(child_group, child_prefix, expected)
+
     def test_baseplate_dialog_fields_match_params(self) -> None:
         """Verify CreateBaseplateTaskPanel has no unexpected or missing fields."""
         from .commands import ICONDIR, CreateBaseplateTaskPanel
@@ -329,19 +361,10 @@ class TestBaseplateDialogFields(TestWithDocument):
         # Extract expected param names from CombinedBaseplateParams
         # Prefixes now match group names exactly (derived from class names)
         params = CombinedBaseplateParams()
-        expected_controls = set()
+        expected_controls: set[str] = set()
         for group_name, group in params._param_groups.items():  # noqa: SLF001
-            # Get expanded param names from compound params (these are NOT individual controls)
-            expanded_from_compound = set()
-            for cp in group._compound_params.values():  # noqa: SLF001
-                expanded_from_compound.update(cp.expanded_names())
-            # Add individual params that are NOT from compound params
-            for param_name in group._parameters:  # noqa: SLF001
-                if param_name not in expanded_from_compound:
-                    expected_controls.add(f"{group_name}__{param_name}")
-            # Add compound params (which render as single UI controls)
-            for cp_name in group._compound_params:  # noqa: SLF001
-                expected_controls.add(f"{group_name}__{cp_name}")
+            prefix = f"{group_name}__"
+            self._collect_expected_controls(group, prefix, expected_controls)
 
         # Find unexpected controls (in dialog but not in params)
         unexpected = dialog_controls - expected_controls
@@ -349,46 +372,6 @@ class TestBaseplateDialogFields(TestWithDocument):
         missing = expected_controls - dialog_controls
 
         # Report any discrepancies
-        if unexpected:
-            self.fail(f"Unexpected dialog controls not in params: {sorted(unexpected)}")
-        if missing:
-            self.fail(f"Missing dialog controls expected from params: {sorted(missing)}")
-
-        panel.reject()
-
-    def test_stacked_baseplates_dialog_fields_match_params(self) -> None:
-        """Verify CreateStackedBaseplatesTaskPanel has no unexpected or missing fields."""
-        from .commands import ICONDIR, CreateStackedBaseplatesTaskPanel
-        from .param import CombinedStackedBaseplatesParams
-
-        # Create panel
-        panel = CreateStackedBaseplatesTaskPanel(ICONDIR / "stacked-baseplates.svg")
-        fcg.Control.showDialog(panel)
-
-        # Extract control names from panel
-        dialog_controls = self._extract_dialog_control_names(panel)
-
-        # Extract expected param names
-        # Prefixes now match group names exactly (derived from class names)
-        params = CombinedStackedBaseplatesParams()
-        expected_controls = set()
-        for group_name, group in params._param_groups.items():  # noqa: SLF001
-            # Get expanded param names from compound params (these are NOT individual controls)
-            expanded_from_compound = set()
-            for cp in group._compound_params.values():  # noqa: SLF001
-                expanded_from_compound.update(cp.expanded_names())
-            # Add individual params that are NOT from compound params
-            for param_name in group._parameters:  # noqa: SLF001
-                if param_name not in expanded_from_compound:
-                    expected_controls.add(f"{group_name}__{param_name}")
-            # Add compound params (which render as single UI controls)
-            for cp_name in group._compound_params:  # noqa: SLF001
-                expected_controls.add(f"{group_name}__{cp_name}")
-
-        # Find discrepancies
-        unexpected = dialog_controls - expected_controls
-        missing = expected_controls - dialog_controls
-
         if unexpected:
             self.fail(f"Unexpected dialog controls not in params: {sorted(unexpected)}")
         if missing:
@@ -427,15 +410,18 @@ class TestStackedBaseplatesTaskPanel(TestWithDocument):
     """Test creating stacked baseplates through the task panel dialog."""
 
     def test_create_stacked_baseplates_via_dialog(self) -> None:
-        """Test creating stacked baseplates with default settings.
+        """Test creating stacked baseplates with stacking enabled.
 
-        Stacked baseplates create two objects: base and support companion.
+        When stacking is enabled, two objects are created: base and support companion.
         """
-        from .commands import ICONDIR, CreateStackedBaseplatesTaskPanel
+        from .commands import ICONDIR, CreateBaseplateTaskPanel
 
         # Open the task panel dialog
-        panel = CreateStackedBaseplatesTaskPanel(ICONDIR / "stacked-baseplates.svg")
+        panel = CreateBaseplateTaskPanel(ICONDIR / "baseplate-std.svg")
         fcg.Control.showDialog(panel)
+
+        # Enable stacking
+        panel.stacking__enabled.setChecked(True)
 
         # Accept the dialog to create the objects
         panel.accept()
@@ -466,11 +452,74 @@ class TestStackedBaseplatesTaskPanel(TestWithDocument):
         self.assertGreater(support_obj.Shape.Volume, 0)
 
         # Verify support references the base
-        self.assertEqual(support_obj.SourceStackedBaseplates, base_obj)
+        self.assertEqual(support_obj.SourceBaseplate, base_obj)
+
+    def test_stacking_screw_stubs_volume_difference(self) -> None:
+        """Test volume difference when enabling screw stubs on stacked baseplate.
+
+        Steps:
+        1. Create baseplate with stacking enabled -> measure support volume
+        2. Edit, enable screw stubs -> measure support volume again
+        3. Lock volume difference to half-percent precision
+        """
+        from .commands import ICONDIR, CreateBaseplateTaskPanel
+
+        # Step 1: Create stacked baseplate (stacking enabled, screw_stubs disabled)
+        panel = CreateBaseplateTaskPanel(ICONDIR / "baseplate-std.svg")
+        fcg.Control.showDialog(panel)
+        # Explicitly set grid to 2x2 to isolate from MEM defaults
+        panel.baseplate_size__x_grid_count.setValue(2)
+        panel.baseplate_size__y_grid_count.setValue(2)
+        panel.stacking__enabled.setChecked(True)
+        # Explicitly disable screw_stubs to isolate from MEM defaults
+        panel.stacking__screw_stubs__enabled.setChecked(False)
+        panel.accept()
+
+        # Find the support object
+        support_obj = None
+        base_obj = None
+        for obj in self.doc.Objects:
+            if "Support" in obj.Label:
+                support_obj = obj
+            else:
+                base_obj = obj
+
+        self.assertIsNotNone(support_obj)
+        self.assertIsNotNone(base_obj)
+        self.doc.recompute()
+
+        volume_without_stubs = support_obj.Shape.Volume
+        self.assertGreater(volume_without_stubs, 0)
+
+        # Step 2: Edit and enable screw stubs
+        panel2 = CreateBaseplateTaskPanel(ICONDIR / "baseplate-std.svg", target_obj=base_obj)
+        fcg.Control.showDialog(panel2)
+        panel2.stacking__screw_stubs__enabled.setChecked(True)
+        panel2.accept()
+
+        self.doc.recompute()
+        # Support companion needs explicit touch since it depends on base params
+        support_obj.touch()
+        self.doc.recompute()
+        volume_with_stubs = support_obj.Shape.Volume
+
+        # Volume should increase when screw stubs are enabled (more material)
+        self.assertGreater(volume_with_stubs, volume_without_stubs)
+
+        # Lock volume increase ratio to one percent precision
+        # Screw stubs should increase volume by ~3.8%
+        volume_increase_ratio = (volume_with_stubs - volume_without_stubs) / volume_without_stubs
+        # LOCKED INVARIANT: screw stubs add ~3.8% volume
+        self.assertAlmostEqual(volume_increase_ratio, 0.0381, delta=0.01)
 
 
-class TestGridfinitySettingsTaskPanel(TestWithDocument):
-    """Test the Gridfinity default settings dialog."""
+class TestZZGridfinitySettingsTaskPanel(TestWithDocument):
+    """Test the Gridfinity default settings dialog.
+
+    NOTE: Class name starts with 'ZZ' to ensure it runs LAST alphabetically.
+    These tests modify saved plugin defaults (e.g., grid_size) which persist
+    across tests and would affect volume calculations in other tests.
+    """
 
     def test_grid_size_change_persists(self) -> None:
         """Test that changing grid_size in settings dialog persists after reopen."""

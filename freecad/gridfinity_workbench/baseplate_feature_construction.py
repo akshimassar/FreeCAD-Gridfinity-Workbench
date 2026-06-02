@@ -23,7 +23,6 @@ from .param import (
     FundamentalsParamsData,
     JunctionScrewsParams,
     JunctionScrewsParamsData,
-    ScrewStubsParams,
 )
 
 if TYPE_CHECKING:
@@ -45,9 +44,6 @@ _click_springs.load_saved_defaults()
 
 _junction_screws = JunctionScrewsParams()
 _junction_screws.load_saved_defaults()
-
-_screw_stubs = ScrewStubsParams()
-_screw_stubs.load_saved_defaults()
 
 _connecting_clip = ConnectingClipsParams()
 _connecting_clip.load_saved_defaults()

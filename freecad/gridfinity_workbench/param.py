@@ -131,9 +131,12 @@ class SupportParamsData:
 class StackingParamsData:
     """Immutable data container for stacking/instancing parameters."""
 
+    enabled: bool
     instance_count: int
     corner_stitching: bool
     stitching_thickness: fc.Units.Quantity
+    screw_stubs: ScrewStubsParamsData
+    support: SupportParamsData
 
 
 @dataclass(frozen=True)
@@ -144,7 +147,7 @@ class CombinedSupportBaseplateParamsData:
     baseplate_size: BaseplateSizeParamsData
     baseplate_core: BaseplateCoreParamsData
     click_springs: ClickSpringsParamsData
-    support: SupportParamsData
+    stacking: StackingParamsData  # contains support
 
 
 @dataclass(frozen=True)
@@ -156,22 +159,7 @@ class CombinedBaseplateParamsData:
     baseplate_core: BaseplateCoreParamsData
     click_springs: ClickSpringsParamsData
     junction_screws: JunctionScrewsParamsData
-    screw_stubs: ScrewStubsParamsData
-    connecting_clips: ConnectingClipsParamsData
-
-
-@dataclass(frozen=True)
-class CombinedStackedBaseplatesParamsData:
-    """Immutable combined data for stacked baseplates geometry generation."""
-
-    fundamentals: FundamentalsParamsData
-    baseplate_size: BaseplateSizeParamsData
-    baseplate_core: BaseplateCoreParamsData
-    click_springs: ClickSpringsParamsData
-    junction_screws: JunctionScrewsParamsData
-    screw_stubs: ScrewStubsParamsData
-    support: SupportParamsData
-    stacking: StackingParamsData
+    stacking: StackingParamsData  # contains screw_stubs and support
     connecting_clips: ConnectingClipsParamsData
 
 
@@ -575,11 +563,21 @@ class SupportParams(ParameterGroup):
 
 
 class StackingParams(ParameterGroup):
-    """Parameters for stacking/instancing baseplates."""
+    """Parameters for stacking/instancing baseplates.
+
+    Contains nested child groups:
+    - screw_stubs: ScrewStubsParams for screw stub clearance settings
+    - support: SupportParams for overhang angle settings
+    """
 
     def __init__(self, **kwargs) -> None:
-        """Initialize with instance count and stitching settings."""
-        parameters = [
+        """Initialize with enabled flag, instance count, stitching, and child groups."""
+        parameters: list = [
+            BooleanParam(
+                "enabled",
+                "Enabled",
+                default_value=False,
+            ),
             IntParam(
                 "instance_count",
                 "Instance Count",
@@ -597,6 +595,9 @@ class StackingParams(ParameterGroup):
                 fc.Units.Quantity("0.4 mm"),
                 positive_only=True,
             ),
+            # Child groups
+            ScrewStubsParams(),
+            SupportParams(),
         ]
 
         super().__init__(parameters)
@@ -604,10 +605,15 @@ class StackingParams(ParameterGroup):
 
     def data(self) -> StackingParamsData:
         """Return immutable data container."""
+        screw_stubs_group: ScrewStubsParams = self._child_groups["screw_stubs"]  # type: ignore[assignment]
+        support_group: SupportParams = self._child_groups["support"]  # type: ignore[assignment]
         return StackingParamsData(
+            enabled=self.get_value("enabled"),
             instance_count=self.get_value("instance_count"),
             corner_stitching=self.get_value("corner_stitching"),
             stitching_thickness=self.get_value("stitching_thickness"),
+            screw_stubs=screw_stubs_group.data(),
+            support=support_group.data(),
         )
 
 
@@ -616,18 +622,20 @@ class CombinedBaseplateParams(CombinedParams):
 
     def __init__(  # noqa: PLR0913
         self,
-        baseplate_size: BaseplateSizeParams = None,
-        fundamentals: FundamentalsParams = None,
-        baseplate_core: BaseplateCoreParams = None,
-        click_springs: ClickSpringsParams = None,
-        junction_screws: JunctionScrewsParams = None,
-        connecting_clips: ConnectingClipsParams = None,
+        baseplate_size: BaseplateSizeParams | None = None,
+        fundamentals: FundamentalsParams | None = None,
+        baseplate_core: BaseplateCoreParams | None = None,
+        stacking: StackingParams | None = None,
+        click_springs: ClickSpringsParams | None = None,
+        junction_screws: JunctionScrewsParams | None = None,
+        connecting_clips: ConnectingClipsParams | None = None,
     ) -> None:
         """Initialize with all baseplate parameter groups."""
         super().__init__(
             baseplate_size=baseplate_size or BaseplateSizeParams(),
             fundamentals=fundamentals or FundamentalsParams(),
             baseplate_core=baseplate_core or BaseplateCoreParams(),
+            stacking=stacking or StackingParams(),
             click_springs=click_springs or ClickSpringsParams(),
             junction_screws=junction_screws or JunctionScrewsParams(),
             connecting_clips=connecting_clips or ConnectingClipsParams(),
@@ -641,6 +649,8 @@ class CombinedBaseplateParams(CombinedParams):
         core = self.baseplate_core.data()
         click = self.click_springs.data()
         junction = self.junction_screws.data()
+        stacking = self.stacking.data()
+        screw_stubs = stacking.screw_stubs  # nested in stacking
         clip = self.connecting_clips.data()
 
         half_width = float(fundamentals.main_half_width)
@@ -873,6 +883,31 @@ class CombinedBaseplateParams(CombinedParams):
                 )
             )
 
+        # Stacking-specific validation (when stacking is enabled)
+        if stacking.enabled and screw_stubs.enabled:
+            if not junction.enabled:
+                errors.append(
+                    ValidationError(
+                        message="Screw stubs require junction screws",
+                        affected_params=("stacking__screw_stubs__enabled",),
+                    )
+                )
+            if not float(screw_stubs.clearance) >= 0:
+                errors.append(
+                    ValidationError(
+                        message="Screw stub clearance must be >= 0",
+                        affected_params=("stacking__screw_stubs__clearance",),
+                    )
+                )
+            stub_d = float(junction.screw_diameter) - 2 * float(screw_stubs.clearance)
+            if not stub_d > 0:
+                errors.append(
+                    ValidationError(
+                        message="Screw stub clearance is too large",
+                        affected_params=("stacking__screw_stubs__clearance",),
+                    )
+                )
+
         return errors
 
     def data(self) -> CombinedBaseplateParamsData:
@@ -883,7 +918,7 @@ class CombinedBaseplateParams(CombinedParams):
             baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
-            screw_stubs=ScrewStubsParamsData(enabled=False, clearance=fc.Units.Quantity("0.15 mm")),
+            stacking=self.stacking.data(),
             connecting_clips=self.connecting_clips.data(),
         )
 
@@ -893,19 +928,19 @@ class CombinedSupportBaseplateParams(CombinedParams):
 
     def __init__(
         self,
-        fundamentals: FundamentalsParams = None,
-        baseplate_size: BaseplateSizeParams = None,
-        baseplate_core: BaseplateCoreParams = None,
-        click_springs: ClickSpringsParams = None,
-        support: SupportParams = None,
+        fundamentals: FundamentalsParams | None = None,
+        baseplate_size: BaseplateSizeParams | None = None,
+        baseplate_core: BaseplateCoreParams | None = None,
+        click_springs: ClickSpringsParams | None = None,
+        stacking: StackingParams | None = None,
     ) -> None:
-        """Initialize with fundamentals, size, core, click springs, and support."""
+        """Initialize with fundamentals, size, core, click springs, and stacking."""
         super().__init__(
             fundamentals=fundamentals or FundamentalsParams(),
             baseplate_size=baseplate_size or BaseplateSizeParams(),
             baseplate_core=baseplate_core or BaseplateCoreParams(),
             click_springs=click_springs or ClickSpringsParams(),
-            support=support or SupportParams(),
+            stacking=stacking or StackingParams(),
         )
 
     def validate(self) -> list[ValidationError]:
@@ -932,87 +967,7 @@ class CombinedSupportBaseplateParams(CombinedParams):
             baseplate_size=self.baseplate_size.data(),
             baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
-            support=self.support.data(),
-        )
-
-
-class CombinedStackedBaseplatesParams(CombinedParams):
-    """Combined parameters for stacked baseplates geometry generation."""
-
-    def __init__(  # noqa: PLR0913
-        self,
-        baseplate_size: BaseplateSizeParams = None,
-        fundamentals: FundamentalsParams = None,
-        baseplate_core: BaseplateCoreParams = None,
-        click_springs: ClickSpringsParams = None,
-        junction_screws: JunctionScrewsParams = None,
-        screw_stubs: ScrewStubsParams = None,
-        support: SupportParams = None,
-        stacking: StackingParams = None,
-        connecting_clips: ConnectingClipsParams = None,
-    ) -> None:
-        """Initialize with all stacked baseplates parameter groups."""
-        super().__init__(
-            baseplate_size=baseplate_size or BaseplateSizeParams(),
-            fundamentals=fundamentals or FundamentalsParams(),
-            baseplate_core=baseplate_core or BaseplateCoreParams(),
-            click_springs=click_springs or ClickSpringsParams(),
-            junction_screws=junction_screws or JunctionScrewsParams(),
-            screw_stubs=screw_stubs or ScrewStubsParams(),
-            support=support or SupportParams(),
-            stacking=stacking or StackingParams(),
-            connecting_clips=connecting_clips or ConnectingClipsParams(),
-        )
-
-    def validate(self) -> list[ValidationError]:
-        """Validate cross-group constraints."""
-        errors = CombinedBaseplateParams(
-            fundamentals=self.fundamentals,
-            baseplate_size=self.baseplate_size,
-            baseplate_core=self.baseplate_core,
-            click_springs=self.click_springs,
-            junction_screws=self.junction_screws,
-            connecting_clips=self.connecting_clips,
-        ).validate()
-        screw_stubs = self.screw_stubs.data()
-        junction = self.junction_screws.data()
-        if screw_stubs.enabled:
-            if not junction.enabled:
-                errors.append(
-                    ValidationError(
-                        message="Screw stubs require junction screws",
-                        affected_params=("screw_stubs.enabled",),
-                    )
-                )
-            if not float(screw_stubs.clearance) >= 0:
-                errors.append(
-                    ValidationError(
-                        message="Screw stub clearance must be >= 0",
-                        affected_params=("screw_stubs.clearance",),
-                    )
-                )
-            stub_d = float(junction.screw_diameter) - 2 * float(screw_stubs.clearance)
-            if not stub_d > 0:
-                errors.append(
-                    ValidationError(
-                        message="Screw stub clearance is too large",
-                        affected_params=("screw_stubs.clearance",),
-                    )
-                )
-        return errors
-
-    def data(self) -> CombinedStackedBaseplatesParamsData:
-        """Return validated immutable combined data container."""
-        return CombinedStackedBaseplatesParamsData(
-            fundamentals=self.fundamentals.data(),
-            baseplate_size=self.baseplate_size.data(),
-            baseplate_core=self.baseplate_core.data(),
-            click_springs=self.click_springs.data(),
-            junction_screws=self.junction_screws.data(),
-            screw_stubs=self.screw_stubs.data(),
-            support=self.support.data(),
             stacking=self.stacking.data(),
-            connecting_clips=self.connecting_clips.data(),
         )
 
 
@@ -1221,7 +1176,16 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
-            screw_stubs=ScrewStubsParamsData(enabled=False, clearance=fc.Units.Quantity("0.15 mm")),
+            stacking=StackingParamsData(
+                enabled=False,
+                instance_count=1,
+                corner_stitching=False,
+                stitching_thickness=fc.Units.Quantity("0.4 mm"),
+                screw_stubs=ScrewStubsParamsData(
+                    enabled=False, clearance=fc.Units.Quantity("0.15 mm")
+                ),
+                support=SupportParamsData(overhang_angle=fc.Units.Quantity("50 deg")),
+            ),
             connecting_clips=self.connecting_clips.data(),
         )
 

@@ -37,7 +37,6 @@ def get_gridfinity_commands() -> OrderedDict[str, commands.BaseCommand]:
                 ("CreateEcoBin", commands.CreateEcoBin()),
                 ("CreatePartsBin", commands.CreatePartsBin()),
                 ("CreateBaseplate", commands.CreateBaseplate()),
-                ("CreateStackedBaseplates", commands.CreateStackedBaseplates()),
                 ("CreateDrawerBaseplate", commands.CreateDrawerBaseplate()),
                 ("CreateConnectingClip", commands.CreateConnectingClip()),
                 ("CreateCustomBin", commands.DrawBin()),

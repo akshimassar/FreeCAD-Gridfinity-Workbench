@@ -20,7 +20,6 @@ from . import feature_construction as feat
 from .param import (
     CombinedBaseplateParams,
     CombinedBaseplateParamsData,
-    CombinedStackedBaseplatesParamsData,
     CombinedSupportBaseplateParamsData,
 )
 
@@ -115,7 +114,7 @@ def _shape_cache_get_or_build(key: str, build_fn: Callable[[], Part.Shape]) -> P
 
 
 def build_baseplate_support_cached(
-    params: CombinedStackedBaseplatesParamsData | CombinedSupportBaseplateParamsData,
+    params: CombinedBaseplateParamsData | CombinedSupportBaseplateParamsData,
     layout: GridfinityLayout,
 ) -> Part.Shape:
     """Build baseplate top support with caching."""

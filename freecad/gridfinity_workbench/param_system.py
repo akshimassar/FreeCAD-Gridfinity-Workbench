@@ -58,9 +58,12 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, runtime_checkable
 
 import FreeCAD as fc  # noqa: N813
+
+# Separator used between group levels in property names, UI control keys, and validation errors.
+SEPARATOR = "__"
 
 # Type alias for parameter values - using Any to avoid strict type narrowing
 # since parameter values can be bool, int, float, str, or fc.Units.Quantity
@@ -125,6 +128,130 @@ def map_errors_to_compound_params(
         else:
             result[param_key] = message
     return result
+
+
+@runtime_checkable
+class GroupMember(Protocol):
+    """Protocol for ParameterGroup and its subclasses enabling nesting.
+
+    This protocol defines the interface that ParameterGroup implements,
+    allowing ParameterGroup instances to be nested within other ParameterGroups.
+
+    Key capabilities:
+    - FreeCAD property integration (add/read/write)
+    - Value management (get/set values and defaults)
+    - Validation
+    - UI generation
+    - Default persistence
+    - Data export to frozen dataclass
+
+    All naming uses SEPARATOR ("__") between group levels:
+    - FreeCAD property: "stacking__screw_stubs__enabled"
+    - UI control key: "stacking__screw_stubs__enabled"
+    - Validation error: "stacking__screw_stubs__enabled"
+
+    The `prefix` parameter accumulates as we recurse into nested groups.
+    Root-level groups receive empty prefix.
+
+    Note: BaseParam and ParamCombination do NOT implement this protocol.
+    They are internal building blocks used by ParameterGroup.
+    """
+
+    @property
+    def name(self) -> str:
+        """Unique identifier within parent (snake_case, e.g., 'screw_stubs')."""
+        ...
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable label for UI."""
+        ...
+
+    # --- FreeCAD Integration ---
+
+    def add_to_object(self, obj: fc.DocumentObject, prefix: str = "") -> None:
+        """Create FreeCAD properties on object.
+
+        Property names: {prefix}{name} for leaf params,
+        {prefix}{name}{SEPARATOR}{child} for nested groups.
+        """
+        ...
+
+    def read_from_object(self, obj: fc.DocumentObject, prefix: str = "") -> None:
+        """Read values from FreeCAD object into internal state."""
+        ...
+
+    def write_to_object(self, obj: fc.DocumentObject, prefix: str = "") -> None:
+        """Write current values to FreeCAD object."""
+        ...
+
+    # --- Value Management ---
+
+    def get_values(self) -> dict[str, ParamValue]:
+        """Get all current values as flat dict.
+
+        Keys are relative names (no prefix). For nested groups,
+        keys use SEPARATOR: {"enabled": True, "screw_stubs__enabled": True}.
+        """
+        ...
+
+    def set_values(self, values: dict[str, ParamValue]) -> None:
+        """Set values from flat dict."""
+        ...
+
+    def get_defaults(self) -> dict[str, ParamValue]:
+        """Get default values as flat dict."""
+        ...
+
+    # --- Validation ---
+
+    def validate(self) -> list[ValidationError]:
+        """Validate current values.
+
+        Error param keys are relative (no prefix). Parent groups
+        will add their prefix when aggregating errors.
+        """
+        ...
+
+    # --- UI ---
+
+    def build_ui(self, prefix: str = "") -> tuple[dict[str, object], object | None]:
+        """Build UI controls.
+
+        Returns (controls_dict, container_widget).
+        Control dict keys: {prefix}{name} for leaf params,
+        {prefix}{name}{SEPARATOR}{child} for nested.
+        """
+        ...
+
+    def read_from_ui(self, controls: dict[str, object], prefix: str = "") -> None:
+        """Extract values from UI controls into internal state."""
+        ...
+
+    def connect_signals(
+        self,
+        controls: dict[str, object],
+        prefix: str,
+        callback: Callable[[], None],
+    ) -> None:
+        """Connect UI control signals to callback."""
+        ...
+
+    # --- Default Persistence ---
+
+    def save_defaults(self, prefix: str = "") -> None:
+        """Persist current values as defaults."""
+        ...
+
+    def load_defaults(self, prefix: str = "") -> None:
+        """Load persisted defaults into current values."""
+        ...
+
+    # --- Data Export ---
+
+    def data(self) -> object:
+        """Return frozen dataclass with current values."""
+        ...
 
 
 @dataclass
@@ -269,6 +396,18 @@ class ParamDefaultResolver:
         key = self._make_key(group_name, param_name)
         self._runtime_cache[key] = value
 
+    def reset_to_factory_defaults(self) -> None:
+        """Reset all saved and runtime defaults to factory values.
+
+        Clears all persisted FreeCAD preferences for GridfinityWorkbench
+        and the runtime cache. Used internally for testing.
+        """
+        # Clear FreeCAD prefs for GridfinityWorkbench
+        parent_path = "User parameter:BaseApp/Preferences/Mod"
+        fc.ParamGet(parent_path).RemGroup("GridfinityWorkbench")
+        # Clear runtime cache
+        self._runtime_cache.clear()
+
 
 # Global resolver instance
 default_resolver = ParamDefaultResolver()
@@ -313,7 +452,7 @@ class BaseParam:
         """Generate canonical prefixed snake_case property name."""
         group_name = group_class_name.replace("Params", "")
         group_snake = re.sub(r"(?<!^)(?=[A-Z])", "_", group_name).lower()
-        return f"{group_snake}_{self.name}"
+        return f"{group_snake}{SEPARATOR}{self.name}"
 
     def default(self) -> ParamValue:
         """Return the actual default value."""
@@ -1037,21 +1176,36 @@ class ParameterGroup(ABC):
 
     # Subclasses override to change default resolution strategy for all params
     _default_type: DefaultType = DefaultType.VALUE
+    _group_name: str  # Set in __init__ via _compute_group_name()
 
     def __init__(
         self,
-        parameters: Sequence[BaseParam | ParamCombination] | None = None,
+        parameters: Sequence[BaseParam | ParamCombination | ParameterGroup] | None = None,
         resolver: ParamDefaultResolver | None = None,
     ) -> None:
-        """Initialize a parameter group with optional parameters and resolver."""
+        """Initialize a parameter group with optional parameters and resolver.
+
+        Args:
+            parameters: List of BaseParam, ParamCombination, or child ParameterGroup.
+                        Order is preserved for UI rendering.
+            resolver: Optional resolver for default values.
+
+        """
         # Expand ParamCombination instances into their underlying params
         expanded_params: list[BaseParam] = []
         self._compound_params: dict[str, ParamCombination] = {}
-        # Track UI order: list of param names (compound params use their base name)
+        # Child ParameterGroup instances keyed by their group_name
+        self._child_groups: dict[str, ParameterGroup] = {}
+        # Track UI order: list of param names or child group names
         self._ui_order: list[str] = []
 
         for param in parameters or []:
-            if isinstance(param, ParamCombination):
+            if isinstance(param, ParameterGroup):
+                # Child group - store by its group_name
+                child_key = param._group_name  # noqa: SLF001
+                self._child_groups[child_key] = param
+                self._ui_order.append(child_key)
+            elif isinstance(param, ParamCombination):
                 self._compound_params[param.name] = param
                 self._ui_order.append(param.name)
                 expanded_params.extend(param.expand())
@@ -1079,28 +1233,45 @@ class ParameterGroup(ABC):
             # Add the method to the class
             setattr(self.__class__, method_name, make_getter(param_name))
 
-    def add_properties_to_object(self, obj: fc.DocumentObject) -> None:
-        """Automatically add all parameter properties to the FreeCAD object."""
+    def _collect_properties(self, prefix: str = "") -> list[tuple[str, ParamValue, BaseParam, str]]:
+        """Recursively collect all properties with full prefixed names.
+
+        Args:
+            prefix: External prefix from parent group (empty for root).
+
+        Returns:
+            List of (property_name, value, param, category) tuples.
+
+        """
+        my_prefix = f"{prefix}{self._group_name}{SEPARATOR}"
+        result: list[tuple[str, ParamValue, BaseParam, str]] = []
+
+        # Own params
         for param_name, param in self._parameters.items():
+            prop_name = f"{my_prefix}{param.name}"
             value = self.get_value(param_name)
+            result.append((prop_name, value, param, self.category))
 
-            # Use provided property name or generate one based on group and parameter names
-            property_name = self._property_name(param)
+        # Child groups recurse
+        for child in self._child_groups.values():
+            result.extend(child._collect_properties(my_prefix))  # noqa: SLF001
 
-            # Add the property to the object using the parameter's defined property type and name
+        return result
+
+    def add_properties_to_object(self, obj: fc.DocumentObject) -> None:
+        """Add all parameter properties to the FreeCAD object."""
+        for prop_name, value, param, category in self._collect_properties():
             obj.addProperty(
                 param.freecad_property_type,
-                property_name,
-                self.category,
+                prop_name,
+                category,
                 param.description or f"{param.display_name} parameter",
             )
 
             # For LayoutParam, convert list to JSON string
-            if isinstance(param, LayoutParam):
-                value = param.to_json(value)
+            actual_value = param.to_json(value) if isinstance(param, LayoutParam) else value
 
-            # Set the value appropriately based on property type
-            setattr(obj, property_name, value)
+            setattr(obj, prop_name, actual_value)
 
     def get_value(self, param_name: str) -> ParamValue:
         """Get value for a specific parameter, handling default resolution."""
@@ -1147,48 +1318,113 @@ class ParameterGroup(ABC):
             self._values[param_name] = value
 
     def set_all_values(self, values: dict[str, ParamValue]) -> None:
-        """Set multiple parameter values at once."""
+        """Set multiple parameter values at once (local names only)."""
         for param_name, value in values.items():
             self.set_value(param_name, value)
 
+    def get_values(self) -> dict[str, ParamValue]:
+        """Get all current values as flat dict with relative keys.
+
+        Keys use SEPARATOR for nested groups:
+        {"enabled": True, "screw_stubs__enabled": True}
+        """
+        result: dict[str, ParamValue] = {}
+
+        # Own params (no prefix needed at root level)
+        for param_name in self._parameters:
+            result[param_name] = self.get_value(param_name)
+
+        # Child groups with their group_name as prefix
+        for child_key, child in self._child_groups.items():
+            child_values = child.get_values()
+            for key, value in child_values.items():
+                result[f"{child_key}{SEPARATOR}{key}"] = value
+
+        return result
+
+    def set_values(self, values: dict[str, ParamValue]) -> None:
+        """Set values from flat dict with relative keys."""
+        for key, value in values.items():
+            if SEPARATOR in key:
+                # Nested: split into child group and remaining key
+                child_key, rest = key.split(SEPARATOR, 1)
+                if child_key in self._child_groups:
+                    self._child_groups[child_key].set_values({rest: value})
+            elif key in self._parameters:
+                self.set_value(key, value)
+
+    def get_defaults(self) -> dict[str, ParamValue]:
+        """Get default values as flat dict with relative keys."""
+        result: dict[str, ParamValue] = {}
+
+        for param_name, param in self._parameters.items():
+            result[param_name] = param.default()
+
+        for child_key, child in self._child_groups.items():
+            child_defaults = child.get_defaults()
+            for key, value in child_defaults.items():
+                result[f"{child_key}{SEPARATOR}{key}"] = value
+
+        return result
+
+    def _collect_property_mappings(
+        self, prefix: str = ""
+    ) -> list[tuple[str, str, BaseParam, ParameterGroup]]:
+        """Collect property name to internal path mappings for reading/writing.
+
+        Args:
+            prefix: External prefix from parent group (empty for root).
+
+        Returns:
+            List of (property_name, param_name, param, owner_group) tuples.
+            param_name is the local name within owner_group.
+
+        """
+        my_prefix = f"{prefix}{self._group_name}{SEPARATOR}"
+        result: list[tuple[str, str, BaseParam, ParameterGroup]] = []
+
+        for param_name, param in self._parameters.items():
+            prop_name = f"{my_prefix}{param.name}"
+            result.append((prop_name, param_name, param, self))
+
+        for child in self._child_groups.values():
+            result.extend(child._collect_property_mappings(my_prefix))  # noqa: SLF001
+
+        return result
+
     def from_obj(self, obj: fc.DocumentObject) -> ParameterGroup:
         """Extract parameters from FreeCAD object using direct property mapping."""
-        values = {}
-
-        # Iterate through all parameters to extract from object using direct property mapping
-        for param_name, param in self._parameters.items():
-            # Use the direct property name mapping
-            obj_property_name = self._property_name(param)
-            if hasattr(obj, obj_property_name):
-                value = getattr(obj, obj_property_name)
-                # For LayoutParam, convert JSON string to list
+        # Read all properties including from child groups
+        for prop_name, param_name, param, owner in self._collect_property_mappings():
+            if hasattr(obj, prop_name):
+                value = getattr(obj, prop_name)
                 if isinstance(param, LayoutParam):
                     value = param.from_json(value)
-                values[param_name] = value
+                owner._values[param_name] = value  # noqa: SLF001
 
-        # Create new instance with extracted values
-        new_group = self.__class__()
-        new_group.set_all_values(values)
-        # Preserve error displays if they exist (for UI error rendering)
-        if hasattr(self, "_error_displays"):
-            new_group._error_displays = self._error_displays  # noqa: SLF001
-        return new_group
+        return self
 
     def to_obj(self, obj: fc.DocumentObject) -> None:
         """Apply parameters to FreeCAD object and update MEM defaults."""
-        for param_name, param in self._parameters.items():
-            obj_property_name = self._property_name(param)
-            if hasattr(obj, obj_property_name):
-                value = self.get_value(param_name)
-                # For LayoutParam, convert list to JSON string
+        for prop_name, param_name, param, owner in self._collect_property_mappings():
+            if hasattr(obj, prop_name):
+                value = owner.get_value(param_name)
                 if isinstance(param, LayoutParam):
                     value = param.to_json(value)
-                setattr(obj, obj_property_name, value)
-        # Update MEM defaults if this group uses MEM default_type
+                setattr(obj, prop_name, value)
+
+        # Update MEM defaults for this group and children
+        self._update_mem_defaults()
+
+    def _update_mem_defaults(self) -> None:
+        """Update MEM defaults for this group and all child groups."""
         if self._default_type == DefaultType.MEM:
             for param_name in self._parameters:
                 value = self.get_value(param_name)
                 self._resolver.set_runtime(self._group_name, param_name, value)
+
+        for child in self._child_groups.values():
+            child._update_mem_defaults()  # noqa: SLF001
 
     def save_as_defaults(self) -> None:
         """Save current values as SAVED defaults (for Edit Defaults command)."""
@@ -1211,7 +1447,11 @@ class ParameterGroup(ABC):
         return self
 
     def _property_name(self, param: BaseParam) -> str:
-        return param.property_name_for_group(self.__class__.__name__)
+        """Generate property name for a parameter (no nesting support).
+
+        For nested groups, use _collect_properties() instead.
+        """
+        return f"{self._group_name}{SEPARATOR}{param.name}"
 
     def _compute_group_name(self) -> str:
         """Return canonical group key generated from class name."""
@@ -1244,14 +1484,16 @@ class ParameterGroup(ABC):
         return re.sub(r"(?<!^)(?=[A-Z])", " ", base)
 
     def validate(self) -> list[ValidationError]:
-        """Validate all parameters in this group.
+        """Validate all parameters in this group and child groups.
 
         Returns:
-            List of ValidationError instances. Each error specifies the message
-            and which parameters it affects.
+            List of ValidationError instances. Param keys are relative with
+            SEPARATOR for nested groups (e.g., "screw_stubs__enabled").
 
         """
         errors: list[ValidationError] = []
+
+        # Validate own params
         for param_name, param in self._parameters.items():
             value = self.get_value(param_name)
             if not param.validate(value):
@@ -1261,6 +1503,14 @@ class ParameterGroup(ABC):
                         affected_params=(param_name,),
                     )
                 )
+
+        # Validate child groups and prefix their error keys
+        for child_key, child in self._child_groups.items():
+            child_errors = child.validate()
+            for err in child_errors:
+                prefixed_params = tuple(f"{child_key}{SEPARATOR}{p}" for p in err.affected_params)
+                errors.append(ValidationError(message=err.message, affected_params=prefixed_params))
+
         return errors
 
     def to_ui_payload(self) -> dict[str, Any]:
@@ -1273,6 +1523,13 @@ class ParameterGroup(ABC):
     def from_ui_payload(self, payload: dict[str, Any]) -> None:
         """Apply UI payload values to this parameter group."""
         for param_name, ui_value in payload.items():
+            # Handle prefixed child group params (e.g., "screw_stubs__enabled")
+            if SEPARATOR in param_name:
+                child_key, rest = param_name.split(SEPARATOR, 1)
+                if child_key in self._child_groups:
+                    self._child_groups[child_key].from_ui_payload({rest: ui_value})
+                continue
+
             if param_name not in self._parameters:
                 continue
             param = self._parameters[param_name]
@@ -1284,7 +1541,16 @@ class ParameterGroup(ABC):
         group_name = self.__class__.__name__.replace("Params", "").lower()
 
         for name in self._ui_order:
-            if name in self._compound_params:
+            if name in self._child_groups:
+                # Child group - will be rendered as nested UI
+                child = self._child_groups[name]
+                descriptors[name] = UIField(
+                    control_type="group",
+                    label=child.section_title,
+                    param_name=name,
+                    group=group_name,
+                )
+            elif name in self._compound_params:
                 # Compound param
                 cp = self._compound_params[name]
                 descriptors[name] = UIField(
@@ -1399,12 +1665,27 @@ class ParameterGroup(ABC):
             # Fallback if GUI is not available
             return {}
 
-        controls = {}
+        controls: dict[str, object] = {}
 
         # Get UI descriptors from the parameter group
         ui_descriptors = self.ui_descriptors()
 
         for param_name, ui_field in ui_descriptors.items():
+            # Handle child groups - recursively build their UI
+            if ui_field.control_type == "group":
+                child_group = self._child_groups[param_name]
+                # build_ui returns (controls_dict, widget) - store as tuple
+                child_result = child_group.build_ui(
+                    layout=None,
+                    section_title=child_group.section_title,
+                )
+                child_controls, child_widget = child_result
+                controls[param_name] = child_result
+                # Also flatten child controls with prefixed keys for attribute access
+                for child_key, child_control in child_controls.items():
+                    controls[f"{param_name}{SEPARATOR}{child_key}"] = child_control
+                continue
+
             # Handle compound params specially
             if ui_field.control_type == "compound":
                 cp = self._compound_params[param_name]
@@ -1503,7 +1784,7 @@ class ParameterGroup(ABC):
 
         return controls
 
-    def update_from_ui_controls(self, controls: dict[str, Any]) -> None:  # noqa: C901
+    def update_from_ui_controls(self, controls: dict[str, Any]) -> None:  # noqa: C901, PLR0912
         """Update parameter values from UI controls.
 
         Args:
@@ -1522,6 +1803,12 @@ class ParameterGroup(ABC):
             return
 
         for param_name, control in controls.items():
+            # Handle child groups - control is a tuple (child_controls, widget)
+            if param_name in self._child_groups:
+                child_controls, _ = control
+                self._child_groups[param_name].update_from_ui_controls(child_controls)
+                continue
+
             # Handle compound params specially
             if param_name in self._compound_params:
                 cp = self._compound_params[param_name]
@@ -1603,7 +1890,7 @@ class ParameterGroup(ABC):
         ui_descriptors: dict[str, UIField],
     ) -> None:
         """Build UI with collapsible section for params after 'enabled'."""
-        from PySide.QtWidgets import QFormLayout, QWidget
+        from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget
 
         from freecad.gridfinity_workbench.widgets import CollapsibleSection
 
@@ -1618,13 +1905,30 @@ class ParameterGroup(ABC):
         # Build collapsible section for remaining params
         collapsible = CollapsibleSection("Options...")
         rest_widget = QWidget()
-        rest_form = QFormLayout(rest_widget)
+        rest_layout = QVBoxLayout(rest_widget)
+        rest_form = QFormLayout()
 
         for param_name, control in controls.items():
             if param_name == "enabled" or param_name not in ui_descriptors:
                 continue
-            field_container = self._build_field_container(param_name, control)
-            rest_form.addRow(ui_descriptors[param_name].label, field_container)
+            ui_field = ui_descriptors[param_name]
+
+            # Child groups are stored as (child_controls, widget) tuple
+            if ui_field.control_type == "group":
+                # Add form layout collected so far, then add child widget
+                if rest_form.rowCount() > 0:
+                    rest_layout.addLayout(rest_form)
+                    rest_form = QFormLayout()
+                child_widget: QWidget | None = control[1]  # type: ignore[index]
+                if child_widget is not None:
+                    rest_layout.addWidget(child_widget)
+            else:
+                field_container = self._build_field_container(param_name, control)
+                rest_form.addRow(ui_field.label, field_container)
+
+        # Add remaining form items
+        if rest_form.rowCount() > 0:
+            rest_layout.addLayout(rest_form)
 
         collapsible.set_content(rest_widget)
         # Always start collapsed on dialog open
@@ -1649,10 +1953,24 @@ class ParameterGroup(ABC):
         for param_name, control in controls.items():
             if param_name not in ui_descriptors:
                 continue
-            field_container = self._build_field_container(param_name, control)
-            form_layout.addRow(ui_descriptors[param_name].label, field_container)
+            ui_field = ui_descriptors[param_name]
 
-        container_layout.addLayout(form_layout)
+            # Child groups are stored as (child_controls, widget) tuple
+            if ui_field.control_type == "group":
+                # Add form layout collected so far, then add child widget
+                if form_layout.rowCount() > 0:
+                    container_layout.addLayout(form_layout)
+                    form_layout = QFormLayout()
+                child_widget: QWidget | None = control[1]  # type: ignore[index]
+                if child_widget is not None:
+                    container_layout.addWidget(child_widget)
+            else:
+                field_container = self._build_field_container(param_name, control)
+                form_layout.addRow(ui_field.label, field_container)
+
+        # Add remaining form items
+        if form_layout.rowCount() > 0:
+            container_layout.addLayout(form_layout)
 
     def build_ui(
         self,
@@ -1705,7 +2023,7 @@ class ParameterGroup(ABC):
 
         return controls, group_box
 
-    def render_errors(
+    def render_errors(  # noqa: C901, PLR0912
         self,
         errors: list[ValidationError],
         warnings: dict[str, str] | None = None,
@@ -1727,13 +2045,40 @@ class ParameterGroup(ABC):
         warnings = warnings or {}
         warning_displays = getattr(self, "_warning_displays", {})
 
+        # Separate errors for child groups vs own params
+        child_errors: dict[str, list[ValidationError]] = {k: [] for k in self._child_groups}
+        own_errors: list[ValidationError] = []
+
+        for err in errors:
+            routed = False
+            for param in err.affected_params:
+                if SEPARATOR in param:
+                    prefix, rest = param.split(SEPARATOR, 1)
+                    if prefix in self._child_groups:
+                        # Create new error with unprefixed param names for child
+                        unprefixed_params = tuple(
+                            p.split(SEPARATOR, 1)[1] if p.startswith(f"{prefix}{SEPARATOR}") else p
+                            for p in err.affected_params
+                        )
+                        child_errors[prefix].append(
+                            ValidationError(message=err.message, affected_params=unprefixed_params)
+                        )
+                        routed = True
+                        break
+            if not routed:
+                own_errors.append(err)
+
+        # Route errors to child groups
+        for child_key, child_group in self._child_groups.items():
+            child_group.render_errors(child_errors[child_key])
+
         # Build mapping from expanded param names to compound param names
         expanded_to_compound: dict[str, str] = {}
         for cp_name, cp in self._compound_params.items():
             for expanded_name in cp.expanded_names():
                 expanded_to_compound[expanded_name] = cp_name
 
-        error_dict = validation_errors_to_dict(errors)
+        error_dict = validation_errors_to_dict(own_errors)
         compound_errors = map_errors_to_compound_params(error_dict, expanded_to_compound)
 
         for param_name, error_display in self._error_displays.items():
@@ -1842,7 +2187,7 @@ class ParameterValidationError(Exception):
         )
 
 
-ControlType = Literal["spinbox", "checkbox", "combo", "textbox", "button", "compound"]
+ControlType = Literal["spinbox", "checkbox", "combo", "textbox", "button", "compound", "group"]
 
 
 class UIField:
@@ -2073,39 +2418,66 @@ class CombinedParams:
             payload[group_name] = group_payload
         self.from_ui_payload(payload)
 
-    def update_from_ui_owner(self, owner: object) -> None:  # noqa: C901
+    def _read_group_from_ui_owner(  # noqa: C901
+        self, owner: object, group: ParameterGroup, prefix: str
+    ) -> dict[str, ParamValue]:
+        """Recursively read parameter values from UI owner attributes.
+
+        Args:
+            owner: Object with UI control attributes.
+            group: ParameterGroup to read values for.
+            prefix: Attribute prefix (e.g., "stacking__" for nested groups).
+
+        Returns:
+            Dict mapping param names to values (includes prefixed child params).
+
+        """
+        group_payload: dict[str, ParamValue] = {}
+
+        # Handle compound params first
+        if hasattr(group, "_compound_params"):
+            for cp_name, cp in group._compound_params.items():  # noqa: SLF001
+                control = getattr(owner, f"{prefix}{cp_name}", None)
+                if control is not None:
+                    values = cp.read_control(control)
+                    group_payload.update(values)
+
+        # Handle regular params
+        for param_name, param in group._parameters.items():  # noqa: SLF001
+            if param_name in group_payload:
+                continue  # Already handled by compound param
+            control = getattr(owner, f"{prefix}{param_name}", None)
+            if control is None:
+                continue
+            # Check for layout_value property first (QPushButton for LayoutParam)
+            if isinstance(param, LayoutParam) and hasattr(control, "property"):
+                layout_val = control.property("layout_value")
+                group_payload[param_name] = layout_val  # Can be None
+            elif type(control).__name__ == "QCheckBox":
+                group_payload[param_name] = control.isChecked()
+            elif type(control).__name__ == "QComboBox":
+                group_payload[param_name] = control.currentText()
+            elif hasattr(control, "value"):
+                group_payload[param_name] = control.value()
+
+        # Recursively handle child groups
+        for child_key, child_group in group._child_groups.items():  # noqa: SLF001
+            child_prefix = f"{prefix}{child_key}{SEPARATOR}"
+            child_payload = self._read_group_from_ui_owner(owner, child_group, child_prefix)
+            # Add child values with prefixed keys
+            for child_param, value in child_payload.items():
+                group_payload[f"{child_key}{SEPARATOR}{child_param}"] = value
+
+        return group_payload
+
+    def update_from_ui_owner(self, owner: object) -> None:
         """Update parameters from UI owner attributes keyed as `group__param`."""
         payload: dict[str, dict[str, ParamValue]] = {}
         for group_name, group in self._param_groups.items():
             if not hasattr(group, "_parameters"):
                 continue
-            group_payload: dict[str, ParamValue] = {}
-
-            # Handle compound params first
-            if hasattr(group, "_compound_params"):
-                for cp_name, cp in group._compound_params.items():  # noqa: SLF001
-                    control = getattr(owner, f"{group_name}__{cp_name}", None)
-                    if control is not None:
-                        values = cp.read_control(control)
-                        group_payload.update(values)
-
-            # Handle regular params
-            for param_name, param in group._parameters.items():  # noqa: SLF001
-                if param_name in group_payload:
-                    continue  # Already handled by compound param
-                control = getattr(owner, f"{group_name}__{param_name}", None)
-                if control is None:
-                    continue
-                # Check for layout_value property first (QPushButton for LayoutParam)
-                if isinstance(param, LayoutParam) and hasattr(control, "property"):
-                    layout_val = control.property("layout_value")
-                    group_payload[param_name] = layout_val  # Can be None
-                elif type(control).__name__ == "QCheckBox":
-                    group_payload[param_name] = control.isChecked()
-                elif type(control).__name__ == "QComboBox":
-                    group_payload[param_name] = control.currentText()
-                elif hasattr(control, "value"):
-                    group_payload[param_name] = control.value()
+            prefix = f"{group_name}{SEPARATOR}"
+            group_payload = self._read_group_from_ui_owner(owner, group, prefix)
             payload[group_name] = group_payload
         self.from_ui_payload(payload)
 
@@ -2417,7 +2789,6 @@ class ParamSystemRouter:
     Supported object types:
     - ConnectingClip -> CombinedConnectingClipsParams
     - Baseplate -> CombinedBaseplateParams
-    - StackedBaseplates -> CombinedStackedBaseplatesParams
     - Default fallback -> FundamentalsParams
 
     """
@@ -2428,7 +2799,6 @@ class ParamSystemRouter:
         from .param import (
             CombinedBaseplateParams,
             CombinedConnectingClipsParams,
-            CombinedStackedBaseplatesParams,
             FundamentalsParams,
         )
 
@@ -2441,8 +2811,6 @@ class ParamSystemRouter:
                 return CombinedConnectingClipsParams().from_obj(obj)
             if class_name == "Baseplate":
                 return CombinedBaseplateParams().from_obj(obj)
-            if class_name == "StackedBaseplates":
-                return CombinedStackedBaseplatesParams().from_obj(obj)
 
         # Default fallback - return fundamentals
         return FundamentalsParams().from_obj(obj)

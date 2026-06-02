@@ -39,7 +39,6 @@ from .param import (
     CombinedBaseplateParams,
     CombinedConnectingClipsParams,
     CombinedDrawerBaseplateParams,
-    CombinedStackedBaseplatesParams,
     CombinedSupportBaseplateParams,
 )
 from .version import __version__
@@ -365,6 +364,14 @@ class Baseplate(FoundationGridfinity):
         super().__init__(obj)
         CombinedBaseplateParams().add_all_properties_to_object(obj)
 
+        # Additional runtime property not part of param system
+        obj.addProperty(
+            "App::PropertyBool",
+            "PreviewBuildMode",
+            "ShouldBeHidden",
+            "Internal flag for simplified interactive preview build",
+        ).PreviewBuildMode = False
+
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         params = CombinedBaseplateParams().from_obj(obj)
         data = params.data()
@@ -378,6 +385,19 @@ class Baseplate(FoundationGridfinity):
             include_clip_cutouts=data.connecting_clips.enabled,
             include_snap_springs=data.click_springs.enabled,
         )
+
+        # When stacking is enabled, build stacked baseplates
+        if data.stacking.enabled:
+            # In preview mode, just show a single baseplate for speed
+            if bool(getattr(obj, "PreviewBuildMode", False)):
+                return baseplate_builder.build_simple_baseplate_from_params(
+                    data,
+                    layout,
+                    options,
+                    preview=False,
+                )
+            return _build_stacked_baseplates_shape(obj)
+
         return baseplate_builder.build_simple_baseplate_from_params(
             data,
             layout,
@@ -569,61 +589,20 @@ class SupportBaseplate(FoundationGridfinity):
         return baseplate_builder.build_baseplate_support_cached(data, layout)
 
 
-class StackedBaseplates(FoundationGridfinity):
-    """Stacked baseplates for printing.
+class BaseplateSupport(FoundationGridfinity):
+    """Support layer for stacked baseplates."""
 
-    Uses the same geometry backend as SupportBaseplate.
-    """
-
-    def __init__(self, obj: fc.DocumentObject) -> None:
-        super().__init__(obj)
-        CombinedStackedBaseplatesParams().add_all_properties_to_object(obj)
-
-        # Additional runtime property not part of param system
-        obj.addProperty(
-            "App::PropertyBool",
-            "PreviewBuildMode",
-            "ShouldBeHidden",
-            "Internal flag for simplified interactive preview build",
-        ).PreviewBuildMode = False
-
-    def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        if bool(getattr(obj, "PreviewBuildMode", False)):
-            params = CombinedStackedBaseplatesParams().from_obj(obj)
-            data = params.data()
-            layout = [
-                [True] * data.baseplate_size.y_grid_count
-                for _ in range(data.baseplate_size.x_grid_count)
-            ]
-            options = baseplate_builder.BaseplateBuildOptions(
-                include_junction_screws=data.junction_screws.enabled,
-                include_clip_cutouts=data.connecting_clips.enabled,
-                include_snap_springs=data.click_springs.enabled,
-            )
-            # Use baseplate-only data for the builder
-            baseplate_data = CombinedBaseplateParams().from_obj(obj).data()
-            return baseplate_builder.build_simple_baseplate_from_params(
-                baseplate_data,
-                layout,
-                options,
-                preview=False,
-            )
-
-        return _build_stacked_baseplates_shape(obj)
-
-
-class StackedBaseplatesSupport(FoundationGridfinity):
     def __init__(self, obj: fc.DocumentObject, source_obj: fc.DocumentObject | None = None) -> None:
         super().__init__(obj)
         obj.addProperty(
             "App::PropertyLink",
-            "SourceStackedBaseplates",
+            "SourceBaseplate",
             "Base",
-            "Primary stacked baseplates object linked to this support object.",
-        ).SourceStackedBaseplates = source_obj
+            "Primary baseplate object linked to this support object.",
+        ).SourceBaseplate = source_obj
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        source = getattr(obj, "SourceStackedBaseplates", None)
+        source = getattr(obj, "SourceBaseplate", None)
         if source is None:
             return Part.Shape()
         return _build_stacked_support_shape(source)
@@ -631,7 +610,7 @@ class StackedBaseplatesSupport(FoundationGridfinity):
 
 def _stacked_support_prototype(obj: fc.DocumentObject) -> Part.Shape:
     """Build a single support layer for stacked baseplates."""
-    params = CombinedStackedBaseplatesParams().from_obj(obj)
+    params = CombinedBaseplateParams().from_obj(obj)
     data = params.data()
     layout = [
         [True] * data.baseplate_size.y_grid_count for _ in range(data.baseplate_size.x_grid_count)
@@ -643,7 +622,7 @@ def _build_corner_stitching_shape(
     obj: fc.DocumentObject,
     baseplates_bbox: object,  # Part.BoundBox
 ) -> Part.Shape | None:
-    params = CombinedStackedBaseplatesParams().from_obj(obj)
+    params = CombinedBaseplateParams().from_obj(obj)
     data = params.data()
     stitching_thickness = float(data.stacking.stitching_thickness)
     if not data.stacking.corner_stitching or stitching_thickness <= 0:
@@ -723,7 +702,7 @@ def _build_corner_stitching_shape(
 
 def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
     # Build a single baseplate using params
-    params = CombinedStackedBaseplatesParams().from_obj(obj)
+    params = CombinedBaseplateParams().from_obj(obj)
     data = params.data()
     layout = [
         [True] * data.baseplate_size.y_grid_count for _ in range(data.baseplate_size.x_grid_count)
@@ -733,9 +712,8 @@ def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
         include_clip_cutouts=data.connecting_clips.enabled,
         include_snap_springs=data.click_springs.enabled,
     )
-    baseplate_data = CombinedBaseplateParams().from_obj(obj).data()
     baseplate_shape = baseplate_builder.build_simple_baseplate_from_params(
-        baseplate_data,
+        data,
         layout,
         options,
         preview=False,
@@ -764,7 +742,7 @@ def _build_stacked_baseplates_shape(obj: fc.DocumentObject) -> Part.Shape:
 
 
 def _build_stacked_support_shape(obj: fc.DocumentObject) -> Part.Shape:
-    params = CombinedStackedBaseplatesParams().from_obj(obj)
+    params = CombinedBaseplateParams().from_obj(obj)
     data = params.data()
     support_shape = _stacked_support_prototype(obj)
     instance_count = max(1, data.stacking.instance_count)
