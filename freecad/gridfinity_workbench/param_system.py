@@ -550,6 +550,8 @@ class FloatParam(BaseParam):
         freecad_property_type: str = "App::PropertyLength",  # Default to Length for measurements
         description: str = "",
         positive_only: bool = False,  # noqa: FBT001, FBT002 - Whether this param should be positive
+        tooltip_icon: str
+        | None = None,  # Icon filename for tooltip (e.g., "tooltip-half-width.svg")
     ) -> None:
         """Initialize a float/quantity parameter with optional bounds."""
         super().__init__(
@@ -562,6 +564,7 @@ class FloatParam(BaseParam):
         self.min_value = min_value
         self.max_value = max_value
         self.positive_only = positive_only
+        self.tooltip_icon = tooltip_icon
 
     def default(self) -> fc.Units.Quantity:
         """Return the default quantity value."""
@@ -1851,6 +1854,49 @@ class ParameterGroup(ABC):
             return False
         return isinstance(self._parameters[first_name], BooleanParam)
 
+    def _get_tooltip_html(self, param_name: str) -> str | None:
+        """Get tooltip HTML for a parameter if it has a tooltip_icon."""
+        from pathlib import Path
+
+        if param_name not in self._parameters:
+            return None
+
+        param = self._parameters[param_name]
+        if not isinstance(param, FloatParam) or not param.tooltip_icon:
+            return None
+
+        icons_dir = Path(__file__).parent / "icons"
+        icon_path = icons_dir / param.tooltip_icon
+
+        # Two-cell layout: text left, image right
+        tooltip_html = f"""<table>
+<tr>
+<td>{param.description}</td>
+<td><img src='{icon_path}'></td>
+</tr>
+</table>"""
+
+        return tooltip_html
+
+    def _apply_tooltip(self, widget: QWidget, param_name: str) -> None:
+        """Apply tooltip HTML to a widget if param has tooltip_icon."""
+        tooltip_html = self._get_tooltip_html(param_name)
+        if tooltip_html and hasattr(widget, "setToolTip"):
+            widget.setToolTip(tooltip_html)
+
+    def _build_label_with_tooltip(self, param_name: str, label_text: str) -> QWidget:
+        """Build a label widget with optional tooltip icon.
+
+        If the parameter has a tooltip_icon, creates a label with rich HTML tooltip
+        containing description text and an embedded icon image.
+        """
+        from PySide.QtWidgets import QLabel
+
+        label = QLabel(label_text)
+        self._apply_tooltip(label, param_name)
+
+        return label
+
     def _build_field_container(
         self,
         param_name: str,
@@ -1859,6 +1905,7 @@ class ParameterGroup(ABC):
         """Build a field container with control and feedback label.
 
         Also registers error/warning displays for the parameter.
+        Applies tooltip to control if parameter has tooltip_icon.
         """
         from PySide.QtWidgets import QLabel, QVBoxLayout, QWidget
 
@@ -1866,6 +1913,11 @@ class ParameterGroup(ABC):
         field_layout = QVBoxLayout(field_container)
         field_layout.setContentsMargins(0, 0, 0, 0)
         field_layout.setSpacing(2)
+
+        # Apply tooltip to control widget if available
+        if hasattr(control, "setToolTip"):
+            self._apply_tooltip(control, param_name)  # type: ignore[arg-type]
+
         field_layout.addWidget(control)  # type: ignore[arg-type]
 
         feedback_label = QLabel("")
@@ -1966,7 +2018,8 @@ class ParameterGroup(ABC):
                     container_layout.addWidget(child_widget)
             else:
                 field_container = self._build_field_container(param_name, control)
-                form_layout.addRow(ui_field.label, field_container)
+                label_widget = self._build_label_with_tooltip(param_name, ui_field.label)
+                form_layout.addRow(label_widget, field_container)
 
         # Add remaining form items
         if form_layout.rowCount() > 0:

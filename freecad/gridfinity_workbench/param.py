@@ -188,12 +188,16 @@ class FundamentalsParams(ParameterGroup):
                 "Main Profile Half Width",
                 fc.Units.Quantity("2.15 mm"),
                 positive_only=True,
+                description="Half-width of the vertical base profile section",
+                tooltip_icon="tooltip-half-width.svg",
             ),
             FloatParam(
                 "main_height",
                 "Main Profile Height",
                 fc.Units.Quantity("2.5 mm"),
                 positive_only=True,
+                description="Height of the vertical base profile section",
+                tooltip_icon="tooltip-height.svg",
             ),
         ]
 

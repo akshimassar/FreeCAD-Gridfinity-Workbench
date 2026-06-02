@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="48 40 16 22">
+  <!-- Height dimension tooltip icon -->
+  <!-- Bin profile (center section, yellow) -->
+  <path d="M 5.167 38.300 L 5.167 10.300 L 12.167 10.300 L 12.167 31.300 A 7.000 7.000 0 0 0 19.167 38.300 L 44.833 38.300 A 7.000 7.000 0 0 0 51.833 31.300 L 51.833 10.300 L 58.833 10.300 L 58.833 38.300 L 48.800 48.333 L 48.800 56.733 L 45.533 60.000 L 18.467 60.000 L 15.200 56.733 L 15.200 48.333 L 5.167 38.300"
+    fill="#f0d400" stroke="#000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+    transform="translate(-1, 0)"/>
+  <!-- Green baseplate profile (right) -->
+  <path d="M 49.967 60.000 L 49.967 48.333 L 56.267 42.033 L 60.000 42.033 L 60.000 60.000 L 49.967 60.000"
+    fill="#2ea043" stroke="#000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Dimension arrow for height (at x=52, from y=48.333 to y=60) -->
+  <line x1="52" y1="48.333" x2="52" y2="60" stroke="#a31515" stroke-width="1.2"/>
+  <path d="M 52 48.333 L 50.5 50 L 53.5 50 Z" fill="#a31515"/>
+  <path d="M 52 60 L 50.5 58 L 53.5 58 Z" fill="#a31515"/>
+</svg>
