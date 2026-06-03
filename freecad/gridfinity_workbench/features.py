@@ -46,6 +46,23 @@ from .version import __version__
 unitmm = fc.Units.Quantity("1 mm")
 
 
+def format_axis_with_filler(cells: int, *, low_fill: bool, high_fill: bool) -> str:
+    """Format axis dimension with filler markers (F+N or N+F or F+N+F).
+
+    Args:
+        cells: Number of grid cells.
+        low_fill: True if filler on low side (left for X, bottom for Y).
+        high_fill: True if filler on high side (right for X, top for Y).
+
+    Returns:
+        Formatted string like "4", "F+4", "4+F", or "F+4+F".
+
+    """
+    prefix = "F+" if low_fill else ""
+    suffix = "+F" if high_fill else ""
+    return f"{prefix}{cells}{suffix}"
+
+
 class FoundationGridfinity:
     def __init__(self, obj: fc.DocumentObject) -> None:
         obj.addProperty(
@@ -510,7 +527,15 @@ class DrawerBaseplateGroup:
             y_chunk = y_chunks_for_rows[row_index]
             width_mm = x_chunk.cells * grid_mm + x_chunk.low_fill_mm + x_chunk.high_fill_mm
             depth_mm = y_chunk.cells * grid_mm + y_chunk.low_fill_mm + y_chunk.high_fill_mm
-            baseplate_name = f"Drawer Baseplate {int(round(width_mm))} x {int(round(depth_mm))} mm"
+            x_str = format_axis_with_filler(
+                x_chunk.cells, low_fill=x_chunk.low_fill_mm > 0, high_fill=x_chunk.high_fill_mm > 0
+            )
+            y_str = format_axis_with_filler(
+                y_chunk.cells, low_fill=y_chunk.low_fill_mm > 0, high_fill=y_chunk.high_fill_mm > 0
+            )
+            baseplate_name = (
+                f"Drawer Baseplate {x_str} x {y_str} ({column_index + 1}, {row_index + 1})"
+            )
             baseplate_names.append(baseplate_name)
 
             # Compute tile center for this piece

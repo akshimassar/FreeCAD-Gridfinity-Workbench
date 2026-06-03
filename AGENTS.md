@@ -21,3 +21,4 @@
 - ./test.sh allows selecting individual tests
 - When possible, avoid requesting manual user test -- use gui tests instead.
 - Avoid manually running python tests, use ./test.sh instead.
+- Try to make tests correct, not just passing. If you change volumes in tests or other semantically significant variables, always ask for user confirmation.

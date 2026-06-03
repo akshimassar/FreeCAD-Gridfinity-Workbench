@@ -26,6 +26,7 @@ from PySide.QtWidgets import (
 )
 
 from . import baseplate_builder, custom_shape, features, utils
+from .features import format_axis_with_filler
 from .param import CombinedBaseplateParams
 
 
@@ -753,6 +754,10 @@ class CreateBaseplateTaskPanel:
             int(self.baseplate_size__x_grid_count.value()),
             int(self.baseplate_size__y_grid_count.value()),
             custom_layout,
+            filler_left=size.filler_left_enabled,
+            filler_right=size.filler_right_enabled,
+            filler_bottom=size.filler_bottom_enabled,
+            filler_top=size.filler_top_enabled,
         )
         self._target_obj.Label = self._format_preview_label(base_label)
         status_bar = None
@@ -784,19 +789,25 @@ class CreateBaseplateTaskPanel:
         self._preview_applied = True
 
     @staticmethod
-    def _format_simple_baseplate_label(
+    def _format_simple_baseplate_label(  # noqa: PLR0913
         x_cells: int,
         y_cells: int,
         custom_layout: list[list[bool]] | None = None,
         *,
         stacking_enabled: bool = False,
+        filler_left: bool = False,
+        filler_right: bool = False,
+        filler_bottom: bool = False,
+        filler_top: bool = False,
     ) -> str:
-        if stacking_enabled:
-            return f"Stacked Baseplates {x_cells} x {y_cells}"
         if custom_layout:
             cell_count = sum(sum(row) for row in custom_layout)
             return f"Baseplate Custom {cell_count}"
-        return f"Baseplate {x_cells} x {y_cells}"
+        x_str = format_axis_with_filler(x_cells, low_fill=filler_left, high_fill=filler_right)
+        y_str = format_axis_with_filler(y_cells, low_fill=filler_bottom, high_fill=filler_top)
+        if stacking_enabled:
+            return f"Stacked Baseplates {x_str} x {y_str}"
+        return f"Baseplate {x_str} x {y_str}"
 
     @staticmethod
     def _format_preview_label(base_label: str) -> str:
@@ -879,6 +890,10 @@ class CreateBaseplateTaskPanel:
             int(params.baseplate_size.get_value("y_grid_count")),
             custom_layout,
             stacking_enabled=stacking_enabled,
+            filler_left=params.baseplate_size.get_value("filler_left_enabled"),
+            filler_right=params.baseplate_size.get_value("filler_right_enabled"),
+            filler_bottom=params.baseplate_size.get_value("filler_bottom_enabled"),
+            filler_top=params.baseplate_size.get_value("filler_top_enabled"),
         )
         output_obj.Label = base_label
 
