@@ -171,8 +171,9 @@ if [[ "$RUN_GUI" == "true" ]]; then
     fi
 
     ensure_plugin_symlink "$version"
-    # Use -a for auto display selection, -e to capture errors, set Qt to use X11 via xvfb
-    GUI_ERROR_FILE=$(mktemp)
+    # Capture FreeCAD console output for warning detection
+    GUI_OUTPUT_FILE=$(mktemp)
+    export FREECAD_GUI_OUTPUT_LOG="$GUI_OUTPUT_FILE"
     
     # Build test module path - if TEST_NAME is set, run specific test
     if [[ -n "$TEST_NAME" ]]; then
@@ -195,13 +196,13 @@ if [[ "$RUN_GUI" == "true" ]]; then
       TEST_TARGET="freecad.gridfinity_workbench.test_gridfinity"
     fi
     
-    if ! xvfb-run -a -e "$GUI_ERROR_FILE" -s "-screen 0 1280x1024x24" env QT_QPA_PLATFORM=xcb "$freecad_cmd" -t "$TEST_TARGET"; then
-      echo "GUI tests failed. Xvfb/FreeCAD errors:"
-      cat "$GUI_ERROR_FILE"
-      rm -f "$GUI_ERROR_FILE"
+    # Run with xvfb, capturing stdout/stderr to file while also displaying
+    if ! xvfb-run -a -s "-screen 0 1280x1024x24" env QT_QPA_PLATFORM=xcb "$freecad_cmd" -t "$TEST_TARGET" 2>&1 | tee "$GUI_OUTPUT_FILE"; then
+      echo "GUI tests failed."
+      rm -f "$GUI_OUTPUT_FILE"
       exit 1
     fi
-    ls -la "$GUI_ERROR_FILE"
+    rm -f "$GUI_OUTPUT_FILE"
   done
 fi
 

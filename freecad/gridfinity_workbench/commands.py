@@ -94,7 +94,7 @@ class ViewProviderGridfinity:
         if obj is None:
             return False
         proxy = getattr(obj, "Proxy", None)
-        if isinstance(proxy, features.DrawerBaseplate):
+        if isinstance(proxy, features.DrawerBaseplateGroup):
             fcg.Control.showDialog(CreateDrawerBaseplateTaskPanel(self.icon_path, target_obj=obj))
             return True
         if isinstance(proxy, features.BaseplateSupport):
@@ -423,7 +423,9 @@ class CreateDrawerBaseplateTaskPanel:
         for key, widget in controls.items():
             setattr(self, key, widget)
 
-        self._target_obj = utils.new_object("DrawerBaseplates")
+        self._target_obj = fc.ActiveDocument.addObject(
+            "App::DocumentObjectGroupPython", "DrawerBaseplates"
+        )
         self._created_preview_obj = True
         if fc.GuiUp:
             view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
@@ -431,7 +433,7 @@ class CreateDrawerBaseplateTaskPanel:
             if hasattr(view_object, "ShowInTree"):
                 with contextlib.suppress(Exception):
                     view_object.ShowInTree = False
-        features.DrawerBaseplate(self._target_obj)
+        features.DrawerBaseplateGroup(self._target_obj)
 
         if self._edit_obj is not None:
             self._params = self._params.from_obj(self._edit_obj)
@@ -445,38 +447,56 @@ class CreateDrawerBaseplateTaskPanel:
         self._params.connect_control_signals(controls, self._on_control_changed)
         self._params.apply_to_ui_owner(self)
 
-        self._capture_and_set_preview_visuals()
+        # Initial preview
         self._update_preview()
 
     def _preview_style(self) -> tuple[tuple[float, float, float], int]:
         return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
 
     def _capture_and_set_preview_visuals(self) -> None:
+        """Capture original visuals for group children (for restore on accept)."""
         if not fc.GuiUp or self._target_obj is None:
             return
-        view = self._target_obj.ViewObject
-        self._original_view = {
-            "ShapeColor": tuple(view.ShapeColor),
-            "Transparency": int(view.Transparency),
-            "LineColor": tuple(view.LineColor) if hasattr(view, "LineColor") else None,
-        }
-        color, transparency = self._preview_style()
-        view.ShapeColor = color
-        if hasattr(view, "LineColor"):
-            view.LineColor = color
-        view.Transparency = transparency
+        self._original_view = {}
+        for child in getattr(self._target_obj, "Group", []):
+            try:
+                view = child.ViewObject
+            except (AttributeError, ReferenceError):
+                continue
+            if hasattr(view, "ShapeColor"):
+                self._original_view[child.Name] = {
+                    "ShapeColor": tuple(view.ShapeColor),
+                    "Transparency": int(view.Transparency),
+                    "LineColor": tuple(view.LineColor) if hasattr(view, "LineColor") else None,
+                }
+        self._apply_preview_visuals_to_children()
 
     def _restore_preview_visuals(self) -> None:
-        if not fc.GuiUp or self._target_obj is None or self._original_view is None:
+        """Restore preview visuals for group children."""
+        if not fc.GuiUp or self._target_obj is None:
             return
-        try:
-            view = self._target_obj.ViewObject
-        except ReferenceError:
-            return
-        view.ShapeColor = self._original_view["ShapeColor"]
-        if hasattr(view, "LineColor") and self._original_view.get("LineColor") is not None:
-            view.LineColor = self._original_view["LineColor"]
-        view.Transparency = self._original_view["Transparency"]
+        # Default FreeCAD shape color (light gray)
+        default_color = (0.8, 0.8, 0.8)
+        default_transparency = 0
+        for child in getattr(self._target_obj, "Group", []):
+            try:
+                view = child.ViewObject
+            except (AttributeError, ReferenceError):
+                continue
+            if not hasattr(view, "ShapeColor"):
+                continue
+            # Restore to original if we captured it, otherwise use defaults
+            if self._original_view is not None and child.Name in self._original_view:
+                orig = self._original_view[child.Name]
+                view.ShapeColor = orig["ShapeColor"]
+                if hasattr(view, "LineColor") and orig.get("LineColor") is not None:
+                    view.LineColor = orig["LineColor"]
+                view.Transparency = orig["Transparency"]
+            else:
+                view.ShapeColor = default_color
+                if hasattr(view, "LineColor"):
+                    view.LineColor = (0.2, 0.2, 0.2)
+                view.Transparency = default_transparency
 
     @staticmethod
     def _format_drawer_baseplates_label(drawer_width_mm: float, drawer_depth_mm: float) -> str:
@@ -502,6 +522,22 @@ class CreateDrawerBaseplateTaskPanel:
 
     def _on_control_changed(self) -> None:
         self._preview_timer.start()
+
+    def _apply_preview_visuals_to_children(self) -> None:
+        """Apply preview color/transparency to all children."""
+        if not fc.GuiUp or self._target_obj is None:
+            return
+        color, transparency = self._preview_style()
+        for child in getattr(self._target_obj, "Group", []):
+            try:
+                view = child.ViewObject
+            except (AttributeError, ReferenceError):
+                continue
+            if hasattr(view, "ShapeColor"):
+                view.ShapeColor = color
+                if hasattr(view, "LineColor"):
+                    view.LineColor = color
+                view.Transparency = transparency
 
     def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:
         self._params.update_from_ui_owner(self)
@@ -532,26 +568,29 @@ class CreateDrawerBaseplateTaskPanel:
         return True
 
     def _update_preview(self) -> None:
+        """Update preview."""
         if self._target_obj is None:
             return
         applied = self._apply_dialog_values(self._target_obj, preview_mode=True)
         if not applied:
             return
-        status_bar = None
-        if fc.GuiUp and fcg is not None:
-            try:
-                status_bar = fcg.getMainWindow().statusBar()
-                status_bar.showMessage("Recomputing preview...")
-            except (AttributeError, RuntimeError):
-                # GUI may not be fully initialized or main window not available
-                status_bar = None
 
+        # Recompute triggers execute() which creates/updates children
+        # Children are recomputed individually during group's execute() to avoid
+        # FreeCAD 1.1 "still touched after recompute" warnings
         start = time.perf_counter()
         fc.ActiveDocument.recompute()
         elapsed = time.perf_counter() - start
 
-        if status_bar is not None:
-            status_bar.showMessage(f"Preview recomputed in {elapsed:.2f} seconds", 2500)
+        # Apply preview visuals to children after recompute creates them
+        self._apply_preview_visuals_to_children()
+
+        if fc.GuiUp and fcg is not None:
+            try:
+                status_bar = fcg.getMainWindow().statusBar()
+                status_bar.showMessage(f"Preview recomputed in {elapsed:.2f} seconds", 2500)
+            except (AttributeError, RuntimeError):
+                pass
         self._preview_applied = True
 
     def accept(self) -> bool:
@@ -561,11 +600,18 @@ class CreateDrawerBaseplateTaskPanel:
         applied = self._apply_dialog_values(output_obj, preview_mode=False)
         if not applied:
             return False
+
         if self._edit_obj is not None and self._created_preview_obj:
+            # Remove preview children first, then the preview group
+            for child in list(getattr(self._target_obj, "Group", [])):
+                fc.ActiveDocument.removeObject(child.Name)
             fc.ActiveDocument.removeObject(self._target_obj.Name)
         elif output_obj is self._target_obj:
             self._restore_preview_visuals()
             self._set_show_in_tree(output_obj, visible=True)
+            # Children already exist from preview, just need to show them in tree
+            for child in getattr(output_obj, "Group", []):
+                self._set_show_in_tree(child, visible=True)
 
         fc.ActiveDocument.recompute()
         fcg.SendMsgToActiveView("ViewFit")
@@ -575,6 +621,9 @@ class CreateDrawerBaseplateTaskPanel:
     def reject(self) -> bool:
         if self._target_obj is not None:
             if self._created_preview_obj:
+                # Remove children first, then the group
+                for child in list(getattr(self._target_obj, "Group", [])):
+                    fc.ActiveDocument.removeObject(child.Name)
                 fc.ActiveDocument.removeObject(self._target_obj.Name)
             else:
                 self._restore_preview_visuals()

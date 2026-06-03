@@ -1,7 +1,7 @@
 import unittest
 
 from freecad.gridfinity_workbench.drawer_split import (
-    PrintableChunk,
+    PrintableAxisChunk,
     split_axis_into_printable_chunks,
 )
 
@@ -10,7 +10,7 @@ class DrawerSplitTest(unittest.TestCase):
     def _assert_invariants(  # noqa: PLR0913
         self,
         *,
-        pieces: list[PrintableChunk],
+        pieces: list[PrintableAxisChunk],
         length_mm: float,
         grid_mm: float,
         bed_mm: float,

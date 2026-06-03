@@ -1,3 +1,4 @@
+import os
 import sys
 import unittest
 from io import StringIO
@@ -16,6 +17,9 @@ fc.Console.SetStatus("Console", "Log", True)  # noqa: FBT003
 fc.Console.SetStatus("Console", "Msg", True)  # noqa: FBT003
 fc.Console.SetStatus("Console", "Wrn", True)  # noqa: FBT003
 fc.Console.SetStatus("Console", "Err", True)  # noqa: FBT003
+
+# FreeCAD console warning patterns (same as integration tests)
+FREECAD_WARNING_PATTERNS = ("<Wrn>", "<Err>", "<App>", "<Gui>")
 
 
 def setUpModule() -> None:
@@ -37,12 +41,14 @@ class TestWithDocument(unittest.TestCase):
 
     If a test fails, the file can be found in temporary directory (/tmp on Linux).
     Captures stdout/stderr to detect tracebacks during test execution.
+    Also checks FreeCAD console output log for warnings (via FREECAD_GUI_OUTPUT_LOG).
     """
 
     _original_stderr: Any = None
     _original_stdout: Any = None
     _captured_stderr: StringIO | None = None
     _debug_log: list[str]
+    _log_start_pos: int = 0
 
     def log(self, msg: str) -> None:
         """Log debug message that will be shown on test failure."""
@@ -57,9 +63,32 @@ class TestWithDocument(unittest.TestCase):
 
     _captured_stdout: StringIO | None = None
 
+    def _get_log_file_path(self) -> Path | None:
+        """Get path to FreeCAD GUI output log file."""
+        log_path = os.environ.get("FREECAD_GUI_OUTPUT_LOG")
+        if log_path:
+            return Path(log_path)
+        return None
+
+    def _get_new_log_content(self) -> str:
+        """Get log content added since setUp."""
+        log_file = self._get_log_file_path()
+        if not log_file or not log_file.exists():
+            return ""
+        with log_file.open(encoding="utf-8", errors="replace") as f:
+            f.seek(self._log_start_pos)
+            return f.read()
+
     def setUp(self) -> None:
         # Initialize debug log
         self._debug_log = []
+
+        # Record log file position for warning detection
+        log_file = self._get_log_file_path()
+        if log_file and log_file.exists():
+            self._log_start_pos = log_file.stat().st_size
+        else:
+            self._log_start_pos = 0
 
         # Capture stdout/stderr to detect tracebacks
         self._original_stderr = sys.stderr
@@ -87,9 +116,22 @@ class TestWithDocument(unittest.TestCase):
         captured_out = self._captured_stdout.getvalue() if self._captured_stdout else ""
         captured = captured_err + captured_out
 
+        # Also get FreeCAD console output from log file
+        log_content = self._get_new_log_content()
+        all_output = captured + log_content
+
         # Check for traceback indicators
-        if "Traceback (most recent call last):" in captured:
-            self.fail(f"Traceback detected during test execution:\n{captured}")
+        if "Traceback (most recent call last):" in all_output:
+            self.fail(f"Traceback detected during test execution:\n{all_output}")
+
+        # Check for FreeCAD warnings and errors
+        warning_lines = [
+            line
+            for line in all_output.splitlines()
+            if any(pattern in line for pattern in FREECAD_WARNING_PATTERNS)
+        ]
+        if warning_lines:
+            self.fail("FreeCAD warnings/errors detected:\n" + "\n".join(warning_lines))
 
 
 class TestConnectingClipTaskPanel(TestWithDocument):
@@ -385,25 +427,80 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
 
     def test_create_drawer_baseplate_via_dialog(self) -> None:
         """Test creating drawer baseplates with default settings."""
-        from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
+        from .commands import (
+            ICONDIR,
+            PREVIEW_SHAPE_COLOR,
+            PREVIEW_TRANSPARENCY,
+            CreateDrawerBaseplateTaskPanel,
+        )
 
         # Open the task panel dialog
         panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
         fcg.Control.showDialog(panel)
 
+        # Verify preview created group with children
+        group = panel._target_obj  # noqa: SLF001
+        self.assertIsNotNone(group, "Preview group should exist")
+        children = group.Group
+        self.assertGreater(len(children), 0, "Preview should create children")
+
+        for child in children:
+            # Verify shape is valid
+            self.assertTrue(
+                child.Shape.isValid(),
+                f"Preview child {child.Name} should have valid shape",
+            )
+            self.assertGreater(
+                child.Shape.Volume,
+                0,
+                f"Preview child {child.Name} should have non-zero volume",
+            )
+
+            # Verify preview visuals are applied
+            view = child.ViewObject
+            self.assertIsNotNone(view, f"Preview child {child.Name} should have ViewObject")
+            # ShapeColor returns 4-tuple (RGBA), compare RGB with tolerance
+            actual_rgb = view.ShapeColor[:3]
+            for i, (actual, expected) in enumerate(
+                zip(actual_rgb, PREVIEW_SHAPE_COLOR, strict=True)
+            ):
+                self.assertAlmostEqual(
+                    actual,
+                    expected,
+                    places=4,
+                    msg=f"Preview child {child.Name} color[{i}] mismatch",
+                )
+            self.assertEqual(
+                view.Transparency,
+                PREVIEW_TRANSPARENCY,
+                f"Preview child {child.Name} should have preview transparency",
+            )
+
         # Accept the dialog to create the object
         panel.accept()
 
-        # Verify object was created
-        self.assertEqual(len(self.doc.Objects), 1)
-        obj = self.doc.Objects[0]
-        self.assertIn("Drawer Baseplates", obj.Label)
+        # Verify group and children were created
+        group = self.doc.getObject("DrawerBaseplates")
+        self.assertIsNotNone(group)
+        self.assertIn("Drawer Baseplates", group.Label)
 
-        # Verify shape is valid
-        self.assertTrue(obj.Shape.isValid())
-        self.assertGreater(obj.Shape.Volume, 0)
-        # Drawer baseplate is a compound of multiple solids
-        self.assertGreater(len(obj.Shape.Solids), 0)
+        # Group should have children (pieces)
+        children = group.Group
+        self.assertGreater(len(children), 0)
+
+        # Each child should have a valid shape
+        for child in children:
+            self.assertTrue(child.Shape.isValid())
+            self.assertGreater(child.Shape.Volume, 0)
+            self.assertGreater(len(child.Shape.Solids), 0)
+
+        # Verify pieces are positioned on tile grid (not all at origin)
+        placements = [child.Placement.Base for child in children]
+        x_positions = sorted({p.x for p in placements})
+        y_positions = sorted({p.y for p in placements})
+        # Should have multiple distinct X and Y positions for a 3x3 grid
+        self.assertGreater(len(x_positions), 1, "All pieces at same X position")
+        self.assertGreater(len(y_positions), 1, "All pieces at same Y position")
 
 
 class TestStackedBaseplatesTaskPanel(TestWithDocument):

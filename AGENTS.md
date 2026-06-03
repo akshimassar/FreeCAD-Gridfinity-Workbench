@@ -19,3 +19,5 @@
 - No backward compatibility is needed unless user specifically requested it. Feel free to rename parameters, functions etc
 - Use uv run for python
 - ./test.sh allows selecting individual tests
+- When possible, avoid requesting manual user test -- use gui tests instead.
+- Avoid manually running python tests, use ./test.sh instead.

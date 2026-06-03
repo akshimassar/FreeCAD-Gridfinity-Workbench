@@ -13,6 +13,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FREECAD_CMD_ENV = "FREECAD_CMD"
 RESULT_PREFIX = "GRIDFINITY_RESULT="
 
+# FreeCAD console warning/error patterns to detect
+FREECAD_WARNING_PATTERNS = ("<Wrn>", "<Err>", "<App>", "<Gui>")
+
+
+def _check_freecad_console_warnings(proc: subprocess.CompletedProcess) -> list[str]:
+    """Check FreeCAD console output for warnings and errors.
+
+    Returns list of warning/error lines found.
+    """
+    return [
+        line
+        for line in (proc.stdout + proc.stderr).splitlines()
+        if any(pattern in line for pattern in FREECAD_WARNING_PATTERNS)
+    ]
+
 
 def _load_dotenv(path: Path) -> dict[str, str]:
     if not path.exists():
@@ -64,6 +79,16 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
     # IMPORTANT POLICY:
     # Do not change locked absolute dimensions/volume assertions in this file
     # without explicit user confirmation in the current conversation.
+
+    def assert_no_freecad_warnings(self, proc: subprocess.CompletedProcess) -> None:
+        """Assert that FreeCAD console output contains no warnings or errors."""
+        warning_lines = _check_freecad_console_warnings(proc)
+        if warning_lines:
+            self.fail(
+                "FreeCAD console warnings/errors detected:\n"
+                + "\n".join(warning_lines)
+                + f"\n\nFull STDOUT:\n{proc.stdout}\n\nFull STDERR:\n{proc.stderr}"
+            )
 
     def test_baseplate_tiny_filler_skips_clicksprings(self) -> None:
         """Test that tiny filler cells skip click springs gracefully.
@@ -136,6 +161,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -220,6 +246,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -350,6 +377,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -405,8 +433,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             doc = fc.newDocument("DrawerPreview")
             try:
-                obj = doc.addObject("Part::FeaturePython", "DrawerBaseplate")
-                features.DrawerBaseplate(obj)
+                obj = doc.addObject("App::DocumentObjectGroupPython", "DrawerBaseplates")
+                features.DrawerBaseplateGroup(obj)
 
                 obj.drawer__drawer_width = 600
                 obj.drawer__drawer_depth = 500
@@ -416,16 +444,22 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 obj.drawer__depth_filler_alignment = "Top"
                 obj.PreviewBuildMode = True
 
+                # Recompute triggers execute() which creates/updates children
                 start = time.perf_counter()
                 doc.recompute()
+                doc.recompute()  # Second recompute for placements
                 elapsed = time.perf_counter() - start
 
-                shape = obj.Shape
+                # Group has no shape, count children and their shapes
+                children = obj.Group
+                piece_count = len(getattr(obj, "PieceNames", []))
+                solids_count = sum(len(child.Shape.Solids) for child in children)
+                all_valid = all(child.Shape.isValid() for child in children)
                 payload = {{
                     "elapsed_seconds": float(elapsed),
-                    "valid": bool(shape.isValid()),
-                    "piece_count": int(len(getattr(obj, "PieceNames", []))),
-                    "solids": int(len(shape.Solids)),
+                    "valid": bool(all_valid),
+                    "piece_count": int(piece_count),
+                    "solids": int(solids_count),
                 }}
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
@@ -440,6 +474,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -507,6 +542,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -600,6 +636,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -656,6 +693,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -726,6 +764,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -848,6 +887,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -998,6 +1038,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -1098,6 +1139,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -1202,6 +1244,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -1298,6 +1341,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -1361,6 +1405,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -1423,6 +1468,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
@@ -1485,6 +1531,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             0,
             msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
+        self.assert_no_freecad_warnings(proc)
 
         line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
         self.assertIsNotNone(
