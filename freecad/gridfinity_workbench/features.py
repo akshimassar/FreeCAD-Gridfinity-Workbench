@@ -525,6 +525,10 @@ class DrawerBaseplateGroup:
                 child = existing_children[piece_key]
                 child.Label = baseplate_name
                 child.Placement.Base = fc.Vector(placement_x, placement_y, 0)
+                # Touch then recompute child to rebuild with updated chunk data
+                # (touch required for FreeCAD Link branch compatibility)
+                child.touch()
+                child.recompute()
             else:
                 self._create_child_piece(
                     obj,

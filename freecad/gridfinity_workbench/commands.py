@@ -609,7 +609,6 @@ class CreateDrawerBaseplateTaskPanel:
         elif output_obj is self._target_obj:
             self._restore_preview_visuals()
             self._set_show_in_tree(output_obj, visible=True)
-            # Children already exist from preview, just need to show them in tree
             for child in getattr(output_obj, "Group", []):
                 self._set_show_in_tree(child, visible=True)
 
