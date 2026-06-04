@@ -444,21 +444,17 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 obj.drawer__depth_filler_alignment = "Top"
                 obj.PreviewBuildMode = True
 
-                # Recompute triggers execute() which creates/updates children
+                # Build preview shape via proxy method (preview mode doesn't create children)
                 start = time.perf_counter()
-                doc.recompute()
-                doc.recompute()  # Second recompute for placements
+                preview_shape = obj.Proxy.build_preview_shape(obj)
                 elapsed = time.perf_counter() - start
 
-                # Group has no shape, count children and their shapes
-                children = obj.Group
-                piece_count = len(getattr(obj, "PieceNames", []))
-                solids_count = sum(len(child.Shape.Solids) for child in children)
-                all_valid = all(child.Shape.isValid() for child in children)
+                # Preview returns a compound shape containing all piece previews
+                solids_count = len(preview_shape.Solids)
+                is_valid = preview_shape.isValid()
                 payload = {{
                     "elapsed_seconds": float(elapsed),
-                    "valid": bool(all_valid),
-                    "piece_count": int(piece_count),
+                    "valid": bool(is_valid),
                     "solids": int(solids_count),
                 }}
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
@@ -485,7 +481,6 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
         self.assertGreaterEqual(float(data["elapsed_seconds"]), 0.0)
         self.assertTrue(bool(data["valid"]))
-        self.assertGreater(int(data["piece_count"]), 0)
         self.assertGreater(int(data["solids"]), 0)
 
     def test_baseplate_2x2_with_features_volume_unchanged(self) -> None:

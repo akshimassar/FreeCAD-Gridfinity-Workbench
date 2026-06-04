@@ -6,16 +6,15 @@ Contains command objects representing what should happen on a button press.
 # ruff: noqa: D101, D102, D107, N802
 from __future__ import annotations
 
-import contextlib
 import re
-import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import FreeCAD as fc  # noqa: N813
 import FreeCADGui as fcg  # noqa: N813
-from PySide.QtCore import Qt, QTimer
+import Part
+from PySide.QtCore import Qt
 from PySide.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
@@ -25,10 +24,11 @@ from PySide.QtWidgets import (
     QWidget,
 )
 
-from . import baseplate_builder, custom_shape, features, utils
+from . import baseplate_builder, clip_profiles, custom_shape, features, utils
 from .features import format_axis_with_filler
 from .param import CombinedBaseplateParams
 from .param_system import DefaultType
+from .task_panels import GroupFeatureTaskPanel, SingleFeatureTaskPanel
 
 
 def _standard_buttons_ok_cancel() -> int:
@@ -42,8 +42,6 @@ def _standard_buttons_ok_cancel() -> int:
 
 
 if TYPE_CHECKING:
-    import Part
-
     from .param_system import CombinedParams
 
 ICONDIR = Path(__file__).parent / "icons"
@@ -393,12 +391,12 @@ class CreateDrawerBaseplate(BaseCommand):
         fcg.Control.showDialog(CreateDrawerBaseplateTaskPanel(self.pixmap))
 
 
-class CreateDrawerBaseplateTaskPanel:
+class CreateDrawerBaseplateTaskPanel(GroupFeatureTaskPanel):
     """Task panel for planning drawer baseplate splits.
 
-    Uses a separate preview object (Part::FeaturePython) to display combined preview
-    shapes without creating actual children. On accept, children are created as
-    independent Baseplate objects.
+    Uses a separate preview object to display combined preview shapes without
+    creating actual children. On accept, children are created as independent
+    Baseplate objects.
     """
 
     def __init__(
@@ -408,202 +406,57 @@ class CreateDrawerBaseplateTaskPanel:
     ) -> None:
         from .param import CombinedDrawerBaseplateParams
 
-        self._pixmap = pixmap
-        self._edit_obj = target_obj
-        self._target_obj: fc.DocumentObject | None = None
-        self._preview_obj: fc.DocumentObject | None = None
-        self._created_new_group = False
+        super().__init__(pixmap, target_obj, window_title="Drawer Fit Baseplates")
+
         self._params = CombinedDrawerBaseplateParams()
 
-        self.form = QWidget()
-        self.form.setWindowTitle(
-            "Edit Drawer Fit Baseplates"
-            if target_obj is not None
-            else "Create Drawer Fit Baseplates",
+        if target_obj is not None:
+            self._params = self._params.from_obj(target_obj)
+
+        self._setup_group_object(
+            self._params,
+            group_name="DrawerBaseplates",
+            group_feature_class=features.DrawerBaseplateGroup,
+            view_provider_class=ViewProviderGridfinity,
         )
 
-        layout = QVBoxLayout(self.form)
-
-        # Build UI using the param system
-        controls, _ = self._params.build_ui(layout)
-        for key, widget in controls.items():
-            setattr(self, key, widget)
-
-        # Create or use existing group
-        if self._edit_obj is not None:
-            self._target_obj = self._edit_obj
-            self._params = self._params.from_obj(self._edit_obj)
-            self._original_label = self._edit_obj.Label  # Save for restore on cancel
-        else:
-            self._original_label = None
-            self._target_obj = fc.ActiveDocument.addObject(
-                "App::DocumentObjectGroupPython", "DrawerBaseplates"
-            )
-            self._created_new_group = True
-            features.DrawerBaseplateGroup(self._target_obj)
-            if fc.GuiUp:
-                view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
-                ViewProviderGridfinity(view_object, str(self._pixmap))
-                self._set_show_in_tree(self._target_obj, visible=False)
-
-        # Create preview object (sibling to group, for displaying combined preview shape)
-        self._preview_obj = fc.ActiveDocument.addObject("Part::Feature", "DrawerBaseplatesPreview")
-        if fc.GuiUp:
-            self._set_show_in_tree(self._preview_obj, visible=False)
-            self._apply_preview_visuals(self._preview_obj)
-
-        self._preview_timer = QTimer(self.form)
-        self._preview_timer.setSingleShot(True)
-        self._preview_timer.setInterval(500)
-        self._preview_timer.timeout.connect(self._update_preview)
-
-        self._params.connect_control_signals(controls, self._on_control_changed)
+        controls = self._setup_ui(self._params)
         self._params.apply_to_ui_owner(self)
+        self._setup_preview(self._params, controls)
 
-        # Initial preview
-        self._update_preview()
-
-    def _preview_style(self) -> tuple[tuple[float, float, float], int]:
-        return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
-
-    def _apply_preview_visuals(self, obj: fc.DocumentObject) -> None:
-        """Apply preview color/transparency to an object."""
-        if not fc.GuiUp or obj is None:
-            return
-        color, transparency = self._preview_style()
-        try:
-            view = obj.ViewObject
-        except (AttributeError, ReferenceError):
-            return
-        if hasattr(view, "ShapeColor"):
-            view.ShapeColor = color
-            if hasattr(view, "LineColor"):
-                view.LineColor = color
-            view.Transparency = transparency
-
-    @staticmethod
-    def _format_drawer_baseplates_label(drawer_width_mm: float, drawer_depth_mm: float) -> str:
-        return f"Drawer Baseplates {int(round(drawer_width_mm))} x {int(round(drawer_depth_mm))} mm"
-
-    @staticmethod
-    def _format_preview_label(base_label: str) -> str:
-        return f"[Preview] {base_label}"
-
-    def _set_show_in_tree(self, obj: fc.DocumentObject, *, visible: bool) -> None:
-        if not fc.GuiUp:
-            return
-        try:
-            view = obj.ViewObject
-        except ReferenceError:
-            return
-        if hasattr(view, "ShowInTree"):
-            with contextlib.suppress(Exception):
-                view.ShowInTree = visible
-
-    def getStandardButtons(self) -> int:
-        return _standard_buttons_ok_cancel()
-
-    def _on_control_changed(self) -> None:
-        self._preview_timer.start()
-
-    def _validate_controls(self) -> CombinedParams | None:
-        self._params.update_from_ui_owner(self)
-        errors = self._params.validate()
-        if errors:
-            return None
+    def _get_params(self) -> CombinedParams:
         return self._params
 
-    def _apply_dialog_values(self, obj: fc.DocumentObject, *, preview_mode: bool) -> bool:
-        params = self._validate_controls()
-        if params is None:
-            return False
-        params.to_obj(obj)
+    def _build_preview_shape(self, params: CombinedParams) -> Part.Shape:
+        if self._target_obj is None:
+            return Part.Shape()
 
-        data = params.data()
-        base_label = self._format_drawer_baseplates_label(
-            float(data.drawer.drawer_width),
-            float(data.drawer.drawer_depth),
-        )
-        obj.Label = self._format_preview_label(base_label) if preview_mode else base_label
-        if hasattr(obj, "PreviewBuildMode"):
-            obj.PreviewBuildMode = preview_mode
+        # Apply params to group for preview calculation
+        params.to_obj(self._target_obj)
+        if hasattr(self._target_obj, "PreviewBuildMode"):
+            self._target_obj.PreviewBuildMode = True
 
-        return True
-
-    def _update_preview(self) -> None:
-        """Update preview by building combined shape on preview object."""
-        if self._target_obj is None or self._preview_obj is None:
-            return
-
-        # Apply params to group (but keep PreviewBuildMode=True so execute() does nothing)
-        applied = self._apply_dialog_values(self._target_obj, preview_mode=True)
-        if not applied:
-            return
-
-        start = time.perf_counter()
-
-        # Build preview shape from group's build_preview_shape method
         proxy = getattr(self._target_obj, "Proxy", None)
         if proxy is not None and hasattr(proxy, "build_preview_shape"):
-            preview_shape = proxy.build_preview_shape(self._target_obj)
-            self._preview_obj.Shape = preview_shape
+            return proxy.build_preview_shape(self._target_obj)
+        return Part.Shape()
 
-        elapsed = time.perf_counter() - start
+    def _format_label(self, params: CombinedParams) -> str:
+        data = params.data()
+        drawer_width = float(data.drawer.drawer_width)
+        drawer_depth = float(data.drawer.drawer_depth)
+        return f"Drawer Baseplates {int(round(drawer_width))} x {int(round(drawer_depth))} mm"
 
-        if fc.GuiUp and fcg is not None:
-            try:
-                status_bar = fcg.getMainWindow().statusBar()
-                status_bar.showMessage(f"Preview recomputed in {elapsed:.2f} seconds", 2500)
-            except (AttributeError, RuntimeError):
-                pass
+    def _create_feature_object(self) -> fc.DocumentObject:
+        # Not used for groups - group is created in _setup_group_object
+        raise NotImplementedError("Groups are created in __init__, not on accept")
 
-    def accept(self) -> bool:
-        if self._target_obj is None:
-            return False
-
-        # Apply final params with PreviewBuildMode=False to trigger child creation
-        applied = self._apply_dialog_values(self._target_obj, preview_mode=False)
-        if not applied:
-            return False
-
-        # Remove preview object
-        if self._preview_obj is not None:
-            fc.ActiveDocument.removeObject(self._preview_obj.Name)
-            self._preview_obj = None
-
-        # Recompute group - this creates the actual Baseplate children
-        fc.ActiveDocument.recompute()
-
-        # Show group and children in tree
-        self._set_show_in_tree(self._target_obj, visible=True)
-        for child in getattr(self._target_obj, "Group", []):
-            self._set_show_in_tree(child, visible=True)
-
-        fcg.SendMsgToActiveView("ViewFit")
-        fcg.Control.closeDialog()
-        return True
-
-    def reject(self) -> bool:
-        # Remove preview object
-        if self._preview_obj is not None:
-            fc.ActiveDocument.removeObject(self._preview_obj.Name)
-            self._preview_obj = None
-
-        # Remove group if we created it (and any children it might have)
-        if self._created_new_group and self._target_obj is not None:
-            for child in list(getattr(self._target_obj, "Group", [])):
-                fc.ActiveDocument.removeObject(child.Name)
-            fc.ActiveDocument.removeObject(self._target_obj.Name)
-            self._target_obj = None
-        elif self._original_label is not None and self._target_obj is not None:
-            # Restore original label when canceling edit
-            self._target_obj.Label = self._original_label
-
-        fcg.Control.closeDialog()
-        return True
+    def _on_accept_finalize(self, output_obj: fc.DocumentObject, params: CombinedParams) -> None:
+        # Group's execute() creates children when PreviewBuildMode is False
+        pass
 
 
-class CreateBaseplateTaskPanel:
+class CreateBaseplateTaskPanel(SingleFeatureTaskPanel):
     """Task panel for creating a simple baseplate with custom parameters."""
 
     def __init__(
@@ -615,153 +468,59 @@ class CreateBaseplateTaskPanel:
         label_name: str = "Baseplate",
         feature_ctor: type[features.FoundationGridfinity] = features.Baseplate,
     ) -> None:
-        self._pixmap = pixmap
-        self._edit_obj = target_obj
+        super().__init__(pixmap, target_obj, window_title=label_name)
+
         self._object_name = object_name
-        self._label_name = label_name
         self._feature_ctor = feature_ctor
-        self._target_obj: fc.DocumentObject | None = None
-        self._created_preview_obj = False
-        self._original_view: dict[str, Any] | None = None
-        self._preview_applied = False
+        self._params = CombinedBaseplateParams()
 
-        # Initialize params - subclasses can set _params before calling super().__init__()
-        if not hasattr(self, "_params"):
-            self._params = CombinedBaseplateParams()
+        if target_obj is not None:
+            self._params = self._params.from_obj(target_obj)
 
-        self.form = QWidget()
-        self.form.setWindowTitle(
-            f"Edit {self._label_name}" if target_obj is not None else f"Create {self._label_name}",
-        )
-        layout = QVBoxLayout(self.form)
+        controls = self._setup_ui(self._params)
+        self._params.apply_to_ui_owner(self)
+        self._setup_preview(self._params, controls)
 
-        # Build UI using the param system (also creates error labels)
-        controls, widget = self._params.build_ui(layout)
-        for key, control in controls.items():
-            setattr(self, key, control)
-
-        self._target_obj = utils.new_object(self._object_name)
-        self._created_preview_obj = True
-        if fc.GuiUp:
-            view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
-            ViewProviderGridfinity(view_object, str(self._pixmap))
-            if hasattr(view_object, "ShowInTree"):
-                with contextlib.suppress(Exception):
-                    view_object.ShowInTree = False
-        self._feature_ctor(self._target_obj)
-
-        if self._edit_obj is not None:
-            # Load values from existing object
-            self._params = self._params.from_obj(self._edit_obj)
-            self._params.to_obj(self._target_obj)
-
-        self._capture_and_set_preview_visuals()
-
-        if self._target_obj is not None:
-            self._params.apply_to_ui_owner(self)
-
-        self._preview_timer = QTimer(self.form)
-        self._preview_timer.setSingleShot(True)
-        self._preview_timer.setInterval(500)
-        self._preview_timer.timeout.connect(self._update_preview)
-        self._params.connect_control_signals(controls, lambda: self._preview_timer.start())
-        self._update_preview()
-
-    def getStandardButtons(self) -> int:
-        return _standard_buttons_ok_cancel()
-
-    def _validate_controls(self, *, preview_mode: bool) -> CombinedParams | None:  # noqa: ARG002
-        self._params.update_from_ui_owner(self)
-        errors = self._params.validate()
-        self._params.render_errors(errors)
-        if errors:
-            return None
+    def _get_params(self) -> CombinedParams:
         return self._params
 
-    def _preview_style(self) -> tuple[tuple[float, float, float], int]:
-        return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
-
-    def _capture_and_set_preview_visuals(self) -> None:
-        if not fc.GuiUp or self._target_obj is None:
-            return
-        view = self._target_obj.ViewObject
-        self._original_view = {
-            "ShapeColor": tuple(view.ShapeColor),
-            "Transparency": int(view.Transparency),
-            "LineColor": tuple(view.LineColor) if hasattr(view, "LineColor") else None,
-        }
-        color, transparency = self._preview_style()
-        view.ShapeColor = color
-        if hasattr(view, "LineColor"):
-            view.LineColor = color
-        view.Transparency = transparency
-
-    def _restore_preview_visuals(self) -> None:
-        if not fc.GuiUp or self._target_obj is None or self._original_view is None:
-            return
-        view = self._target_obj.ViewObject
-        view.ShapeColor = self._original_view["ShapeColor"]
-        if hasattr(view, "LineColor") and self._original_view.get("LineColor") is not None:
-            view.LineColor = self._original_view["LineColor"]
-        view.Transparency = self._original_view["Transparency"]
-
-    def _update_preview(self) -> None:
-        if self._target_obj is None:
-            return
-        params = self._validate_controls(preview_mode=True)
-        if params is None:
-            return
-        params.to_obj(self._target_obj)
-
-        # Get layout for preview
+    def _build_preview_shape(self, params: CombinedParams) -> Part.Shape:
         data = params.data()
         size = data.baseplate_size
+
         if size.custom_layout_enabled and size.custom_layout:
             layout = size.custom_layout
         else:
             layout = [[True] * size.y_grid_count for _ in range(size.x_grid_count)]
 
-        custom_layout = size.custom_layout if size.custom_layout_enabled else None
-        base_label = self._format_simple_baseplate_label(
-            int(self.baseplate_size__x_grid_count.value()),
-            int(self.baseplate_size__y_grid_count.value()),
-            custom_layout,
-            filler_left=size.filler_left_enabled,
-            filler_right=size.filler_right_enabled,
-            filler_bottom=size.filler_bottom_enabled,
-            filler_top=size.filler_top_enabled,
-        )
-        self._target_obj.Label = self._format_preview_label(base_label)
-        status_bar = None
-        if fc.GuiUp and fcg is not None:
-            try:
-                status_bar = fcg.getMainWindow().statusBar()
-                status_bar.showMessage("Building preview...")
-            except (AttributeError, RuntimeError):
-                # GUI may not be fully initialized or main window not available
-                status_bar = None
-
-        start = time.perf_counter()
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=data.junction_screws.enabled,
             include_clip_cutouts=data.connecting_clips.enabled,
             include_snap_springs=data.click_springs.enabled,
         )
-        shape = baseplate_builder.build_simple_baseplate_from_params(
-            data,
-            layout,
-            options,
-            preview=True,
+        return baseplate_builder.build_simple_baseplate_from_params(
+            data, layout, options, preview=True
         )
-        self._target_obj.Shape = shape
-        elapsed = time.perf_counter() - start
 
-        if status_bar is not None:
-            status_bar.showMessage(f"Preview built in {elapsed:.2f} seconds", 2500)
-        self._preview_applied = True
+    def _format_label(self, params: CombinedParams) -> str:
+        data = params.data()
+        size = data.baseplate_size
+        stacking_enabled = data.stacking.enabled
+
+        custom_layout = size.custom_layout if size.custom_layout_enabled else None
+        return self._format_baseplate_label(
+            size.x_grid_count,
+            size.y_grid_count,
+            custom_layout,
+            stacking_enabled=stacking_enabled,
+            filler_left=size.filler_left_enabled,
+            filler_right=size.filler_right_enabled,
+            filler_bottom=size.filler_bottom_enabled,
+            filler_top=size.filler_top_enabled,
+        )
 
     @staticmethod
-    def _format_simple_baseplate_label(  # noqa: PLR0913
+    def _format_baseplate_label(  # noqa: PLR0913
         x_cells: int,
         y_cells: int,
         custom_layout: list[list[bool]] | None = None,
@@ -781,13 +540,32 @@ class CreateBaseplateTaskPanel:
             return f"Stacked Baseplates {x_str} x {y_str}"
         return f"Baseplate {x_str} x {y_str}"
 
-    @staticmethod
-    def _format_preview_label(base_label: str) -> str:
-        return f"[Preview] {base_label}"
+    def _create_feature_object(self) -> fc.DocumentObject:
+        obj = utils.new_object(self._object_name)
+        if fc.GuiUp and obj is not None:
+            view_object = obj.ViewObject
+            if view_object is not None:
+                ViewProviderGridfinity(view_object, str(self._pixmap))
+        self._feature_ctor(obj)
+        return obj
 
-    @staticmethod
-    def _support_label_for(base_label: str) -> str:
-        return f"{base_label} Support"
+    def _on_accept_finalize(self, output_obj: fc.DocumentObject, params: CombinedParams) -> None:
+        params.update_defaults(DefaultType.MEM)
+
+        # Handle support companion for stacking
+        data = params.data()
+        stacking_enabled = data.stacking.enabled
+        base_label = output_obj.Label
+
+        if stacking_enabled:
+            companion, extra_companions = self._resolve_or_create_support_companion(output_obj)
+            companion.Label = f"{base_label} Support"
+            companion.SourceBaseplate = output_obj
+            for extra in extra_companions:
+                extra.SourceBaseplate = None
+            self._set_show_in_tree(companion, visible=True)
+        else:
+            self._remove_support_companions(output_obj)
 
     @staticmethod
     def _find_support_companions(base_obj: fc.DocumentObject) -> list[fc.DocumentObject]:
@@ -809,99 +587,20 @@ class CreateBaseplateTaskPanel:
     ) -> tuple[fc.DocumentObject, list[fc.DocumentObject]]:
         companions = self._find_support_companions(base_obj)
         if companions:
-            canonical = companions[0]
-            extras = companions[1:]
-            return canonical, extras
+            return companions[0], companions[1:]
 
         companion = utils.new_object("BaseplateSupport")
-        if fc.GuiUp:
-            view_object: fcg.ViewProviderDocumentObject = companion.ViewObject
-            ViewProviderGridfinity(view_object, str(self._pixmap))
+        if fc.GuiUp and companion is not None:
+            view_object = companion.ViewObject
+            if view_object is not None:
+                ViewProviderGridfinity(view_object, str(self._pixmap))
         features.BaseplateSupport(companion, base_obj)
         return companion, []
 
     def _remove_support_companions(self, base_obj: fc.DocumentObject) -> None:
-        """Remove all support companions for a baseplate."""
         companions = self._find_support_companions(base_obj)
         for companion in companions:
             fc.ActiveDocument.removeObject(companion.Name)
-
-    def _set_show_in_tree(self, obj: fc.DocumentObject, *, visible: bool) -> None:
-        if not fc.GuiUp:
-            return
-        try:
-            view = obj.ViewObject
-        except ReferenceError:
-            return
-        if hasattr(view, "ShowInTree"):
-            with contextlib.suppress(Exception):
-                view.ShowInTree = visible
-
-    def _stop_preview_timer(self) -> None:
-        """Stop the preview timer to prevent callbacks after cleanup."""
-        if hasattr(self, "_preview_timer") and self._preview_timer is not None:
-            self._preview_timer.stop()
-
-    def accept(self) -> bool:
-        self._stop_preview_timer()
-        if self._target_obj is None:
-            return False
-        params = self._validate_controls(preview_mode=False)
-        if params is None:
-            return False
-        output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
-        params.to_obj(output_obj)
-        params.update_defaults(DefaultType.MEM)
-
-        stacking_enabled = params.stacking.get_value("enabled")
-        custom_layout_enabled = params.baseplate_size.get_value("custom_layout_enabled")
-        custom_layout = (
-            params.baseplate_size.get_value("custom_layout") if custom_layout_enabled else None
-        )
-        base_label = self._format_simple_baseplate_label(
-            int(params.baseplate_size.get_value("x_grid_count")),
-            int(params.baseplate_size.get_value("y_grid_count")),
-            custom_layout,
-            stacking_enabled=stacking_enabled,
-            filler_left=params.baseplate_size.get_value("filler_left_enabled"),
-            filler_right=params.baseplate_size.get_value("filler_right_enabled"),
-            filler_bottom=params.baseplate_size.get_value("filler_bottom_enabled"),
-            filler_top=params.baseplate_size.get_value("filler_top_enabled"),
-        )
-        output_obj.Label = base_label
-
-        # Handle support companion for stacking
-        if stacking_enabled:
-            companion, extra_companions = self._resolve_or_create_support_companion(output_obj)
-            companion.Label = self._support_label_for(base_label)
-            companion.SourceBaseplate = output_obj
-            for extra in extra_companions:
-                extra.SourceBaseplate = None
-            self._set_show_in_tree(companion, visible=True)
-        else:
-            # Remove support companion if stacking was disabled
-            self._remove_support_companions(output_obj)
-
-        if self._edit_obj is not None and self._created_preview_obj:
-            fc.ActiveDocument.removeObject(self._target_obj.Name)
-        else:
-            self._restore_preview_visuals()
-            self._set_show_in_tree(output_obj, visible=True)
-
-        fc.ActiveDocument.recompute()
-        fcg.SendMsgToActiveView("ViewFit")
-        fcg.Control.closeDialog()
-        return True
-
-    def reject(self) -> bool:
-        self._stop_preview_timer()
-        if self._target_obj is not None:
-            if self._created_preview_obj:
-                fc.ActiveDocument.removeObject(self._target_obj.Name)
-            else:
-                self._restore_preview_visuals()
-        fcg.Control.closeDialog()
-        return True
 
 
 class CreateSupportBaseplate(CreateCommand):
@@ -913,163 +612,59 @@ class CreateSupportBaseplate(CreateCommand):
         )
 
 
-class CreateConnectingClipTaskPanel:
+class CreateConnectingClipTaskPanel(SingleFeatureTaskPanel):
     """Task panel for creating a connecting clip with custom parameters."""
 
     def __init__(self, pixmap: Path | str, target_obj: fc.DocumentObject | None = None) -> None:
         from .param import CombinedConnectingClipsParams
 
-        self._pixmap = pixmap
-        self._edit_obj = target_obj
-        self._target_obj: fc.DocumentObject | None = None
-        self._created_preview_obj = False
-        self._original_view: dict[str, Any] | None = None
-        self._preview_applied = False
+        super().__init__(pixmap, target_obj, window_title="Connecting Clip")
+
         self._params = CombinedConnectingClipsParams()
 
-        self.form = QWidget()
-        self.form.setWindowTitle(
-            "Edit Connecting Clip" if target_obj is not None else "Create Connecting Clip",
+        if target_obj is not None:
+            self._params = self._params.from_obj(target_obj)
+
+        controls = self._setup_ui(self._params)
+        self._params.apply_to_ui_owner(self)
+        self._setup_preview(self._params, controls)
+
+    def _get_params(self) -> CombinedParams:
+        return self._params
+
+    def _build_preview_shape(self, params: CombinedParams) -> Part.Shape:
+        data = params.data()
+        half_width = data.fundamentals.main_half_width
+        height = data.fundamentals.main_height
+        tolerance = data.connecting_clips.tolerance
+        clip_length = data.connecting_clips.clip_length
+
+        wire = clip_profiles.build_clip_profile_wire(half_width, height, tolerance)
+        length = clip_length - 2 * tolerance
+        return (
+            Part.Face(wire)
+            .extrude(fc.Vector(float(length), 0, 0))
+            .translate(fc.Vector(-float(length) / 2, 0, 0))
         )
-        layout = QVBoxLayout(self.form)
 
-        # Build UI using the param system
-        controls, widget = self._params.build_ui(layout)
-        for key, control in controls.items():
-            setattr(self, key, control)
+    def _format_label(self, params: CombinedParams) -> str:  # noqa: ARG002
+        return "ConnectingClip"
 
-        # Create preview object
-        self._target_obj = utils.new_object("ConnectingClip")
-        self._created_preview_obj = True
-        if fc.GuiUp:
-            view_object: fcg.ViewProviderDocumentObject = self._target_obj.ViewObject
-            ViewProviderGridfinity(view_object, str(self._pixmap))
-            if hasattr(view_object, "ShowInTree"):
-                with contextlib.suppress(Exception):
-                    view_object.ShowInTree = False
+    def _create_feature_object(self) -> fc.DocumentObject:
+        obj = utils.new_object("ConnectingClip")
+        if fc.GuiUp and obj is not None:
+            view_object = obj.ViewObject
+            if view_object is not None:
+                ViewProviderGridfinity(view_object, str(self._pixmap))
+        features.ConnectingClip(obj, self._params)
+        return obj
 
-        features.ConnectingClip(self._target_obj, self._params)
-
-        if self._edit_obj is not None:
-            # Load values from existing object into params, then apply to UI
-            self._params = self._params.from_obj(self._edit_obj)
-            self._params.apply_to_ui_owner(self)
-
-        self._params.connect_control_signals(controls, self._update_preview)
-
-        # Initial preview update
-        self._capture_and_set_preview_visuals()
-        self._update_preview()
-
-    def getStandardButtons(self) -> int:
-        return _standard_buttons_ok_cancel()
-
-    def _update_preview(self) -> None:
-        """Update the preview object with current values."""
-        if self._target_obj is None:
-            return
-
-        # Update params from UI and apply to object
-        self._params.update_from_ui_owner(self)
-        self._params.to_obj(self._target_obj)
-
-        # Recompute the object to update the shape
-        try:
-            fc.ActiveDocument.recompute()
-            self._preview_applied = True
-        except (RuntimeError, ValueError):
-            # Preview recompute can fail due to invalid params - safe to ignore
-            pass
-
-    def _preview_style(self) -> tuple[tuple[float, float, float], int]:
-        return PREVIEW_SHAPE_COLOR, PREVIEW_TRANSPARENCY
-
-    def _capture_and_set_preview_visuals(self) -> None:
-        if not fc.GuiUp or self._target_obj is None:
-            return
-        view = self._target_obj.ViewObject
-        self._original_view = {
-            "ShapeColor": tuple(view.ShapeColor),
-            "Transparency": int(view.Transparency),
-            "LineColor": tuple(view.LineColor) if hasattr(view, "LineColor") else None,
-        }
-        color, transparency = self._preview_style()
-        view.ShapeColor = color
-        if hasattr(view, "LineColor"):
-            view.LineColor = color
-        view.Transparency = transparency
-
-    def _restore_preview_visuals(self) -> None:
-        if not fc.GuiUp or self._target_obj is None or self._original_view is None:
-            return
-        view = self._target_obj.ViewObject
-        view.ShapeColor = self._original_view["ShapeColor"]
-        if hasattr(view, "LineColor") and self._original_view.get("LineColor") is not None:
-            view.LineColor = self._original_view["LineColor"]
-        view.Transparency = self._original_view["Transparency"]
-
-    def _set_show_in_tree(self, obj: fc.DocumentObject, *, visible: bool) -> None:
-        if not fc.GuiUp:
-            return
-        try:
-            view = obj.ViewObject
-        except ReferenceError:
-            return
-        if hasattr(view, "ShowInTree"):
-            with contextlib.suppress(Exception):
-                view.ShowInTree = visible
-
-    def accept(self) -> bool:
-        """Accept the dialog and create the final object."""
-        if self._target_obj is None:
-            return False
-
-        # Update params from UI
-        self._params.update_from_ui_owner(self)
-
-        # Validate the parameters
-        validation_errors = self._params.validate()
-        if validation_errors:
-            # Display validation errors to user
-            error_msg = "Validation errors:\n" + "\n".join(
-                [f"- {msg}" for msg in validation_errors.values()],
-            )
-            try:
-                from PySide.QtWidgets import QMessageBox
-
-                QMessageBox.warning(None, "Validation Error", error_msg)
-            except (ImportError, RuntimeError):
-                # Fallback to console if GUI not available
-                fc.Console.PrintWarning(f"{error_msg}\n")
-            return False
-
-        # Apply params to output object
-        output_obj = self._edit_obj if self._edit_obj is not None else self._target_obj
-        self._params.to_obj(output_obj)
-        self._params.update_defaults(DefaultType.MEM)
-        output_obj.Label = "ConnectingClip"
-
-        if self._edit_obj is not None and self._created_preview_obj:
-            fc.ActiveDocument.removeObject(self._target_obj.Name)
-        else:
-            self._restore_preview_visuals()
-            self._set_show_in_tree(output_obj, visible=True)
-
-        # Recompute to finalize the shape
-        fc.ActiveDocument.recompute()
-        fcg.SendMsgToActiveView("ViewFit")
-        fcg.Control.closeDialog()
-        return True
-
-    def reject(self) -> bool:
-        """Reject the dialog and cleanup preview object."""
-        if self._target_obj is not None:
-            if self._created_preview_obj:
-                fc.ActiveDocument.removeObject(self._target_obj.Name)
-            else:
-                self._restore_preview_visuals()
-        fcg.Control.closeDialog()
-        return True
+    def _on_accept_finalize(
+        self,
+        output_obj: fc.DocumentObject,  # noqa: ARG002
+        params: CombinedParams,
+    ) -> None:
+        params.update_defaults(DefaultType.MEM)
 
 
 class CreateConnectingClip(CreateCommand):
