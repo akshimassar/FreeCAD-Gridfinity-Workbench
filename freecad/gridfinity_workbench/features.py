@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import contextlib
 from abc import abstractmethod
-from dataclasses import replace
 
 import FreeCAD as fc  # noqa: N813
 import Part
@@ -34,12 +33,19 @@ from .custom_shape_features import (
     vertical_edge_fillet,
     vertical_edge_fillet_with_concave_edges,
 )
-from .drawer_split import split_axis_into_printable_chunks
+from .drawer_split import PrintableAxisChunk, split_axis_into_printable_chunks
 from .param import (
+    BaseplateCoreParams,
+    BaseplateSizeParams,
+    ClickSpringsParams,
     CombinedBaseplateParams,
     CombinedConnectingClipsParams,
     CombinedDrawerBaseplateParams,
     CombinedSupportBaseplateParams,
+    ConnectingClipsParams,
+    FundamentalsParams,
+    JunctionScrewsParams,
+    StackingParams,
 )
 from .version import __version__
 
@@ -426,11 +432,14 @@ class Baseplate(FoundationGridfinity):
 class DrawerBaseplateGroup:
     """Group container for drawer baseplate pieces.
 
-    Holds parameters and manages child piece objects. Not a FoundationGridfinity subclass
-    since App::DocumentObjectGroup doesn't have a Shape property.
+    Holds parameters and manages child Baseplate objects. Children are independent
+    baseplates with their own parameters, but tracked via RowIndex/ColumnIndex properties.
 
-    Child creation is handled by rebuild_pieces(), not execute(). This avoids
-    issues with creating document objects during recompute.
+    In preview mode, no children are created. Instead, build_preview_shape() returns
+    a combined preview shape for all pieces.
+
+    On accept (PreviewBuildMode=False), children are created/updated as independent
+    Baseplate objects with full parameters copied from the group.
     """
 
     def __init__(self, obj: fc.DocumentObject) -> None:
@@ -462,7 +471,15 @@ class DrawerBaseplateGroup:
         check_version.migrate_object_version(obj)
 
     def execute(self, obj: fc.DocumentObject) -> None:
-        """Create/update/remove child DrawerBaseplatePiece objects."""
+        """Create/update/remove child Baseplate objects.
+
+        In preview mode (PreviewBuildMode=True), does nothing - preview is handled
+        externally via build_preview_shape().
+        """
+        if bool(getattr(obj, "PreviewBuildMode", False)):
+            # Preview mode: don't create children, preview handled externally
+            return
+
         x_chunks, y_chunks_for_rows, grid_mm, full_data = _compute_drawer_splits(obj)
         if x_chunks is None:
             return
@@ -479,6 +496,66 @@ class DrawerBaseplateGroup:
         # This prevents FreeCAD 1.1 "still touched after recompute" warnings
         for child in obj.Group:
             child.purgeTouched()
+
+    def build_preview_shape(self, obj: fc.DocumentObject) -> Part.Shape:
+        """Build combined preview shape for all pieces without creating children.
+
+        Returns a compound shape containing simplified preview shapes for all pieces,
+        positioned according to the tile layout.
+        """
+        x_chunks, y_chunks_for_rows, grid_mm, full_data = _compute_drawer_splits(obj)
+        if x_chunks is None:
+            return Part.Shape()
+
+        combined_params: CombinedDrawerBaseplateParams = (
+            CombinedDrawerBaseplateParams().from_obj(obj)  # type: ignore[assignment]
+        )
+        required_pieces = _build_required_pieces(x_chunks, y_chunks_for_rows)
+
+        # Tile positioning parameters
+        bed_w = float(full_data.printer.bed_width)
+        bed_d = float(full_data.printer.bed_depth)
+        plate_gap_x = 42.0
+        plate_gap_y = 42.0
+        y_chunk_count = len(y_chunks_for_rows)
+
+        shapes: list[Part.Shape] = []
+
+        for row_index, column_index in required_pieces.values():
+            x_chunk = x_chunks[column_index]
+            y_chunk = y_chunks_for_rows[row_index]
+
+            # Build params for this chunk
+            baseplate_params = _build_baseplate_params_for_chunk(combined_params, x_chunk, y_chunk)
+
+            # Build preview shape (simplified, no screws/clips/springs)
+            layout = [[True] * y_chunk.cells for _ in range(x_chunk.cells)]
+            options = baseplate_builder.BaseplateBuildOptions(
+                include_junction_screws=False,
+                include_clip_cutouts=False,
+                include_snap_springs=False,
+            )
+            shape = baseplate_builder.build_simple_baseplate_from_params_cached(
+                baseplate_params.data(),
+                layout,
+                options,
+                preview=True,
+            )
+
+            # Compute placement
+            width_mm = x_chunk.cells * grid_mm + x_chunk.low_fill_mm + x_chunk.high_fill_mm
+            depth_mm = y_chunk.cells * grid_mm + y_chunk.low_fill_mm + y_chunk.high_fill_mm
+            tile_center_x = (column_index * (bed_w + plate_gap_x)) + (0.5 * bed_w)
+            tile_center_y = (y_chunk_count - 1 - row_index) * (bed_d + plate_gap_y) + 0.5 * bed_d
+            placement_x = tile_center_x - (width_mm / 2)
+            placement_y = tile_center_y - (depth_mm / 2)
+
+            # Translate shape to tile position
+            shape = shape.copy()
+            shape.translate(fc.Vector(placement_x, placement_y, 0))
+            shapes.append(shape)
+
+        return Part.makeCompound(shapes) if shapes else Part.Shape()
 
     def _remove_stale_children(
         self,
@@ -503,13 +580,16 @@ class DrawerBaseplateGroup:
         required_pieces: dict[str, tuple[int, int]],
         existing_children: dict[str, fc.DocumentObject],
     ) -> list[str]:
-        """Create or update child piece objects."""
+        """Create or update child Baseplate objects with full parameters."""
         status_bar = None
         if fc.GuiUp and fcg is not None:
             with contextlib.suppress(Exception):
                 status_bar = fcg.getMainWindow().statusBar()
 
         doc = obj.Document
+        combined_params: CombinedDrawerBaseplateParams = (
+            CombinedDrawerBaseplateParams().from_obj(obj)  # type: ignore[assignment]
+        )
         total_pieces = len(required_pieces)
         baseplate_names: list[str] = []
 
@@ -538,24 +618,25 @@ class DrawerBaseplateGroup:
             )
             baseplate_names.append(baseplate_name)
 
-            # Compute tile center for this piece
+            # Compute placement
             tile_center_x = (column_index * (bed_w + plate_gap_x)) + (0.5 * bed_w)
             tile_center_y = (y_chunk_count - 1 - row_index) * (bed_d + plate_gap_y) + 0.5 * bed_d
-
-            # Placement offset: tile_center - shape_center (shapes built at origin)
             placement_x = tile_center_x - (width_mm / 2)
             placement_y = tile_center_y - (depth_mm / 2)
 
+            # Build full CombinedBaseplateParams for this chunk
+            baseplate_params = _build_baseplate_params_for_chunk(combined_params, x_chunk, y_chunk)
+
             if piece_key in existing_children:
                 child = existing_children[piece_key]
+                # Update existing child's params
+                baseplate_params.to_obj(child)
                 child.Label = baseplate_name
                 child.Placement.Base = fc.Vector(placement_x, placement_y, 0)
-                # Touch then recompute child to rebuild with updated chunk data
-                # (touch required for FreeCAD Link branch compatibility)
                 child.touch()
                 child.recompute()
             else:
-                self._create_child_piece(
+                self._create_child_baseplate(
                     obj,
                     doc,
                     piece_key,
@@ -564,6 +645,7 @@ class DrawerBaseplateGroup:
                     baseplate_name,
                     placement_x,
                     placement_y,
+                    baseplate_params,
                 )
 
             if status_bar is not None:
@@ -576,7 +658,7 @@ class DrawerBaseplateGroup:
 
         return baseplate_names
 
-    def _create_child_piece(  # noqa: PLR0913
+    def _create_child_baseplate(  # noqa: PLR0913
         self,
         obj: fc.DocumentObject,
         doc: fc.Document,
@@ -586,37 +668,47 @@ class DrawerBaseplateGroup:
         label: str,
         placement_x: float,
         placement_y: float,
+        baseplate_params: CombinedBaseplateParams,
     ) -> None:
-        """Create a single child piece object."""
-        # Create child, add to group, THEN set SourceGroup link
-        # (Setting SourceGroup before addObject breaks FreeCAD's dependency graph)
+        """Create a single Baseplate child object with full parameters."""
         child = doc.addObject("Part::FeaturePython", piece_key)
-        DrawerBaseplatePiece(child, row_index, column_index)
+        Baseplate(child)  # Regular Baseplate with all properties
         child.Label = label
-        obj.addObject(child)
-        child.SourceGroup = obj  # Must be after addObject()
 
-        # Set placement before recompute (shapes are built at origin)
+        # Add position tracking properties for matching during edits
+        child.addProperty(
+            "App::PropertyInteger", "RowIndex", "DrawerPiece", "Row index in drawer grid"
+        ).RowIndex = row_index
+        child.addProperty(
+            "App::PropertyInteger", "ColumnIndex", "DrawerPiece", "Column index in drawer grid"
+        ).ColumnIndex = column_index
+
+        # Set all baseplate params
+        baseplate_params.to_obj(child)
+
+        # Add to group
+        obj.addObject(child)
+
+        # Set placement (shapes are built at origin)
         child.Placement.Base = fc.Vector(placement_x, placement_y, 0)
 
-        # Force immediate recompute to build shape and clear touched state
-        # This prevents FreeCAD 1.1 "still touched after recompute" warnings
+        # Force immediate recompute to build shape
         child.recompute()
         child.purgeTouched()
 
-        # Attach ViewProvider proxy (required for proper visual initialization)
+        # Attach ViewProvider proxy
         if fc.GuiUp:
             vo = child.ViewObject
             if vo is not None and getattr(vo, "Proxy", None) is None:
-                vo.Proxy = 0  # Minimal proxy to trigger initialization
+                vo.Proxy = 0
 
     @staticmethod
     def _get_existing_children(obj: fc.DocumentObject) -> dict[str, fc.DocumentObject]:
-        """Get existing piece children indexed by piece key."""
+        """Get existing Baseplate children indexed by piece key (row, col)."""
         existing: dict[str, fc.DocumentObject] = {}
         for child in obj.Group:
             proxy = getattr(child, "Proxy", None)
-            if isinstance(proxy, DrawerBaseplatePiece):
+            if isinstance(proxy, Baseplate):
                 row = getattr(child, "RowIndex", None)
                 col = getattr(child, "ColumnIndex", None)
                 if row is not None and col is not None:
@@ -676,128 +768,62 @@ def _build_required_pieces(x_chunks: list, y_chunks_for_rows: list) -> dict[str,
     return required
 
 
-def _compute_drawer_chunk_data(
-    source_group: fc.DocumentObject,
-    row_index: int,
-    column_index: int,
-) -> dict | None:
-    """Compute chunk data for a specific piece position from group params."""
-    x_chunks, y_chunks_for_rows, _, full_data = _compute_drawer_splits(source_group)
-    if x_chunks is None:
-        return None
+def _build_baseplate_params_for_chunk(
+    group_params: CombinedDrawerBaseplateParams,
+    x_chunk: PrintableAxisChunk,
+    y_chunk: PrintableAxisChunk,
+) -> CombinedBaseplateParams:
+    """Build complete CombinedBaseplateParams for a specific chunk.
 
-    y_chunk_count = len(y_chunks_for_rows)
-    if column_index >= len(x_chunks) or row_index >= y_chunk_count:
-        return None
-
-    x_chunk = x_chunks[column_index]
-    y_chunk = y_chunks_for_rows[row_index]
-
-    combined_params = CombinedDrawerBaseplateParams().from_obj(source_group)
-    return {
-        "x_cells": x_chunk.cells,
-        "y_cells": y_chunk.cells,
-        "left_fill": x_chunk.low_fill_mm,
-        "right_fill": x_chunk.high_fill_mm,
-        "bottom_fill": y_chunk.low_fill_mm,
-        "top_fill": y_chunk.high_fill_mm,
-        "y_chunk_count": y_chunk_count,
-        "full_data": full_data,
-        "baseplate_params": combined_params.baseplate_data(),
-    }
-
-
-class DrawerBaseplatePiece(FoundationGridfinity):
-    """Individual baseplate piece within a drawer group.
-
-    Reads parameters from SourceGroup link. Only stores row/column index
-    to identify which chunk this piece represents.
-
-    Note: SourceGroup must be set AFTER adding child to group via addObject(),
-    otherwise FreeCAD's dependency graph prevents the addObject from working.
-    Uses PropertyLinkHidden to avoid circular dependency in DAG (group contains
-    pieces, pieces link to group).
+    Copies fundamentals, core, clicks, screws, clips from group params.
+    Computes size params (grid counts + fillers) from chunk data.
+    Stacking is disabled for drawer baseplates.
     """
-
-    def __init__(
-        self,
-        obj: fc.DocumentObject,
-        row_index: int = 0,
-        column_index: int = 0,
-    ) -> None:
-        super().__init__(obj)
-
-        # SourceGroup is set later by rebuild_pieces() after addObject()
-        # Use PropertyLinkHidden to avoid DAG circular dependency
-        obj.addProperty(
-            "App::PropertyLinkHidden",
-            "SourceGroup",
-            "Base",
-            "Parent drawer baseplate group",
-        )
-
-        obj.addProperty(
-            "App::PropertyInteger", "RowIndex", "Piece", "Row index in drawer grid"
-        ).RowIndex = row_index
-        obj.addProperty(
-            "App::PropertyInteger", "ColumnIndex", "Piece", "Column index in drawer grid"
-        ).ColumnIndex = column_index
-
-    def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        source_group = getattr(obj, "SourceGroup", None)
-        if source_group is None:
-            return Part.Shape()
-
-        row_index = int(getattr(obj, "RowIndex", 0))
-        column_index = int(getattr(obj, "ColumnIndex", 0))
-
-        chunk_data = _compute_drawer_chunk_data(source_group, row_index, column_index)
-        if chunk_data is None:
-            return Part.Shape()
-
-        full_data = chunk_data["full_data"]
-        baseplate_params = chunk_data["baseplate_params"]
-        preview_mode = bool(getattr(source_group, "PreviewBuildMode", False))
-
-        options = baseplate_builder.BaseplateBuildOptions(
-            include_junction_screws=full_data.junction_screws.enabled and not preview_mode,
-            include_clip_cutouts=full_data.connecting_clips.enabled and not preview_mode,
-            include_snap_springs=full_data.click_springs.enabled and not preview_mode,
-        )
-
-        x_cells = chunk_data["x_cells"]
-        y_cells = chunk_data["y_cells"]
-        left_fill = chunk_data["left_fill"]
-        right_fill = chunk_data["right_fill"]
-        bottom_fill = chunk_data["bottom_fill"]
-        top_fill = chunk_data["top_fill"]
-
-        piece_params = replace(
-            baseplate_params,
-            baseplate_size=replace(
-                baseplate_params.baseplate_size,
-                x_grid_count=x_cells,
-                y_grid_count=y_cells,
-                filler_left_enabled=left_fill > 0,
-                filler_left_width=left_fill * unitmm,
-                filler_right_enabled=right_fill > 0,
-                filler_right_width=right_fill * unitmm,
-                filler_bottom_enabled=bottom_fill > 0,
-                filler_bottom_width=bottom_fill * unitmm,
-                filler_top_enabled=top_fill > 0,
-                filler_top_width=top_fill * unitmm,
-            ),
-        )
-
-        layout = [[True for _ in range(y_cells)] for _ in range(x_cells)]
-        shape = baseplate_builder.build_simple_baseplate_from_params_cached(
-            piece_params,
-            layout,
-            options,
-            preview=preview_mode,
-        )
-
-        return shape
+    return CombinedBaseplateParams(
+        baseplate_size=BaseplateSizeParams(
+            x_grid_count=x_chunk.cells,
+            y_grid_count=y_chunk.cells,
+            filler_left_enabled=x_chunk.low_fill_mm > 0,
+            filler_left_width=fc.Units.Quantity(f"{x_chunk.low_fill_mm} mm"),
+            filler_right_enabled=x_chunk.high_fill_mm > 0,
+            filler_right_width=fc.Units.Quantity(f"{x_chunk.high_fill_mm} mm"),
+            filler_bottom_enabled=y_chunk.low_fill_mm > 0,
+            filler_bottom_width=fc.Units.Quantity(f"{y_chunk.low_fill_mm} mm"),
+            filler_top_enabled=y_chunk.high_fill_mm > 0,
+            filler_top_width=fc.Units.Quantity(f"{y_chunk.high_fill_mm} mm"),
+            custom_layout_enabled=False,
+            custom_layout=None,
+        ),
+        fundamentals=FundamentalsParams(
+            grid_size=group_params.fundamentals.get_value("grid_size"),
+            outer_radius=group_params.fundamentals.get_value("outer_radius"),
+            main_half_width=group_params.fundamentals.get_value("main_half_width"),
+            main_height=group_params.fundamentals.get_value("main_height"),
+        ),
+        baseplate_core=BaseplateCoreParams(
+            lower_chamfer_enabled=group_params.baseplate_core.get_value("lower_chamfer_enabled"),
+            lower_chamfer_size=group_params.baseplate_core.get_value("lower_chamfer_size"),
+            top_crop=group_params.baseplate_core.get_value("top_crop"),
+        ),
+        stacking=StackingParams(enabled=False),
+        click_springs=ClickSpringsParams(
+            enabled=group_params.click_springs.get_value("enabled"),
+            click_thickness=group_params.click_springs.get_value("click_thickness"),
+            click_length=group_params.click_springs.get_value("click_length"),
+            click_offset=group_params.click_springs.get_value("click_offset"),
+        ),
+        junction_screws=JunctionScrewsParams(
+            enabled=group_params.junction_screws.get_value("enabled"),
+            screw_diameter=group_params.junction_screws.get_value("screw_diameter"),
+            counterbore_diameter=group_params.junction_screws.get_value("counterbore_diameter"),
+            counterbore_depth=group_params.junction_screws.get_value("counterbore_depth"),
+        ),
+        connecting_clips=ConnectingClipsParams(
+            enabled=group_params.connecting_clips.get_value("enabled"),
+            tolerance=group_params.connecting_clips.get_value("tolerance"),
+            clip_length=group_params.connecting_clips.get_value("clip_length"),
+        ),
+    )
 
 
 class SupportBaseplate(FoundationGridfinity):

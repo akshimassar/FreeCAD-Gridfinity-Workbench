@@ -1227,8 +1227,9 @@ class ParameterGroup(ABC):
     4. **Default Management**:
        - Set `_default_type` class attribute to control default resolution for ALL params
        - VALUE (default): Use hardcoded defaults from parameter definitions
-       - SAVED: Load from FreeCAD preferences, persist via save_as_defaults()
-       - MEM: Remember last values within session, auto-updated by to_obj()
+       - SAVED: Load from FreeCAD preferences, persist via update_defaults(SAVED)
+       - MEM: Remember last values within session, update via update_defaults(MEM)
+       - Pass use_factory_defaults=True to ignore MEM/SAVED and use hardcoded defaults
 
     5. **Serialization**:
        - to_ui_payload() / from_ui_payload(): Convert to/from UI-friendly dicts
@@ -1254,6 +1255,8 @@ class ParameterGroup(ABC):
         parameters: Sequence[BaseParam | ParamCombination | ParameterGroup] | None = None,
         resolver: ParamDefaultResolver | None = None,
         tooltip_text: str | None = None,
+        *,
+        use_factory_defaults: bool = False,
     ) -> None:
         """Initialize a parameter group with optional parameters and resolver.
 
@@ -1262,9 +1265,12 @@ class ParameterGroup(ABC):
                         Order is preserved for UI rendering.
             resolver: Optional resolver for default values.
             tooltip_text: Optional tooltip text for the group header.
+            use_factory_defaults: If True, ignore MEM/SAVED defaults and use hardcoded
+                                  values from parameter definitions. Propagates to children.
 
         """
         self._tooltip_text = tooltip_text
+        self._use_factory_defaults = use_factory_defaults
         # Expand ParamCombination instances into their underlying params
         expanded_params: list[BaseParam] = []
         self._compound_params: dict[str, ParamCombination] = {}
@@ -1279,6 +1285,9 @@ class ParameterGroup(ABC):
                 child_key = param._group_name  # noqa: SLF001
                 self._child_groups[child_key] = param
                 self._ui_order.append(child_key)
+                # Propagate use_factory_defaults to child
+                if use_factory_defaults:
+                    param._use_factory_defaults = True  # noqa: SLF001
             elif isinstance(param, ParamCombination):
                 self._compound_params[param.name] = param
                 self._ui_order.append(param.name)
@@ -1363,6 +1372,11 @@ class ParameterGroup(ABC):
 
         """
         fallback = param.default()
+
+        # Factory defaults mode: always use hardcoded defaults
+        if self._use_factory_defaults:
+            return fallback
+
         dt = self._default_type
 
         if dt == DefaultType.VALUE:
@@ -1479,7 +1493,7 @@ class ParameterGroup(ABC):
         return self
 
     def to_obj(self, obj: fc.DocumentObject) -> None:
-        """Apply parameters to FreeCAD object and update MEM defaults."""
+        """Apply parameters to FreeCAD object."""
         for prop_name, param_name, param, owner in self._collect_property_mappings():
             if hasattr(obj, prop_name):
                 value = owner.get_value(param_name)
@@ -1487,25 +1501,26 @@ class ParameterGroup(ABC):
                     value = param.to_json(value)
                 setattr(obj, prop_name, value)
 
-        # Update MEM defaults for this group and children
-        self._update_mem_defaults()
+    def update_defaults(self, default_type: DefaultType) -> None:
+        """Update defaults of specified type with current values.
 
-    def _update_mem_defaults(self) -> None:
-        """Update MEM defaults for this group and all child groups."""
-        if self._default_type == DefaultType.MEM:
+        Args:
+            default_type: MEM to update session defaults, SAVED to persist to preferences.
+
+        """
+        if default_type == DefaultType.MEM:
             for param_name in self._parameters:
                 value = self.get_value(param_name)
                 self._resolver.set_runtime(self._group_name, param_name, value)
+        elif default_type == DefaultType.SAVED:
+            for param_name, param in self._parameters.items():
+                value = self.get_value(param_name)
+                storage_value = param.to_storage(value)
+                self._resolver.set_saved(self._group_name, param_name, storage_value)
 
+        # Recurse to child groups
         for child in self._child_groups.values():
-            child._update_mem_defaults()  # noqa: SLF001
-
-    def save_as_defaults(self) -> None:
-        """Save current values as SAVED defaults (for Edit Defaults command)."""
-        for param_name, param in self._parameters.items():
-            value = self.get_value(param_name)
-            storage_value = param.to_storage(value)
-            self._resolver.set_saved(self._group_name, param_name, storage_value)
+            child.update_defaults(default_type)
 
     def load_saved_defaults(self) -> ParameterGroup:
         """Load SAVED defaults into _values (for Edit Defaults UI initialization)."""
@@ -2388,10 +2403,21 @@ class CombinedParams:
         return new_combined
 
     def to_obj(self, obj: fc.DocumentObject) -> None:
-        """Apply all parameter groups to FreeCAD object and update MEM defaults."""
+        """Apply all parameter groups to FreeCAD object."""
         for group in self._param_groups.values():
             if hasattr(group, "to_obj"):
                 group.to_obj(obj)
+
+    def update_defaults(self, default_type: DefaultType) -> None:
+        """Update defaults for all parameter groups.
+
+        Args:
+            default_type: MEM to update session defaults, SAVED to persist to preferences.
+
+        """
+        for group in self._param_groups.values():
+            if hasattr(group, "update_defaults"):
+                group.update_defaults(default_type)
 
     def validate(self) -> list[ValidationError]:
         """Validate all parameter groups with hierarchical validation.
@@ -2480,6 +2506,9 @@ class CombinedParams:
                     continue
                 if hasattr(control, "setChecked"):
                     control.setChecked(bool(value))
+                elif hasattr(control, "setCurrentText"):
+                    # QComboBox - set selected text
+                    control.setCurrentText(str(value))
                 elif hasattr(control, "setValue"):
                     control.setValue(value)
 

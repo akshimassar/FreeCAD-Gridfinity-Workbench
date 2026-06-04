@@ -438,43 +438,32 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
         panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
         fcg.Control.showDialog(panel)
 
-        # Verify preview created group with children
+        # Verify group exists (but no children during preview - uses separate preview object)
         group = panel._target_obj  # noqa: SLF001
         self.assertIsNotNone(group, "Preview group should exist")
-        children = group.Group
-        self.assertGreater(len(children), 0, "Preview should create children")
 
-        for child in children:
-            # Verify shape is valid
-            self.assertTrue(
-                child.Shape.isValid(),
-                f"Preview child {child.Name} should have valid shape",
-            )
-            self.assertGreater(
-                child.Shape.Volume,
-                0,
-                f"Preview child {child.Name} should have non-zero volume",
-            )
+        # Verify preview object exists and has valid shape
+        preview_obj = panel._preview_obj  # noqa: SLF001
+        self.assertIsNotNone(preview_obj, "Preview object should exist")
+        self.assertTrue(preview_obj.Shape.isValid(), "Preview shape should be valid")
+        self.assertGreater(preview_obj.Shape.Volume, 0, "Preview shape should have non-zero volume")
 
-            # Verify preview visuals are applied
-            view = child.ViewObject
-            self.assertIsNotNone(view, f"Preview child {child.Name} should have ViewObject")
-            # ShapeColor returns 4-tuple (RGBA), compare RGB with tolerance
-            actual_rgb = view.ShapeColor[:3]
-            for i, (actual, expected) in enumerate(
-                zip(actual_rgb, PREVIEW_SHAPE_COLOR, strict=True)
-            ):
-                self.assertAlmostEqual(
-                    actual,
-                    expected,
-                    places=4,
-                    msg=f"Preview child {child.Name} color[{i}] mismatch",
-                )
-            self.assertEqual(
-                view.Transparency,
-                PREVIEW_TRANSPARENCY,
-                f"Preview child {child.Name} should have preview transparency",
+        # Verify preview visuals are applied to preview object
+        view = preview_obj.ViewObject
+        self.assertIsNotNone(view, "Preview object should have ViewObject")
+        actual_rgb = view.ShapeColor[:3]
+        for i, (actual, expected) in enumerate(zip(actual_rgb, PREVIEW_SHAPE_COLOR, strict=True)):
+            self.assertAlmostEqual(
+                actual,
+                expected,
+                places=4,
+                msg=f"Preview object color[{i}] mismatch",
             )
+        self.assertEqual(
+            view.Transparency,
+            PREVIEW_TRANSPARENCY,
+            "Preview object should have preview transparency",
+        )
 
         # Accept the dialog to create the object
         panel.accept()
@@ -484,9 +473,9 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
         self.assertIsNotNone(group)
         self.assertIn("Drawer Baseplates", group.Label)
 
-        # Group should have children (pieces)
+        # Group should have children (pieces created on accept)
         children = group.Group
-        self.assertGreater(len(children), 0)
+        self.assertGreater(len(children), 0, "Children should be created on accept")
 
         # Each child should have a valid shape
         for child in children:

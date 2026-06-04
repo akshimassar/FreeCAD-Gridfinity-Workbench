@@ -1133,7 +1133,8 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             connecting_clips=connecting_clips or ConnectingClipsParams(),
         )
         # Internal defaults for baseplate_size (not shown in UI - computed from drawer dims)
-        self._baseplate_size_defaults = BaseplateSizeParams()
+        # Use factory defaults to avoid MEM-cached invalid values
+        self._baseplate_size_defaults = BaseplateSizeParams(use_factory_defaults=True)
 
     def validate(self) -> list[ValidationError]:
         """Validate cross-group constraints."""
