@@ -28,7 +28,7 @@ from . import baseplate_builder, clip_profiles, custom_shape, features, utils
 from .features import format_axis_with_filler
 from .param import CombinedBaseplateParams
 from .param_system import DefaultType
-from .task_panels import GroupFeatureTaskPanel, SingleFeatureTaskPanel
+from .task_panels import CompanionManager, GroupFeatureTaskPanel, SingleFeatureTaskPanel
 
 
 def _standard_buttons_ok_cancel() -> int:
@@ -459,6 +459,8 @@ class CreateDrawerBaseplateTaskPanel(GroupFeatureTaskPanel):
 class CreateBaseplateTaskPanel(SingleFeatureTaskPanel):
     """Task panel for creating a simple baseplate with custom parameters."""
 
+    _support_manager: CompanionManager  # Initialized in __init__ (needs self._pixmap)
+
     def __init__(
         self,
         pixmap: Path | str,
@@ -469,6 +471,14 @@ class CreateBaseplateTaskPanel(SingleFeatureTaskPanel):
         feature_ctor: type[features.FoundationGridfinity] = features.Baseplate,
     ) -> None:
         super().__init__(pixmap, target_obj, window_title=label_name)
+
+        self._support_manager = CompanionManager(
+            feature_class=features.BaseplateSupport,
+            source_property="SourceBaseplate",
+            label_suffix="Support",
+            pixmap=pixmap,
+            view_provider_class=ViewProviderGridfinity,
+        )
 
         self._object_name = object_name
         self._feature_ctor = feature_ctor
@@ -554,53 +564,12 @@ class CreateBaseplateTaskPanel(SingleFeatureTaskPanel):
 
         # Handle support companion for stacking
         data = params.data()
-        stacking_enabled = data.stacking.enabled
-        base_label = output_obj.Label
-
-        if stacking_enabled:
-            companion, extra_companions = self._resolve_or_create_support_companion(output_obj)
-            companion.Label = f"{base_label} Support"
-            companion.SourceBaseplate = output_obj
-            for extra in extra_companions:
-                extra.SourceBaseplate = None
-            self._set_show_in_tree(companion, visible=True)
+        if data.stacking.enabled:
+            companion = self._support_manager.resolve_or_create(output_obj)
+            self._support_manager.update_label(companion, output_obj.Label)
+            self._support_manager.set_tree_visibility(companion, visible=True)
         else:
-            self._remove_support_companions(output_obj)
-
-    @staticmethod
-    def _find_support_companions(base_obj: fc.DocumentObject) -> list[fc.DocumentObject]:
-        doc = fc.ActiveDocument
-        if doc is None:
-            return []
-        companions: list[fc.DocumentObject] = []
-        for obj in doc.Objects:
-            proxy = getattr(obj, "Proxy", None)
-            if not isinstance(proxy, features.BaseplateSupport):
-                continue
-            if getattr(obj, "SourceBaseplate", None) is base_obj:
-                companions.append(obj)
-        return companions
-
-    def _resolve_or_create_support_companion(
-        self,
-        base_obj: fc.DocumentObject,
-    ) -> tuple[fc.DocumentObject, list[fc.DocumentObject]]:
-        companions = self._find_support_companions(base_obj)
-        if companions:
-            return companions[0], companions[1:]
-
-        companion = utils.new_object("BaseplateSupport")
-        if fc.GuiUp and companion is not None:
-            view_object = companion.ViewObject
-            if view_object is not None:
-                ViewProviderGridfinity(view_object, str(self._pixmap))
-        features.BaseplateSupport(companion, base_obj)
-        return companion, []
-
-    def _remove_support_companions(self, base_obj: fc.DocumentObject) -> None:
-        companions = self._find_support_companions(base_obj)
-        for companion in companions:
-            fc.ActiveDocument.removeObject(companion.Name)
+            self._support_manager.remove_all(output_obj)
 
 
 class CreateSupportBaseplate(CreateCommand):

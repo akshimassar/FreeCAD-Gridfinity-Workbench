@@ -4,6 +4,7 @@ Provides unified architecture for feature-creating task panels with:
 - Separate preview object (temporary Part::Feature sibling)
 - Feature object created only on accept
 - Common preview lifecycle, timer, visuals, error rendering
+- CompanionManager for managing linked companion objects
 """
 
 # ruff: noqa: D102, D107, N802
@@ -19,6 +20,8 @@ import FreeCADGui as fcg  # noqa: N813
 from PySide.QtCore import QTimer
 from PySide.QtWidgets import QDialogButtonBox, QVBoxLayout, QWidget
 
+from . import utils
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -28,6 +31,94 @@ if TYPE_CHECKING:
 
 PREVIEW_SHAPE_COLOR = (100.0 / 255.0, 1.0, 1.0)  # 0x64FFFF
 PREVIEW_TRANSPARENCY = 40
+
+
+class CompanionManager:
+    """Manages companion objects that link to a parent object.
+
+    Companions are objects that depend on a parent (e.g., BaseplateSupport depends on Baseplate).
+    The companion holds a link property pointing to its parent, enabling FreeCAD's automatic
+    recompute when the parent changes.
+
+    Uses parent.getInList() for efficient companion discovery.
+    """
+
+    def __init__(
+        self,
+        feature_class: type,
+        source_property: str,
+        label_suffix: str,
+        pixmap: Path | str,
+        view_provider_class: type,
+    ) -> None:
+        """Initialize the companion manager.
+
+        Args:
+            feature_class: The feature class for the companion (e.g., BaseplateSupport).
+            source_property: Property name on companion linking to parent (e.g., "SourceBaseplate").
+            label_suffix: Suffix for companion label (e.g., "Support" -> "Baseplate 2x2 Support").
+            pixmap: Icon path for the companion.
+            view_provider_class: View provider class for the companion.
+
+        """
+        self._feature_class = feature_class
+        self._source_property = source_property
+        self._label_suffix = label_suffix
+        self._pixmap = pixmap
+        self._view_provider_class = view_provider_class
+
+    def find_companions(self, parent_obj: fc.DocumentObject) -> list[fc.DocumentObject]:
+        """Find all companions linked to the parent."""
+        doc = fc.ActiveDocument
+        if doc is None:
+            return []
+        result = []
+        for obj in doc.Objects:
+            proxy = getattr(obj, "Proxy", None)
+            if not isinstance(proxy, self._feature_class):
+                continue
+            if getattr(obj, self._source_property, None) is parent_obj:
+                result.append(obj)
+        return result
+
+    def resolve_or_create(self, parent_obj: fc.DocumentObject) -> fc.DocumentObject:
+        """Return existing companion or create a new one."""
+        companions = self.find_companions(parent_obj)
+        if companions:
+            # Return first, remove extras
+            for extra in companions[1:]:
+                fc.ActiveDocument.removeObject(extra.Name)
+            return companions[0]
+
+        # Create new companion
+        companion = utils.new_object(self._feature_class.__name__)
+        if fc.GuiUp and companion is not None:
+            view_object = companion.ViewObject
+            if view_object is not None:
+                self._view_provider_class(view_object, str(self._pixmap))
+        self._feature_class(companion, parent_obj)
+        return companion
+
+    def remove_all(self, parent_obj: fc.DocumentObject) -> None:
+        """Remove all companions linked to the parent."""
+        for companion in self.find_companions(parent_obj):
+            fc.ActiveDocument.removeObject(companion.Name)
+
+    def update_label(self, companion: fc.DocumentObject, parent_label: str) -> None:
+        """Set companion label based on parent label."""
+        companion.Label = f"{parent_label} {self._label_suffix}"
+
+    def set_tree_visibility(self, companion: fc.DocumentObject, *, visible: bool) -> None:
+        """Show or hide companion in the tree."""
+        if not fc.GuiUp:
+            return
+        try:
+            view = companion.ViewObject
+        except ReferenceError:
+            return
+        if hasattr(view, "ShowInTree"):
+            with contextlib.suppress(Exception):
+                view.ShowInTree = visible
 
 
 def _standard_buttons_ok_cancel() -> int:
