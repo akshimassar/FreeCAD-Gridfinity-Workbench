@@ -166,3 +166,5 @@ cython_debug/
 
 # IDE files
 .vscodeuv.lock
+
+uv.lock
