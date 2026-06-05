@@ -435,6 +435,9 @@ class DrawerBaseplateGroup:
     Holds parameters and manages child Baseplate objects. Children are independent
     baseplates with their own parameters, but tracked via RowIndex/ColumnIndex properties.
 
+    Uses PropertyLinkListHidden for child storage to avoid recompute dependencies.
+    Visual tree nesting is achieved via claimChildren() in the ViewProvider.
+
     In preview mode, no children are created. Instead, build_preview_shape() returns
     a combined preview shape for all pieces.
 
@@ -464,6 +467,14 @@ class DrawerBaseplateGroup:
             "ShouldBeHidden",
             "Internal flag for simplified interactive preview build",
         ).PreviewBuildMode = False
+        # Use PropertyLinkListHidden to store children without creating recompute dependencies
+        # Visual nesting in tree is handled by claimChildren() in ViewProvider
+        obj.addProperty(
+            "App::PropertyLinkListHidden",
+            "Children",
+            "Base",
+            "Child baseplate objects (no dependency)",
+        ).Children = []
 
         obj.Proxy = self
 
@@ -494,7 +505,7 @@ class DrawerBaseplateGroup:
 
         # Clear touched state on all children after creation/update
         # This prevents FreeCAD 1.1 "still touched after recompute" warnings
-        for child in obj.Group:
+        for child in obj.Children:
             child.purgeTouched()
 
     def build_preview_shape(self, obj: fc.DocumentObject) -> Part.Shape:
@@ -565,10 +576,15 @@ class DrawerBaseplateGroup:
     ) -> None:
         """Remove children that are no longer needed."""
         doc = obj.Document
+        children_to_keep = []
         for piece_key, child in list(existing_children.items()):
             if piece_key not in required_pieces:
-                obj.removeObject(child)
                 doc.removeObject(child.Name)
+            else:
+                children_to_keep.append(child)
+        # Update Children property with remaining children
+        # (new children will be added in _create_or_update_children)
+        obj.Children = children_to_keep
 
     def _create_or_update_children(  # noqa: PLR0913
         self,
@@ -686,8 +702,8 @@ class DrawerBaseplateGroup:
         # Set all baseplate params
         baseplate_params.to_obj(child)
 
-        # Add to group
-        obj.addObject(child)
+        # Add to Children property (no dependency, just tracking)
+        obj.Children = obj.Children + [child]
 
         # Set placement (shapes are built at origin)
         child.Placement.Base = fc.Vector(placement_x, placement_y, 0)
@@ -706,7 +722,7 @@ class DrawerBaseplateGroup:
     def _get_existing_children(obj: fc.DocumentObject) -> dict[str, fc.DocumentObject]:
         """Get existing Baseplate children indexed by piece key (row, col)."""
         existing: dict[str, fc.DocumentObject] = {}
-        for child in obj.Group:
+        for child in getattr(obj, "Children", []):
             proxy = getattr(child, "Proxy", None)
             if isinstance(proxy, Baseplate):
                 row = getattr(child, "RowIndex", None)

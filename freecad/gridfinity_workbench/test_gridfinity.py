@@ -474,7 +474,7 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
         self.assertIn("Drawer Baseplates", group.Label)
 
         # Group should have children (pieces created on accept)
-        children = group.Group
+        children = group.Children
         self.assertGreater(len(children), 0, "Children should be created on accept")
 
         # Each child should have a valid shape
@@ -512,7 +512,7 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
             """Get volumes of bottom-left 2x2 pieces."""
             return {
                 child.Name: child.Shape.Volume
-                for child in group.Group
+                for child in group.Children
                 if child.Name in bottom_left_pieces
             }
 
@@ -538,7 +538,7 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
             )
 
         # Step 3: Delete group and children
-        for child in list(group.Group):
+        for child in list(group.Children):
             self.doc.removeObject(child.Name)
         self.doc.removeObject(group.Name)
         self.doc.recompute()
@@ -583,7 +583,7 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
 
         def get_all_volumes(group: fc.DocumentObject) -> dict[str, float]:
             """Get volumes of all pieces."""
-            return {child.Name: child.Shape.Volume for child in group.Group}
+            return {child.Name: child.Shape.Volume for child in group.Children}
 
         def get_column_volumes(volumes: dict[str, float], col: int) -> dict[str, float]:
             """Get volumes for pieces in a specific column."""
@@ -657,6 +657,65 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
             original_col2,
             new_col2,
             "Column 2 volumes should change after width change",
+        )
+
+    def test_drawer_group_no_dependency_on_child_change(self) -> None:
+        """Test that DrawerBaseplateGroup does NOT recompute when children change.
+
+        This verifies the PropertyLinkListHidden architecture works correctly:
+        - Group stores children without creating recompute dependency
+        - Modifying a child should NOT trigger group recompute
+        """
+        from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
+        from .features import DrawerBaseplateGroup
+
+        # Create drawer baseplates
+        panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
+        fcg.Control.showDialog(panel)
+        panel._preview_timer.stop()  # noqa: SLF001
+        panel.accept()
+
+        group = self.doc.getObject("DrawerBaseplates")
+        self.assertIsNotNone(group)
+        assert group is not None
+        self.assertIsInstance(group.Proxy, DrawerBaseplateGroup)
+
+        children = group.Children
+        self.assertGreater(len(children), 0)
+        child = children[0]
+
+        # Track if group.execute() is called
+        original_execute = group.Proxy.execute
+        execute_count = [0]
+
+        def counting_execute(obj: fc.DocumentObject) -> None:
+            execute_count[0] += 1
+            original_execute(obj)
+
+        group.Proxy.execute = counting_execute
+
+        # Initial recompute to establish baseline
+        self.doc.recompute()
+        initial_count = execute_count[0]
+
+        # Purge touched state
+        group.purgeTouched()
+
+        # Modify child (change placement)
+        child.Placement.Base.x += 1.0
+        child.touch()
+
+        # Recompute
+        self.doc.recompute()
+        final_count = execute_count[0]
+
+        self.log(f"Group execute count: initial={initial_count}, final={final_count}")
+
+        # Key assertion: group should NOT recompute when child changes
+        self.assertEqual(
+            final_count,
+            initial_count,
+            "DrawerBaseplateGroup should NOT recompute when child changes",
         )
 
 
@@ -871,3 +930,235 @@ class TestZZGridfinitySettingsTaskPanel(TestWithDocument):
         )
 
         panel.reject()
+
+
+class TestGroupDependencyBehavior(TestWithDocument):
+    """Isolated test for FreeCAD group dependency behavior.
+
+    This test demonstrates how standard App::DocumentObjectGroupPython creates
+    dependencies between parent and children, causing parent to recompute when
+    children change.
+    """
+
+    def test_standard_group_dependency(self) -> None:
+        """Test that standard group creates parent->child dependency.
+
+        When a child object changes, the parent group gets marked as touched
+        and will be recomputed. This test documents this behavior.
+        """
+        # Create a standard group
+        group = self.doc.addObject("App::DocumentObjectGroupPython", "TestGroup")
+
+        # Track execute calls on the group
+        execute_count = [0]
+
+        class GroupProxy:
+            def __init__(self, obj: fc.DocumentObject) -> None:
+                obj.Proxy = self
+
+            def execute(self, obj: fc.DocumentObject) -> None:
+                execute_count[0] += 1
+
+        GroupProxy(group)
+
+        # Create a child Part::Box and add to group
+        child = self.doc.addObject("Part::Box", "TestChild")
+        group.addObject(child)
+
+        # Initial recompute
+        self.doc.recompute()
+        initial_count = execute_count[0]
+
+        # Check if group is touched after child modification
+        group.purgeTouched()
+        self.assertFalse(
+            group.State == ["Touched"], "Group should not be touched before child change"
+        )
+
+        # Modify child
+        child.Length = 20.0
+
+        # Check group state BEFORE recompute
+        group_touched_after_child_change = "Touched" in group.State
+
+        # Recompute
+        self.doc.recompute()
+        final_count = execute_count[0]
+
+        # Log results for analysis
+        self.log(f"Group touched after child change: {group_touched_after_child_change}")
+        self.log(f"Group execute count: initial={initial_count}, final={final_count}")
+        self.log(f"Group recomputed due to child change: {final_count > initial_count}")
+
+        # Document actual behavior (this test is for observation, not assertion)
+        # The key question: does parent recompute when child changes?
+        if final_count > initial_count:
+            self.log("CONFIRMED: Standard group DOES recompute when child changes")
+        else:
+            self.log("OBSERVATION: Standard group does NOT recompute when child changes")
+
+    def test_group_inlist_discovery(self) -> None:
+        """Test that getInList() can discover parent from child."""
+        # Create a standard group
+        group = self.doc.addObject("App::DocumentObjectGroupPython", "TestGroup")
+
+        # Create a child Part::Feature (not Part::Box which is a primitive)
+        child = self.doc.addObject("Part::Feature", "TestChild")
+        group.addObject(child)
+
+        self.doc.recompute()
+
+        # Test getInList() - should find the group
+        # Note: getInList() may not be available on all object types
+        if hasattr(child, "getInList"):
+            in_list = child.getInList()
+            self.log(f"Child getInList(): {[obj.Name for obj in in_list]}")
+            self.assertIn(group, in_list, "Group should be in child's InList")
+        else:
+            # Alternative: check Group property on parent
+            self.log("getInList() not available, checking Group property instead")
+            self.assertIn(child, group.Group, "Child should be in group.Group")
+
+    def test_property_link_list_hidden_no_dependency(self) -> None:
+        """Test that PropertyLinkListHidden creates visual nesting without dependency.
+
+        This is the key test: using PropertyLinkListHidden should allow us to
+        store children without creating recompute dependencies.
+        """
+        # Create a container using Part::FeaturePython (not a group)
+        container = self.doc.addObject("Part::FeaturePython", "TestContainer")
+
+        # Track execute calls
+        execute_count = [0]
+
+        class ContainerProxy:
+            def __init__(self, obj: fc.DocumentObject) -> None:
+                # Try to add PropertyLinkListHidden
+                obj.addProperty(
+                    "App::PropertyLinkListHidden",
+                    "Children",
+                    "Base",
+                    "Children stored without dependency",
+                )
+                obj.Proxy = self
+
+            def execute(self, obj: fc.DocumentObject) -> None:
+                execute_count[0] += 1
+
+        ContainerProxy(container)
+
+        # Create a child
+        child = self.doc.addObject("Part::Box", "TestChild")
+
+        # Add child to container's Children property
+        container.Children = [child]
+
+        # Initial recompute
+        self.doc.recompute()
+        initial_count = execute_count[0]
+        self.log(f"Initial execute count: {initial_count}")
+
+        # Purge touched state
+        container.purgeTouched()
+
+        # Modify child
+        child.Length = 20.0
+
+        # Check container state BEFORE recompute
+        container_touched = "Touched" in container.State
+        self.log(f"Container touched after child change: {container_touched}")
+
+        # Recompute
+        self.doc.recompute()
+        final_count = execute_count[0]
+
+        self.log(f"Final execute count: {final_count}")
+        self.log(f"Container recomputed due to child change: {final_count > initial_count}")
+
+        # The key assertion: container should NOT recompute when child changes
+        if final_count > initial_count:
+            self.log("PROBLEM: Container DOES recompute when child changes (dependency exists)")
+        else:
+            self.log("SUCCESS: Container does NOT recompute when child changes (no dependency)")
+
+        # Assert no dependency - this is what we want
+        self.assertEqual(
+            final_count,
+            initial_count,
+            "PropertyLinkListHidden should not create dependency - container should not recompute",
+        )
+
+    def test_claim_children_visual_nesting(self) -> None:
+        """Test that claimChildren() creates visual nesting with PropertyLinkListHidden.
+
+        This verifies the full solution: PropertyLinkListHidden for storage,
+        claimChildren() in ViewProvider for visual nesting, no recompute dependency.
+        """
+        # Create container
+        container = self.doc.addObject("Part::FeaturePython", "TestContainer")
+
+        execute_count = [0]
+
+        class ContainerProxy:
+            def __init__(self, obj: fc.DocumentObject) -> None:
+                obj.addProperty(
+                    "App::PropertyLinkListHidden",
+                    "Children",
+                    "Base",
+                    "Children stored without dependency",
+                )
+                obj.Proxy = self
+
+            def execute(self, obj: fc.DocumentObject) -> None:
+                execute_count[0] += 1
+
+        class ContainerViewProvider:
+            def __init__(self, vobj: Any) -> None:
+                vobj.Proxy = self
+                self.Object = vobj.Object
+
+            def claimChildren(self) -> list:
+                """Return children for visual nesting in tree."""
+                return self.Object.Children if hasattr(self.Object, "Children") else []
+
+            def attach(self, vobj: Any) -> None:
+                self.Object = vobj.Object
+
+            def __getstate__(self) -> None:
+                return None
+
+            def __setstate__(self, state: Any) -> None:
+                pass
+
+        ContainerProxy(container)
+        if fc.GuiUp:
+            ContainerViewProvider(container.ViewObject)
+
+        # Create children
+        child1 = self.doc.addObject("Part::Box", "Child1")
+        child2 = self.doc.addObject("Part::Box", "Child2")
+
+        # Add children
+        container.Children = [child1, child2]
+
+        self.doc.recompute()
+        initial_count = execute_count[0]
+
+        # Verify claimChildren returns the children
+        if fc.GuiUp and hasattr(container.ViewObject.Proxy, "claimChildren"):
+            claimed = container.ViewObject.Proxy.claimChildren()
+            self.log(f"claimChildren() returns: {[obj.Name for obj in claimed]}")
+            self.assertEqual(len(claimed), 2)
+            self.assertIn(child1, claimed)
+            self.assertIn(child2, claimed)
+
+        # Verify no dependency when child changes
+        container.purgeTouched()
+        child1.Length = 30.0
+        self.doc.recompute()
+        final_count = execute_count[0]
+
+        self.log(f"Execute count: initial={initial_count}, final={final_count}")
+        self.assertEqual(
+            final_count, initial_count, "Container should not recompute when child changes"
+        )

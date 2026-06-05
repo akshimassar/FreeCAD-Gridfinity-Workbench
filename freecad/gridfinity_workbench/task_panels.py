@@ -364,13 +364,18 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
         group_feature_class: type,
         view_provider_class: type,
     ) -> None:
-        """Create or use existing group object."""
+        """Create or use existing group object.
+
+        Uses Part::FeaturePython instead of App::DocumentObjectGroupPython to avoid
+        automatic dependency creation. Visual tree nesting is handled by claimChildren()
+        in the ViewProvider, with children stored in PropertyLinkListHidden.
+        """
         if self._edit_obj is not None:
             self._target_obj = self._edit_obj
             self._original_label = self._edit_obj.Label
         else:
             self._target_obj = fc.ActiveDocument.addObject(
-                "App::DocumentObjectGroupPython", group_name
+                "Part::FeaturePython", group_name
             )
             self._created_new_group = True
             group_feature_class(self._target_obj)
@@ -407,7 +412,7 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
 
         # Show group and children in tree
         self._set_show_in_tree(self._target_obj, visible=True)
-        for child in getattr(self._target_obj, "Group", []):
+        for child in getattr(self._target_obj, "Children", []):
             self._set_show_in_tree(child, visible=True)
 
         fcg.SendMsgToActiveView("ViewFit")
@@ -431,7 +436,7 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
     ) -> None:
         """Create or remove companions for each child based on params."""
         for manager, should_create in self._get_child_companion_managers():
-            for child in getattr(group_obj, "Group", []):
+            for child in getattr(group_obj, "Children", []):
                 if should_create(params):
                     companion = manager.resolve_or_create(child)
                     manager.update_label(companion, child.Label)
@@ -444,7 +449,7 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
         self._remove_preview_object()
 
         if self._created_new_group and self._target_obj is not None:
-            for child in list(getattr(self._target_obj, "Group", [])):
+            for child in list(getattr(self._target_obj, "Children", [])):
                 fc.ActiveDocument.removeObject(child.Name)
             fc.ActiveDocument.removeObject(self._target_obj.Name)
             self._target_obj = None

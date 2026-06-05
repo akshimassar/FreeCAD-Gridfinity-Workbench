@@ -89,6 +89,22 @@ class ViewProviderGridfinity:
         if state and "icon_path" in state:
             self.icon_path = state["icon_path"]
 
+    def claimChildren(self) -> list:
+        """Return children for visual nesting in tree view.
+
+        Used by DrawerBaseplateGroup to show children nested without creating
+        recompute dependencies (children stored in PropertyLinkListHidden).
+        """
+        obj = getattr(self, "vobj", None)
+        if obj is not None:
+            obj = getattr(obj, "Object", None)
+        if obj is None:
+            return []
+        # Only DrawerBaseplateGroup uses Children property
+        if hasattr(obj, "Children"):
+            return obj.Children
+        return []
+
     def doubleClicked(self, vobj: fcg.ViewProviderDocumentObject) -> bool:  # noqa: PLR0911
         """Open edit task dialog on double click for simple baseplate."""
         obj = getattr(vobj, "Object", None)
