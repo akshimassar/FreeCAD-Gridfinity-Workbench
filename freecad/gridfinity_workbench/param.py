@@ -1010,6 +1010,7 @@ class CombinedDrawerBaseplateParamsData:
     click_springs: ClickSpringsParamsData
     junction_screws: JunctionScrewsParamsData
     connecting_clips: ConnectingClipsParamsData
+    stacking: StackingParamsData
     drawer: DrawerParamsData
     printer: PrinterParamsData
 
@@ -1118,11 +1119,12 @@ class CombinedDrawerBaseplateParams(CombinedParams):
         click_springs: ClickSpringsParams = None,
         junction_screws: JunctionScrewsParams = None,
         connecting_clips: ConnectingClipsParams = None,
+        stacking: StackingParams = None,
         drawer: DrawerParams = None,
         printer: PrinterParams = None,
     ) -> None:
         """Initialize with all drawer baseplate parameter groups."""
-        # Drawer first in UI, then printer, then baseplate options
+        # Drawer first in UI, then printer, then baseplate options, then stacking
         super().__init__(
             drawer=drawer or DrawerParams(),
             printer=printer or PrinterParams(),
@@ -1131,6 +1133,7 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             click_springs=click_springs or ClickSpringsParams(),
             junction_screws=junction_screws or JunctionScrewsParams(),
             connecting_clips=connecting_clips or ConnectingClipsParams(),
+            stacking=stacking or StackingParams(),
         )
         # Internal defaults for baseplate_size (not shown in UI - computed from drawer dims)
         # Use factory defaults to avoid MEM-cached invalid values
@@ -1187,16 +1190,7 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             baseplate_core=self.baseplate_core.data(),
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
-            stacking=StackingParamsData(
-                enabled=False,
-                instance_count=1,
-                corner_stitching=False,
-                stitching_thickness=fc.Units.Quantity("0.4 mm"),
-                screw_stubs=ScrewStubsParamsData(
-                    enabled=False, clearance=fc.Units.Quantity("0.15 mm")
-                ),
-                support=SupportParamsData(overhang_angle=fc.Units.Quantity("50 deg")),
-            ),
+            stacking=self.stacking.data(),
             connecting_clips=self.connecting_clips.data(),
         )
 
@@ -1209,6 +1203,7 @@ class CombinedDrawerBaseplateParams(CombinedParams):
             click_springs=self.click_springs.data(),
             junction_screws=self.junction_screws.data(),
             connecting_clips=self.connecting_clips.data(),
+            stacking=self.stacking.data(),
             drawer=self.drawer.data(),
             printer=self.printer.data(),
         )

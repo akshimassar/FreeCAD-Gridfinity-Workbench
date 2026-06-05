@@ -7,6 +7,7 @@ Contains command objects representing what should happen on a button press.
 from __future__ import annotations
 
 import re
+import typing
 from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -399,6 +400,8 @@ class CreateDrawerBaseplateTaskPanel(GroupFeatureTaskPanel):
     Baseplate objects.
     """
 
+    _support_manager: CompanionManager  # Initialized in __init__ (needs self._pixmap)
+
     def __init__(
         self,
         pixmap: Path | str,
@@ -407,6 +410,14 @@ class CreateDrawerBaseplateTaskPanel(GroupFeatureTaskPanel):
         from .param import CombinedDrawerBaseplateParams
 
         super().__init__(pixmap, target_obj, window_title="Drawer Fit Baseplates")
+
+        self._support_manager = CompanionManager(
+            feature_class=features.BaseplateSupport,
+            source_property="SourceBaseplate",
+            label_suffix="Support",
+            pixmap=pixmap,
+            view_provider_class=ViewProviderGridfinity,
+        )
 
         self._params = CombinedDrawerBaseplateParams()
 
@@ -454,6 +465,11 @@ class CreateDrawerBaseplateTaskPanel(GroupFeatureTaskPanel):
     def _on_accept_finalize(self, output_obj: fc.DocumentObject, params: CombinedParams) -> None:
         # Group's execute() creates children when PreviewBuildMode is False
         pass
+
+    def _get_child_companion_managers(
+        self,
+    ) -> list[tuple[CompanionManager, typing.Callable[[CombinedParams], bool]]]:
+        return [(self._support_manager, lambda p: p.data().stacking.enabled)]
 
 
 class CreateBaseplateTaskPanel(SingleFeatureTaskPanel):

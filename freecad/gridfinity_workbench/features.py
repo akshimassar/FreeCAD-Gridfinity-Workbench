@@ -768,6 +768,13 @@ def _build_required_pieces(x_chunks: list, y_chunks_for_rows: list) -> dict[str,
     return required
 
 
+def _copy_stacking_params(source: StackingParams) -> StackingParams:
+    """Copy StackingParams including nested child groups."""
+    result = StackingParams()
+    result.set_values(source.get_values())
+    return result
+
+
 def _build_baseplate_params_for_chunk(
     group_params: CombinedDrawerBaseplateParams,
     x_chunk: PrintableAxisChunk,
@@ -775,25 +782,30 @@ def _build_baseplate_params_for_chunk(
 ) -> CombinedBaseplateParams:
     """Build complete CombinedBaseplateParams for a specific chunk.
 
-    Copies fundamentals, core, clicks, screws, clips from group params.
+    Copies fundamentals, core, clicks, screws, clips, stacking from group params.
     Computes size params (grid counts + fillers) from chunk data.
-    Stacking is disabled for drawer baseplates.
+    Uses factory defaults for filler widths - only overrides when filler is enabled.
     """
+    size_kwargs: dict = {
+        "x_grid_count": x_chunk.cells,
+        "y_grid_count": y_chunk.cells,
+        "filler_left_enabled": x_chunk.low_fill_mm > 0,
+        "filler_right_enabled": x_chunk.high_fill_mm > 0,
+        "filler_bottom_enabled": y_chunk.low_fill_mm > 0,
+        "filler_top_enabled": y_chunk.high_fill_mm > 0,
+        "custom_layout_enabled": False,
+    }
+    if x_chunk.low_fill_mm > 0:
+        size_kwargs["filler_left_width"] = fc.Units.Quantity(f"{x_chunk.low_fill_mm} mm")
+    if x_chunk.high_fill_mm > 0:
+        size_kwargs["filler_right_width"] = fc.Units.Quantity(f"{x_chunk.high_fill_mm} mm")
+    if y_chunk.low_fill_mm > 0:
+        size_kwargs["filler_bottom_width"] = fc.Units.Quantity(f"{y_chunk.low_fill_mm} mm")
+    if y_chunk.high_fill_mm > 0:
+        size_kwargs["filler_top_width"] = fc.Units.Quantity(f"{y_chunk.high_fill_mm} mm")
+
     return CombinedBaseplateParams(
-        baseplate_size=BaseplateSizeParams(
-            x_grid_count=x_chunk.cells,
-            y_grid_count=y_chunk.cells,
-            filler_left_enabled=x_chunk.low_fill_mm > 0,
-            filler_left_width=fc.Units.Quantity(f"{x_chunk.low_fill_mm} mm"),
-            filler_right_enabled=x_chunk.high_fill_mm > 0,
-            filler_right_width=fc.Units.Quantity(f"{x_chunk.high_fill_mm} mm"),
-            filler_bottom_enabled=y_chunk.low_fill_mm > 0,
-            filler_bottom_width=fc.Units.Quantity(f"{y_chunk.low_fill_mm} mm"),
-            filler_top_enabled=y_chunk.high_fill_mm > 0,
-            filler_top_width=fc.Units.Quantity(f"{y_chunk.high_fill_mm} mm"),
-            custom_layout_enabled=False,
-            custom_layout=None,
-        ),
+        baseplate_size=BaseplateSizeParams(use_factory_defaults=True, **size_kwargs),
         fundamentals=FundamentalsParams(
             grid_size=group_params.fundamentals.get_value("grid_size"),
             outer_radius=group_params.fundamentals.get_value("outer_radius"),
@@ -805,7 +817,7 @@ def _build_baseplate_params_for_chunk(
             lower_chamfer_size=group_params.baseplate_core.get_value("lower_chamfer_size"),
             top_crop=group_params.baseplate_core.get_value("top_crop"),
         ),
-        stacking=StackingParams(enabled=False),
+        stacking=_copy_stacking_params(group_params.stacking),
         click_springs=ClickSpringsParams(
             enabled=group_params.click_springs.get_value("enabled"),
             click_thickness=group_params.click_springs.get_value("click_thickness"),

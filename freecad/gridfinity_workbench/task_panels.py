@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import time
+import typing
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -82,21 +83,29 @@ class CompanionManager:
         return result
 
     def resolve_or_create(self, parent_obj: fc.DocumentObject) -> fc.DocumentObject:
-        """Return existing companion or create a new one."""
+        """Return existing companion or create a new one.
+
+        The companion's Placement is copied from the parent object.
+        """
         companions = self.find_companions(parent_obj)
         if companions:
             # Return first, remove extras
             for extra in companions[1:]:
                 fc.ActiveDocument.removeObject(extra.Name)
-            return companions[0]
+            companion = companions[0]
+        else:
+            # Create new companion
+            companion = utils.new_object(self._feature_class.__name__)
+            if fc.GuiUp and companion is not None:
+                view_object = companion.ViewObject
+                if view_object is not None:
+                    self._view_provider_class(view_object, str(self._pixmap))
+            self._feature_class(companion, parent_obj)
 
-        # Create new companion
-        companion = utils.new_object(self._feature_class.__name__)
-        if fc.GuiUp and companion is not None:
-            view_object = companion.ViewObject
-            if view_object is not None:
-                self._view_provider_class(view_object, str(self._pixmap))
-        self._feature_class(companion, parent_obj)
+        # Sync placement with parent
+        if hasattr(parent_obj, "Placement") and hasattr(companion, "Placement"):
+            companion.Placement = parent_obj.Placement.copy()
+
         return companion
 
     def remove_all(self, parent_obj: fc.DocumentObject) -> None:
@@ -331,6 +340,9 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
 
     Creates group object during init (needed for params storage).
     Preview shows combined shape. On accept, triggers child creation.
+
+    Subclasses can override _get_child_companion_managers() to provide companion
+    managers for child objects (e.g., BaseplateSupport for stacked baseplates).
     """
 
     def __init__(
@@ -390,6 +402,9 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
 
         fc.ActiveDocument.recompute()
 
+        # Manage companions for children (after recompute creates them)
+        self._manage_child_companions(self._target_obj, params)
+
         # Show group and children in tree
         self._set_show_in_tree(self._target_obj, visible=True)
         for child in getattr(self._target_obj, "Group", []):
@@ -398,6 +413,31 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
         fcg.SendMsgToActiveView("ViewFit")
         fcg.Control.closeDialog()
         return True
+
+    def _get_child_companion_managers(
+        self,
+    ) -> list[tuple[CompanionManager, typing.Callable[[CombinedParams], bool]]]:
+        """Return list of (manager, should_create_fn) for child companions.
+
+        Override in subclasses to provide companion managers for child objects.
+        Each tuple contains a CompanionManager and a function that takes params
+        and returns True if companions should be created.
+
+        """
+        return []
+
+    def _manage_child_companions(
+        self, group_obj: fc.DocumentObject, params: CombinedParams
+    ) -> None:
+        """Create or remove companions for each child based on params."""
+        for manager, should_create in self._get_child_companion_managers():
+            for child in getattr(group_obj, "Group", []):
+                if should_create(params):
+                    companion = manager.resolve_or_create(child)
+                    manager.update_label(companion, child.Label)
+                    manager.set_tree_visibility(companion, visible=True)
+                else:
+                    manager.remove_all(child)
 
     def reject(self) -> bool:
         self._stop_preview_timer()
