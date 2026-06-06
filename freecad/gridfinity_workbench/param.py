@@ -1124,16 +1124,16 @@ class CombinedDrawerBaseplateParams(CombinedParams):
         printer: PrinterParams = None,
     ) -> None:
         """Initialize with all drawer baseplate parameter groups."""
-        # Drawer first in UI, then printer, then baseplate options, then stacking
+        # Drawer first, then printer, then baseplate options (stacking after baseplate_core)
         super().__init__(
             drawer=drawer or DrawerParams(),
             printer=printer or PrinterParams(),
             fundamentals=fundamentals or FundamentalsParams(),
             baseplate_core=baseplate_core or BaseplateCoreParams(),
+            stacking=stacking or StackingParams(),
             click_springs=click_springs or ClickSpringsParams(),
             junction_screws=junction_screws or JunctionScrewsParams(),
             connecting_clips=connecting_clips or ConnectingClipsParams(),
-            stacking=stacking or StackingParams(),
         )
         # Internal defaults for baseplate_size (not shown in UI - computed from drawer dims)
         # Use factory defaults to avoid MEM-cached invalid values
