@@ -58,7 +58,7 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 import FreeCAD as fc  # noqa: N813
 
@@ -128,130 +128,6 @@ def map_errors_to_compound_params(
         else:
             result[param_key] = message
     return result
-
-
-@runtime_checkable
-class GroupMember(Protocol):
-    """Protocol for ParameterGroup and its subclasses enabling nesting.
-
-    This protocol defines the interface that ParameterGroup implements,
-    allowing ParameterGroup instances to be nested within other ParameterGroups.
-
-    Key capabilities:
-    - FreeCAD property integration (add/read/write)
-    - Value management (get/set values and defaults)
-    - Validation
-    - UI generation
-    - Default persistence
-    - Data export to frozen dataclass
-
-    All naming uses SEPARATOR ("__") between group levels:
-    - FreeCAD property: "stacking__screw_stubs__enabled"
-    - UI control key: "stacking__screw_stubs__enabled"
-    - Validation error: "stacking__screw_stubs__enabled"
-
-    The `prefix` parameter accumulates as we recurse into nested groups.
-    Root-level groups receive empty prefix.
-
-    Note: BaseParam and ParamCombination do NOT implement this protocol.
-    They are internal building blocks used by ParameterGroup.
-    """
-
-    @property
-    def name(self) -> str:
-        """Unique identifier within parent (snake_case, e.g., 'screw_stubs')."""
-        ...
-
-    @property
-    def display_name(self) -> str:
-        """Human-readable label for UI."""
-        ...
-
-    # --- FreeCAD Integration ---
-
-    def add_to_object(self, obj: fc.DocumentObject, prefix: str = "") -> None:
-        """Create FreeCAD properties on object.
-
-        Property names: {prefix}{name} for leaf params,
-        {prefix}{name}{SEPARATOR}{child} for nested groups.
-        """
-        ...
-
-    def read_from_object(self, obj: fc.DocumentObject, prefix: str = "") -> None:
-        """Read values from FreeCAD object into internal state."""
-        ...
-
-    def write_to_object(self, obj: fc.DocumentObject, prefix: str = "") -> None:
-        """Write current values to FreeCAD object."""
-        ...
-
-    # --- Value Management ---
-
-    def get_values(self) -> dict[str, ParamValue]:
-        """Get all current values as flat dict.
-
-        Keys are relative names (no prefix). For nested groups,
-        keys use SEPARATOR: {"enabled": True, "screw_stubs__enabled": True}.
-        """
-        ...
-
-    def set_values(self, values: dict[str, ParamValue]) -> None:
-        """Set values from flat dict."""
-        ...
-
-    def get_defaults(self) -> dict[str, ParamValue]:
-        """Get default values as flat dict."""
-        ...
-
-    # --- Validation ---
-
-    def validate(self) -> list[ValidationError]:
-        """Validate current values.
-
-        Error param keys are relative (no prefix). Parent groups
-        will add their prefix when aggregating errors.
-        """
-        ...
-
-    # --- UI ---
-
-    def build_ui(self, prefix: str = "") -> tuple[dict[str, object], object | None]:
-        """Build UI controls.
-
-        Returns (controls_dict, container_widget).
-        Control dict keys: {prefix}{name} for leaf params,
-        {prefix}{name}{SEPARATOR}{child} for nested.
-        """
-        ...
-
-    def read_from_ui(self, controls: dict[str, object], prefix: str = "") -> None:
-        """Extract values from UI controls into internal state."""
-        ...
-
-    def connect_signals(
-        self,
-        controls: dict[str, object],
-        prefix: str,
-        callback: Callable[[], None],
-    ) -> None:
-        """Connect UI control signals to callback."""
-        ...
-
-    # --- Default Persistence ---
-
-    def save_defaults(self, prefix: str = "") -> None:
-        """Persist current values as defaults."""
-        ...
-
-    def load_defaults(self, prefix: str = "") -> None:
-        """Load persisted defaults into current values."""
-        ...
-
-    # --- Data Export ---
-
-    def data(self) -> object:
-        """Return frozen dataclass with current values."""
-        ...
 
 
 @dataclass

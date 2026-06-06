@@ -165,10 +165,6 @@ def _layout_min_indices(layout: GridfinityLayout) -> tuple[int, int]:
     return (min_x or 0, min_y or 0)
 
 
-def _matrix_not(mask: list[list[bool]]) -> list[list[bool]]:
-    return [[not mask[x][y] for y in range(2)] for x in range(2)]
-
-
 @dataclass
 class CoreCellBuildResult:
     """Result of building a single core cell."""
@@ -414,15 +410,6 @@ def add_filler_strips(
         return filler_shape, expanded
     combined = shape.fuse(filler_shape)
     return combined, expanded
-
-
-def _build_grid_lines(sizes: list[fc.Units.Quantity]) -> list[float]:
-    lines = [0.0]
-    total = 0.0
-    for size in sizes:
-        total += float(size)
-        lines.append(total)
-    return lines
 
 
 def _build_filler_cell_shape(

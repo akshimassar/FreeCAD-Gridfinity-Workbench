@@ -145,8 +145,3 @@ def split_axis_into_printable_chunks(  # noqa: C901, PLR0912, PLR0915
         pieces.append(piece)
 
     return pieces
-
-
-# Backward compatibility aliases.
-AxisPiece = PrintableAxisChunk
-plan_axis_split = split_axis_into_printable_chunks
