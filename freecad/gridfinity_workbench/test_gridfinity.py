@@ -610,6 +610,88 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
             "DrawerBaseplateGroup should NOT recompute when child changes",
         )
 
+    def test_drawer_stacking_creates_supports_in_group(self) -> None:
+        """Test that stacking creates support companions inside the drawer group.
+
+        Creates 55x55 drawer with stacking=2, all features disabled.
+        Verifies:
+        - Both baseplate and support are in group.Children
+        - Baseplate has 2 solids (stacking=2)
+        - Support has 1 solid
+        - Both shapes are valid
+        """
+        from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
+
+        # Create 55x55 drawer with stacking enabled
+        panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
+        fcg.Control.showDialog(panel)
+
+        # Set drawer size to 55x55 (single piece)
+        panel.drawer__drawer_width.setValue(55)
+        panel.drawer__drawer_depth.setValue(55)
+
+        # Disable all features for simplicity
+        panel.junction_screws__enabled.setChecked(False)
+        panel.connecting_clips__enabled.setChecked(False)
+        panel.click_springs__enabled.setChecked(False)
+
+        # Enable stacking with 2 instances
+        panel.stacking__enabled.setChecked(True)
+        panel.stacking__instance_count.setValue(2)
+
+        panel._preview_timer.stop()  # noqa: SLF001
+        panel.accept()
+
+        # Get the group
+        group = self.doc.getObject("DrawerBaseplates")
+        self.assertIsNotNone(group)
+        assert group is not None
+
+        children = group.Children
+        self.assertEqual(len(children), 2, "Should have 2 children: baseplate + support")
+
+        # Identify baseplate and support
+        baseplate = None
+        support = None
+        for child in children:
+            if hasattr(child, "SourceBaseplate"):
+                support = child
+            else:
+                baseplate = child
+
+        self.assertIsNotNone(baseplate, "Baseplate should exist in Children")
+        self.assertIsNotNone(support, "Support should exist in Children")
+
+        # Verify baseplate
+        self.assertTrue(baseplate.Shape.isValid(), "Baseplate shape should be valid")
+        self.assertEqual(len(baseplate.Shape.Solids), 2, "Baseplate should have 2 solids")
+
+        # Verify support
+        self.assertTrue(support.Shape.isValid(), "Support shape should be valid")
+        self.assertEqual(len(support.Shape.Solids), 1, "Support should have 1 solid")
+
+        # Verify support references the baseplate
+        self.assertEqual(support.SourceBaseplate, baseplate)
+
+        # Verify support is not touched after creation
+        self.assertNotIn("Touched", support.State, "Support should not be touched after creation")
+
+        # Verify group is not touched after creation
+        self.assertNotIn("Touched", group.State, "Group should not be touched after creation")
+
+        # Verify support stays in group after document recompute
+        self.doc.recompute()
+        children_after = group.Children
+        self.assertEqual(len(children_after), 2, "Should still have 2 children after recompute")
+        self.assertIn(support, children_after, "Support should remain in group after recompute")
+
+        # Verify support stays in group after group-specific recompute
+        group.touch()
+        group.recompute()
+        children_after_grp = group.Children
+        self.assertEqual(len(children_after_grp), 2, "Should have 2 children after group recompute")
+        self.assertIn(support, children_after_grp, "Support should remain after group recompute")
+
 
 class TestStackedBaseplatesTaskPanel(TestWithDocument):
     """Test creating stacked baseplates through the task panel dialog."""

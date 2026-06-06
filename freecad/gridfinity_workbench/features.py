@@ -450,6 +450,9 @@ class DrawerBaseplateGroup:
         if x_chunks is None:
             return
 
+        # Extract support companions before processing (keyed by baseplate)
+        supports_by_baseplate = self._extract_supports(obj)
+
         required_pieces = _build_required_pieces(x_chunks, y_chunks_for_rows)
         existing_children = self._get_existing_children(obj)
         self._remove_stale_children(obj, existing_children, required_pieces)
@@ -457,6 +460,9 @@ class DrawerBaseplateGroup:
             obj, x_chunks, y_chunks_for_rows, grid_mm, full_data, required_pieces, existing_children
         )
         obj.PieceNames = baseplate_names
+
+        # Re-insert supports after their baseplates
+        self._reinsert_supports(obj, supports_by_baseplate)
 
         # Clear touched state on all children after creation/update
         # This prevents FreeCAD 1.1 "still touched after recompute" warnings
@@ -635,6 +641,30 @@ class DrawerBaseplateGroup:
                 if row is not None and col is not None:
                     existing[f"Piece_{row}_{col}"] = child
         return existing
+
+    @staticmethod
+    def _extract_supports(obj: fc.DocumentObject) -> dict[str, fc.DocumentObject]:
+        """Extract support companions from Children, keyed by baseplate Name."""
+        supports: dict[str, fc.DocumentObject] = {}
+        for child in getattr(obj, "Children", []):
+            source = getattr(child, "SourceBaseplate", None)
+            if source is not None:
+                supports[source.Name] = child
+        return supports
+
+    @staticmethod
+    def _reinsert_supports(
+        obj: fc.DocumentObject, supports_by_baseplate: dict[str, fc.DocumentObject]
+    ) -> None:
+        """Re-insert supports after their baseplates in Children list."""
+        if not supports_by_baseplate:
+            return
+        new_children: list[fc.DocumentObject] = []
+        for child in obj.Children:
+            new_children.append(child)
+            if child.Name in supports_by_baseplate:
+                new_children.append(supports_by_baseplate[child.Name])
+        obj.Children = new_children
 
     def dumps(self) -> dict:
         return {}

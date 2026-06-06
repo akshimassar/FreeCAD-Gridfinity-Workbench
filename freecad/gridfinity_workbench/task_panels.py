@@ -44,13 +44,15 @@ class CompanionManager:
     Uses parent.getInList() for efficient companion discovery.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         feature_class: type,
         source_property: str,
         label_suffix: str,
         pixmap: Path | str,
         view_provider_class: type,
+        *,
+        use_simple_view_provider: bool = False,
     ) -> None:
         """Initialize the companion manager.
 
@@ -60,6 +62,7 @@ class CompanionManager:
             label_suffix: Suffix for companion label (e.g., "Support" -> "Baseplate 2x2 Support").
             pixmap: Icon path for the companion.
             view_provider_class: View provider class for the companion.
+            use_simple_view_provider: If True, use vo.Proxy=0 instead of view_provider_class.
 
         """
         self._feature_class = feature_class
@@ -67,6 +70,7 @@ class CompanionManager:
         self._label_suffix = label_suffix
         self._pixmap = pixmap
         self._view_provider_class = view_provider_class
+        self._use_simple_view_provider = use_simple_view_provider
 
     def find_companions(self, parent_obj: fc.DocumentObject) -> list[fc.DocumentObject]:
         """Find all companions linked to the parent."""
@@ -99,7 +103,10 @@ class CompanionManager:
             if fc.GuiUp and companion is not None:
                 view_object = companion.ViewObject
                 if view_object is not None:
-                    self._view_provider_class(view_object, str(self._pixmap))
+                    if self._use_simple_view_provider:
+                        view_object.Proxy = 0
+                    else:
+                        self._view_provider_class(view_object, str(self._pixmap))
             self._feature_class(companion, parent_obj)
 
         # Sync placement with parent
@@ -108,8 +115,8 @@ class CompanionManager:
 
         return companion
 
-    def remove_all(self, parent_obj: fc.DocumentObject) -> None:
-        """Remove all companions linked to the parent."""
+    def find_and_remove_companion(self, parent_obj: fc.DocumentObject) -> None:
+        """Find and remove all companions linked to the parent."""
         for companion in self.find_companions(parent_obj):
             fc.ActiveDocument.removeObject(companion.Name)
 
@@ -404,6 +411,11 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
         # Manage companions for children (after recompute creates them)
         self._manage_child_companions(self._target_obj, params)
 
+        # Clear touched state on all objects after creation
+        self._target_obj.purgeTouched()
+        for child in getattr(self._target_obj, "Children", []):
+            child.purgeTouched()
+
         # Show group and children in tree
         self._set_show_in_tree(self._target_obj, visible=True)
         for child in getattr(self._target_obj, "Children", []):
@@ -428,15 +440,30 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
     def _manage_child_companions(
         self, group_obj: fc.DocumentObject, params: CombinedParams
     ) -> None:
-        """Create or remove companions for each child based on params."""
+        """Create or remove companions for each child based on params.
+
+        Companions are added to Children property immediately after their parent,
+        creating a Baseplate, Support, Baseplate, Support ordering.
+        """
         for manager, should_create in self._get_child_companion_managers():
-            for child in getattr(group_obj, "Children", []):
+            children = list(getattr(group_obj, "Children", []))
+
+            # Filter to just baseplates (objects without SourceBaseplate property)
+            baseplates = [c for c in children if not hasattr(c, "SourceBaseplate")]
+
+            new_children: list[fc.DocumentObject] = []
+            for baseplate in baseplates:
+                new_children.append(baseplate)
                 if should_create(params):
-                    companion = manager.resolve_or_create(child)
-                    manager.update_label(companion, child.Label)
+                    companion = manager.resolve_or_create(baseplate)
+                    manager.update_label(companion, baseplate.Label)
                     manager.set_tree_visibility(companion, visible=True)
+                    companion.recompute()
+                    new_children.append(companion)
                 else:
-                    manager.remove_all(child)
+                    manager.find_and_remove_companion(baseplate)
+
+            group_obj.Children = new_children
 
     def reject(self) -> bool:
         self._stop_preview_timer()

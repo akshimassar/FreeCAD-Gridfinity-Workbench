@@ -435,6 +435,7 @@ class CreateDrawerBaseplateTaskPanel(GroupFeatureTaskPanel):
             label_suffix="Support",
             pixmap=pixmap,
             view_provider_class=ViewProviderGridfinity,
+            use_simple_view_provider=True,
         )
 
         self._params = CombinedDrawerBaseplateParams()
@@ -580,7 +581,7 @@ class CreateBaseplateTaskPanel(SingleFeatureTaskPanel):
             self._support_manager.update_label(companion, output_obj.Label)
             self._support_manager.set_tree_visibility(companion, visible=True)
         else:
-            self._support_manager.remove_all(output_obj)
+            self._support_manager.find_and_remove_companion(output_obj)
 
 
 class CreateSupportBaseplate(CreateCommand):
