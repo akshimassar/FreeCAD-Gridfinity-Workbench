@@ -234,6 +234,7 @@ def baseplate_cell_top_crop(
 def build_single_cell_baseplate_core(
     params: CombinedBaseplateParamsData,
     *,
+    preview: bool = False,
     x_size_override: float | None = None,
     y_size_override: float | None = None,
 ) -> CoreCellBuildResult:
@@ -241,6 +242,7 @@ def build_single_cell_baseplate_core(
 
     Args:
         params: Combined baseplate parameters with fundamentals.grid_size as standard size.
+        preview: If True, build simplified geometry for preview.
         x_size_override: Optional override for cell X dimension (for filler cells).
         y_size_override: Optional override for cell Y dimension (for filler cells).
 
@@ -248,6 +250,23 @@ def build_single_cell_baseplate_core(
     grid_size = float(params.fundamentals.grid_size)
     x_size = x_size_override if x_size_override is not None else grid_size
     y_size = y_size_override if y_size_override is not None else grid_size
+    tiny = feat.is_tiny_cell(params.fundamentals, params.baseplate_core, x_size, y_size)
+
+    if preview:
+        main_height = float(params.fundamentals.main_height)
+        main_half_width = float(params.fundamentals.main_half_width)
+        margin = 0.1
+        outer = _make_centered_box(x_size, y_size, main_height)
+        if tiny:
+            return CoreCellBuildResult(shape=outer, is_tiny=True)
+        inner = _make_centered_box(
+            x_size - main_half_width,
+            y_size - main_half_width,
+            main_height + (2 * margin),
+            z_min=-margin,
+        )
+        return CoreCellBuildResult(shape=outer.cut(inner), is_tiny=False)
+
     baseplate_outside_shape = _create_rectangle_wire(x_size, y_size)
     total_height = _base_apex_height(params)
     face = Part.Face(baseplate_outside_shape)
@@ -258,8 +277,7 @@ def build_single_cell_baseplate_core(
         x_size_override=x_size_override,
         y_size_override=y_size_override,
     )
-    tiny_cell = bin_base_shape.isNull()
-    if tiny_cell:
+    if tiny:
         return CoreCellBuildResult(shape=solid_shape, is_tiny=True)
     bin_base_shape.translate(fc.Vector(0, 0, total_height))
     return CoreCellBuildResult(shape=solid_shape.cut(bin_base_shape), is_tiny=False)
@@ -268,6 +286,7 @@ def build_single_cell_baseplate_core(
 def build_single_cell_baseplate_core_cached(
     params: CombinedBaseplateParamsData,
     *,
+    preview: bool = False,
     x_size_override: float | None = None,
     y_size_override: float | None = None,
 ) -> CoreCellBuildResult:
@@ -276,6 +295,7 @@ def build_single_cell_baseplate_core_cached(
         {
             "kind": "baseplate_core_cell",
             "params": params,
+            "preview": preview,
             "x_size_override": x_size_override,
             "y_size_override": y_size_override,
         },
@@ -284,6 +304,7 @@ def build_single_cell_baseplate_core_cached(
     def _build() -> Part.Shape:
         return build_single_cell_baseplate_core(
             params,
+            preview=preview,
             x_size_override=x_size_override,
             y_size_override=y_size_override,
         ).shape
@@ -294,64 +315,6 @@ def build_single_cell_baseplate_core_cached(
     y_size = y_size_override if y_size_override is not None else grid_size
     tiny_cell = feat.is_tiny_cell(params.fundamentals, params.baseplate_core, x_size, y_size)
     return CoreCellBuildResult(shape=shape, is_tiny=tiny_cell)
-
-
-def build_preview_single_cell_baseplate_core(
-    params: CombinedBaseplateParamsData,
-    *,
-    x_size_override: float | None = None,
-    y_size_override: float | None = None,
-) -> CoreCellBuildResult:
-    """Build a simplified preview of a single core cell."""
-    margin = 0.1
-    grid_size = float(params.fundamentals.grid_size)
-    x_size = x_size_override if x_size_override is not None else grid_size
-    y_size = y_size_override if y_size_override is not None else grid_size
-    main_height = float(params.fundamentals.main_height)
-    main_half_width = float(params.fundamentals.main_half_width)
-
-    tiny = feat.is_tiny_cell(params.fundamentals, params.baseplate_core, x_size, y_size)
-    outer = _make_centered_box(x_size, y_size, main_height)
-    if tiny:
-        return CoreCellBuildResult(shape=outer, is_tiny=True)
-    inner = _make_centered_box(
-        x_size - main_half_width,
-        y_size - main_half_width,
-        main_height + (2 * margin),
-        z_min=-margin,
-    )
-    return CoreCellBuildResult(shape=outer.cut(inner), is_tiny=False)
-
-
-def build_preview_single_cell_baseplate_core_cached(
-    params: CombinedBaseplateParamsData,
-    *,
-    x_size_override: float | None = None,
-    y_size_override: float | None = None,
-) -> CoreCellBuildResult:
-    """Build a simplified preview of a single core cell with caching."""
-    key = baseplate_cell_cache.make_key(
-        {
-            "kind": "baseplate_preview_core_cell",
-            "params": params,
-            "x_size_override": x_size_override,
-            "y_size_override": y_size_override,
-        },
-    )
-
-    def _build() -> Part.Shape:
-        return build_preview_single_cell_baseplate_core(
-            params,
-            x_size_override=x_size_override,
-            y_size_override=y_size_override,
-        ).shape
-
-    shape = baseplate_cell_cache.get_or_build(key, _build)
-    grid_size = float(params.fundamentals.grid_size)
-    x_size = x_size_override if x_size_override is not None else grid_size
-    y_size = y_size_override if y_size_override is not None else grid_size
-    tiny = feat.is_tiny_cell(params.fundamentals, params.baseplate_core, x_size, y_size)
-    return CoreCellBuildResult(shape=shape, is_tiny=tiny)
 
 
 def replicate_layout(
@@ -419,14 +382,9 @@ def _build_filler_cell_shape(
     *,
     preview: bool = False,
 ) -> CoreCellBuildResult:
-    if preview:
-        return build_preview_single_cell_baseplate_core_cached(
-            params,
-            x_size_override=target_cell_width,
-            y_size_override=target_cell_height,
-        )
     return build_single_cell_baseplate_core_cached(
         params,
+        preview=preview,
         x_size_override=target_cell_width,
         y_size_override=target_cell_height,
     )
@@ -805,11 +763,7 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
         return shape
 
     t_core = time.perf_counter() if timing_on else 0.0
-    core_result = (
-        build_preview_single_cell_baseplate_core_cached(params)
-        if preview
-        else build_single_cell_baseplate_core_cached(params)
-    )
+    core_result = build_single_cell_baseplate_core_cached(params, preview=preview)
     if timing_on:
         _timing_print("baseplate.core_build", time.perf_counter() - t_core)
     shape = core_result.shape
