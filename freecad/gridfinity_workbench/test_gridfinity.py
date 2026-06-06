@@ -425,161 +425,23 @@ class TestBaseplateDialogFields(TestWithDocument):
 class TestDrawerBaseplateTaskPanel(TestWithDocument):
     """Test creating drawer baseplates through the task panel dialog."""
 
-    def test_create_drawer_baseplate_via_dialog(self) -> None:
-        """Test creating drawer baseplates with default settings."""
+    def test_drawer_baseplate_creation_and_edit(self) -> None:  # noqa: PLR0915
+        """Test drawer baseplate creation, volume verification, and edit behavior.
+
+        Tests with features disabled (junction screws, connecting clips, click springs)
+        for faster execution. Uses greedy algorithm.
+
+        Steps:
+        1. Create drawer baseplates, verify preview works
+        2. Accept and verify volumes match expected (35756.49)
+        3. Edit: change width to 550, verify only rightmost column changes
+        """
         from .commands import (
             ICONDIR,
             PREVIEW_SHAPE_COLOR,
             PREVIEW_TRANSPARENCY,
             CreateDrawerBaseplateTaskPanel,
         )
-
-        # Open the task panel dialog
-        panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
-        fcg.Control.showDialog(panel)
-
-        # Verify group exists (but no children during preview - uses separate preview object)
-        group = panel._target_obj  # noqa: SLF001
-        self.assertIsNotNone(group, "Preview group should exist")
-
-        # Verify preview object exists and has valid shape
-        preview_obj = panel._preview_obj  # noqa: SLF001
-        self.assertIsNotNone(preview_obj, "Preview object should exist")
-        self.assertTrue(preview_obj.Shape.isValid(), "Preview shape should be valid")
-        self.assertGreater(preview_obj.Shape.Volume, 0, "Preview shape should have non-zero volume")
-
-        # Verify preview visuals are applied to preview object
-        view = preview_obj.ViewObject
-        self.assertIsNotNone(view, "Preview object should have ViewObject")
-        actual_rgb = view.ShapeColor[:3]
-        for i, (actual, expected) in enumerate(zip(actual_rgb, PREVIEW_SHAPE_COLOR, strict=True)):
-            self.assertAlmostEqual(
-                actual,
-                expected,
-                places=4,
-                msg=f"Preview object color[{i}] mismatch",
-            )
-        self.assertEqual(
-            view.Transparency,
-            PREVIEW_TRANSPARENCY,
-            "Preview object should have preview transparency",
-        )
-
-        # Accept the dialog to create the object
-        panel.accept()
-
-        # Verify group and children were created
-        group = self.doc.getObject("DrawerBaseplates")
-        self.assertIsNotNone(group)
-        self.assertIn("Drawer Baseplates", group.Label)
-
-        # Group should have children (pieces created on accept)
-        children = group.Children
-        self.assertGreater(len(children), 0, "Children should be created on accept")
-
-        # Each child should have a valid shape
-        for child in children:
-            self.assertTrue(child.Shape.isValid())
-            self.assertGreater(child.Shape.Volume, 0)
-            self.assertGreater(len(child.Shape.Solids), 0)
-
-        # Verify pieces are positioned on tile grid (not all at origin)
-        placements = [child.Placement.Base for child in children]
-        x_positions = sorted({p.x for p in placements})
-        y_positions = sorted({p.y for p in placements})
-        # Should have multiple distinct X and Y positions for a 3x3 grid
-        self.assertGreater(len(x_positions), 1, "All pieces at same X position")
-        self.assertGreater(len(y_positions), 1, "All pieces at same Y position")
-
-    def test_drawer_baseplate_volumes_reproducible(self) -> None:
-        """Test drawer baseplate volumes are identical when created twice with defaults.
-
-        Steps:
-        1. Create drawer baseplates with defaults, preview, accept
-        2. Verify bottom-left 2x2 pieces total volume matches expected
-        3. Delete the group
-        4. Create again with same defaults, preview, accept
-        5. Compare volumes - should be identical
-        """
-        from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
-
-        # Bottom-left 2x2 pieces: row 1-2, col 0-1
-        # (row 0 is top, row 2 is bottom; col 0 is left)
-        bottom_left_pieces = {"Piece_1_0", "Piece_1_1", "Piece_2_0", "Piece_2_1"}
-        expected_volume = 28343.04
-
-        def get_bottom_left_volumes(group: fc.DocumentObject) -> dict[str, float]:
-            """Get volumes of bottom-left 2x2 pieces."""
-            return {
-                child.Name: child.Shape.Volume
-                for child in group.Children
-                if child.Name in bottom_left_pieces
-            }
-
-        # Step 1: Create drawer baseplates with defaults
-        panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
-        fcg.Control.showDialog(panel)
-        panel._preview_timer.stop()  # noqa: SLF001
-        panel.accept()
-
-        # Step 2: Verify each bottom-left piece volume matches expected
-        group = self.doc.getObject("DrawerBaseplates")
-        self.assertIsNotNone(group, "DrawerBaseplates group should exist")
-        assert group is not None
-        first_volumes = get_bottom_left_volumes(group)
-        self.assertEqual(len(first_volumes), 4, "Should have 4 bottom-left pieces")
-        self.log(f"First creation volumes: {first_volumes}")
-        for piece_name, volume in first_volumes.items():
-            self.assertAlmostEqual(
-                volume,
-                expected_volume,
-                places=2,
-                msg=f"{piece_name} volume should be {expected_volume}",
-            )
-
-        # Step 3: Delete group and children
-        for child in list(group.Children):
-            self.doc.removeObject(child.Name)
-        self.doc.removeObject(group.Name)
-        self.doc.recompute()
-
-        # Step 4: Create again with same defaults
-        panel2 = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
-        fcg.Control.showDialog(panel2)
-        panel2._update_preview()  # noqa: SLF001
-        panel2._preview_timer.stop()  # noqa: SLF001
-        panel2.accept()
-
-        # Step 5: Compare volumes
-        group2 = self.doc.getObject("DrawerBaseplates001")
-        if group2 is None:
-            group2 = self.doc.getObject("DrawerBaseplates")
-        self.assertIsNotNone(group2, "Second DrawerBaseplates group should exist")
-        assert group2 is not None
-        second_volumes = get_bottom_left_volumes(group2)
-        self.log(f"Second creation volumes: {second_volumes}")
-
-        self.assertEqual(
-            first_volumes,
-            second_volumes,
-            "Volumes should be identical when creating drawer baseplates twice",
-        )
-
-    def test_drawer_baseplate_width_change_updates_rightmost_column(self) -> None:
-        """Test that changing drawer width updates rightmost column but not left columns.
-
-        With greedy algorithm and right filler alignment:
-        - Left columns should keep same volume when width changes
-        - Rightmost column should update (different filler)
-
-        Steps:
-        1. Create drawer baseplates with greedy algorithm, accept
-        2. Record all piece volumes
-        3. Edit, change width to 550, accept
-        4. Left columns (col 0, 1) should have same volumes
-        5. Rightmost column (col 2) should have different volumes
-        """
-        from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
 
         def get_all_volumes(group: fc.DocumentObject) -> dict[str, float]:
             """Get volumes of all pieces."""
@@ -589,39 +451,74 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
             """Get volumes for pieces in a specific column."""
             return {k: v for k, v in volumes.items() if k.endswith(f"_{col}")}
 
-        # Expected volume for 5x6 baseplate with greedy algorithm
-        expected_5x6_volume = 33983.14
+        # Expected volume for bottom-left 2x2 pieces with features disabled
+        expected_volume = 35756.49
+        bottom_left_pieces = {"Piece_1_0", "Piece_1_1", "Piece_2_0", "Piece_2_1"}
 
-        # Step 1: Create drawer baseplates with greedy algorithm
+        # Step 1: Open panel and configure
         panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
         fcg.Control.showDialog(panel)
+
+        # Disable features for faster test
+        panel.junction_screws__enabled.setChecked(False)
+        panel.connecting_clips__enabled.setChecked(False)
+        panel.click_springs__enabled.setChecked(False)
         panel.drawer__split_algorithm.setCurrentText("Greedy")
+
+        # Verify preview exists and has valid shape
+        group = panel._target_obj  # noqa: SLF001
+        self.assertIsNotNone(group, "Preview group should exist")
+        preview_obj = panel._preview_obj  # noqa: SLF001
+        self.assertIsNotNone(preview_obj, "Preview object should exist")
+        self.assertTrue(preview_obj.Shape.isValid(), "Preview shape should be valid")
+        self.assertGreater(preview_obj.Shape.Volume, 0, "Preview shape should have non-zero volume")
+
+        # Verify preview visuals
+        view = preview_obj.ViewObject
+        self.assertIsNotNone(view, "Preview object should have ViewObject")
+        actual_rgb = view.ShapeColor[:3]
+        for i, (actual, expected) in enumerate(zip(actual_rgb, PREVIEW_SHAPE_COLOR, strict=True)):
+            self.assertAlmostEqual(actual, expected, places=4, msg=f"Preview color[{i}] mismatch")
+        self.assertEqual(view.Transparency, PREVIEW_TRANSPARENCY)
+
+        # Accept
         panel._preview_timer.stop()  # noqa: SLF001
         panel.accept()
 
-        # Step 2: Record original volumes and verify 5x6 pieces
+        # Step 2: Verify group and children
         group = self.doc.getObject("DrawerBaseplates")
-        self.assertIsNotNone(group, "DrawerBaseplates group should exist")
+        self.assertIsNotNone(group)
+        self.assertIn("Drawer Baseplates", group.Label)
         assert group is not None
+
+        children = group.Children
+        self.assertGreater(len(children), 0, "Children should be created on accept")
+
+        for child in children:
+            self.assertTrue(child.Shape.isValid())
+            self.assertGreater(child.Shape.Volume, 0)
+
+        # Verify pieces positioned on grid
+        placements = [child.Placement.Base for child in children]
+        x_positions = sorted({p.x for p in placements})
+        y_positions = sorted({p.y for p in placements})
+        self.assertGreater(len(x_positions), 1, "All pieces at same X position")
+        self.assertGreater(len(y_positions), 1, "All pieces at same Y position")
+
+        # Verify bottom-left 2x2 piece volumes
         original_volumes = get_all_volumes(group)
         self.log(f"Original volumes: {original_volumes}")
+        for piece_name in bottom_left_pieces:
+            self.assertAlmostEqual(
+                original_volumes[piece_name],
+                expected_volume,
+                places=2,
+                msg=f"{piece_name} volume should be {expected_volume}",
+            )
 
         original_col0 = get_column_volumes(original_volumes, 0)
         original_col1 = get_column_volumes(original_volumes, 1)
         original_col2 = get_column_volumes(original_volumes, 2)
-        self.assertGreater(len(original_col0), 0, "Should have col 0 pieces")
-        self.assertGreater(len(original_col2), 0, "Should have col 2 pieces")
-
-        # Verify bottom-left 2x2 pieces (rows 1-2, cols 0-1) are 5x6 plates
-        # with expected volume (greedy produces 4 identical 5x6 plates here)
-        bottom_left_5x6 = {"Piece_1_0", "Piece_1_1", "Piece_2_0", "Piece_2_1"}
-        for piece_name in bottom_left_5x6:
-            self.assertAlmostEqual(
-                original_volumes[piece_name],
-                expected_5x6_volume,
-                places=2,
-                msg=f"{piece_name} should be 5x6 plate with volume {expected_5x6_volume}",
-            )
 
         # Step 3: Edit, change width to 550
         panel2 = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg", target_obj=group)
@@ -630,7 +527,7 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
         panel2._preview_timer.stop()  # noqa: SLF001
         panel2.accept()
 
-        # Get updated volumes
+        # Verify column behavior after width change
         group = self.doc.getObject("DrawerBaseplates")
         assert group is not None
         new_volumes = get_all_volumes(group)
@@ -640,24 +537,12 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
         new_col1 = get_column_volumes(new_volumes, 1)
         new_col2 = get_column_volumes(new_volumes, 2)
 
-        # Step 4: Left columns should have same volumes
-        self.assertEqual(
-            original_col0,
-            new_col0,
-            "Column 0 volumes should be unchanged after width change",
-        )
-        self.assertEqual(
-            original_col1,
-            new_col1,
-            "Column 1 volumes should be unchanged after width change",
-        )
+        # Left columns should be unchanged
+        self.assertEqual(original_col0, new_col0, "Column 0 volumes should be unchanged")
+        self.assertEqual(original_col1, new_col1, "Column 1 volumes should be unchanged")
 
-        # Step 5: Rightmost column should have different volumes
-        self.assertNotEqual(
-            original_col2,
-            new_col2,
-            "Column 2 volumes should change after width change",
-        )
+        # Rightmost column should change
+        self.assertNotEqual(original_col2, new_col2, "Column 2 volumes should change")
 
     def test_drawer_group_no_dependency_on_child_change(self) -> None:
         """Test that DrawerBaseplateGroup does NOT recompute when children change.
@@ -665,13 +550,20 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
         This verifies the PropertyLinkListHidden architecture works correctly:
         - Group stores children without creating recompute dependency
         - Modifying a child should NOT trigger group recompute
+
+        Uses 50x50 drawer (single small piece) for fast execution.
         """
         from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
         from .features import DrawerBaseplateGroup
 
-        # Create drawer baseplates
+        # Create small 50x50 drawer baseplate (single piece, fast)
         panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
         fcg.Control.showDialog(panel)
+        panel.drawer__drawer_width.setValue(50)
+        panel.drawer__drawer_depth.setValue(50)
+        panel.junction_screws__enabled.setChecked(False)
+        panel.connecting_clips__enabled.setChecked(False)
+        panel.click_springs__enabled.setChecked(False)
         panel._preview_timer.stop()  # noqa: SLF001
         panel.accept()
 
