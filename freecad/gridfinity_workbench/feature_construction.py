@@ -1051,6 +1051,46 @@ def make_complex_bin_base_single(
     return assembly
 
 
+def is_tiny_cell(
+    fundamentals: FundamentalsParamsData,
+    core: BaseplateCoreParamsData,
+    x_size: float,
+    y_size: float,
+) -> bool:
+    """Check if cell dimensions are too small for bin base cutout.
+
+    A cell is considered "tiny" if it cannot accommodate the bin base profile
+    due to insufficient width/height for the corner radius or chamfer.
+
+    Args:
+        fundamentals: Fundamental dimensions.
+        core: Core parameters (for lower chamfer settings).
+        x_size: Cell width.
+        y_size: Cell height.
+
+    Returns:
+        True if cell is too small for bin base cutout.
+
+    """
+    main_half_width = float(fundamentals.main_half_width)
+    x_vert_width = x_size - 2 * main_half_width
+    y_vert_width = y_size - 2 * main_half_width
+
+    if x_vert_width <= 0 or y_vert_width <= 0:
+        return True
+
+    bin_vertical_radius = float(fundamentals.outer_radius) - main_half_width
+    if x_vert_width <= 2 * bin_vertical_radius or y_vert_width <= 2 * bin_vertical_radius:
+        return True
+
+    if core.lower_chamfer_enabled:
+        lower_size = float(core.lower_chamfer_size)
+        if x_vert_width - 2 * lower_size <= 0 or y_vert_width - 2 * lower_size <= 0:
+            return True
+
+    return False
+
+
 def make_complex_bin_base_single_from_params(
     fundamentals: FundamentalsParamsData,
     core: BaseplateCoreParamsData,
@@ -1070,6 +1110,9 @@ def make_complex_bin_base_single_from_params(
     x_size = x_size_override if x_size_override is not None else float(fundamentals.grid_size)
     y_size = y_size_override if y_size_override is not None else float(fundamentals.grid_size)
 
+    if is_tiny_cell(fundamentals, core, x_size, y_size):
+        return Part.Shape()
+
     lower_enabled = bool(core.lower_chamfer_enabled)
     lower_size = float(core.lower_chamfer_size) if lower_enabled else 0.0
     upper_size = float(fundamentals.main_half_width)
@@ -1086,14 +1129,6 @@ def make_complex_bin_base_single_from_params(
     x_bt_cmf_width = x_vert_width - 2 * lower_size
     y_bt_cmf_width = y_vert_width - 2 * lower_size
     vertical_section_height = float(fundamentals.main_height) - lower_size
-
-    if x_vert_width <= 0 or y_vert_width <= 0:
-        return Part.Shape()
-    if lower_enabled and (x_bt_cmf_width <= 0 or y_bt_cmf_width <= 0):
-        return Part.Shape()
-    # Cell too small for corner radius - treat as tiny cell
-    if x_vert_width <= 2 * bin_vertical_radius or y_vert_width <= 2 * bin_vertical_radius:
-        return Part.Shape()
 
     vertical_section = utils.rounded_rectangle_extrude(
         x_vert_width,

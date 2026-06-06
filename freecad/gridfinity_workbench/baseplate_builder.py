@@ -293,12 +293,10 @@ def build_single_cell_baseplate_core_cached(
         ).shape
 
     shape = baseplate_cell_cache.get_or_build(key, _build)
-    tiny_cell = feat.make_complex_bin_base_single_from_params(
-        params.fundamentals,
-        params.baseplate_core,
-        x_size_override=x_size_override,
-        y_size_override=y_size_override,
-    ).isNull()
+    grid_size = float(params.fundamentals.grid_size)
+    x_size = x_size_override if x_size_override is not None else grid_size
+    y_size = y_size_override if y_size_override is not None else grid_size
+    tiny_cell = feat.is_tiny_cell(params.fundamentals, params.baseplate_core, x_size, y_size)
     return CoreCellBuildResult(shape=shape, is_tiny=tiny_cell)
 
 
@@ -311,17 +309,18 @@ def build_preview_single_cell_baseplate_core(
     """Build a simplified preview of a single core cell."""
     margin = 0.1
     grid_size = float(params.fundamentals.grid_size)
-    x_grid_size = x_size_override if x_size_override is not None else grid_size
-    y_grid_size = y_size_override if y_size_override is not None else grid_size
+    x_size = x_size_override if x_size_override is not None else grid_size
+    y_size = y_size_override if y_size_override is not None else grid_size
     main_height = float(params.fundamentals.main_height)
     main_half_width = float(params.fundamentals.main_half_width)
 
-    outer = _make_centered_box(x_grid_size, y_grid_size, main_height)
-    if x_grid_size <= main_half_width or y_grid_size <= main_half_width:
+    tiny = feat.is_tiny_cell(params.fundamentals, params.baseplate_core, x_size, y_size)
+    outer = _make_centered_box(x_size, y_size, main_height)
+    if tiny:
         return CoreCellBuildResult(shape=outer, is_tiny=True)
     inner = _make_centered_box(
-        x_grid_size - main_half_width,
-        y_grid_size - main_half_width,
+        x_size - main_half_width,
+        y_size - main_half_width,
         main_height + (2 * margin),
         z_min=-margin,
     )
@@ -351,7 +350,12 @@ def build_preview_single_cell_baseplate_core_cached(
             y_size_override=y_size_override,
         ).shape
 
-    return CoreCellBuildResult(shape=baseplate_cell_cache.get_or_build(key, _build), is_tiny=False)
+    shape = baseplate_cell_cache.get_or_build(key, _build)
+    grid_size = float(params.fundamentals.grid_size)
+    x_size = x_size_override if x_size_override is not None else grid_size
+    y_size = y_size_override if y_size_override is not None else grid_size
+    tiny = feat.is_tiny_cell(params.fundamentals, params.baseplate_core, x_size, y_size)
+    return CoreCellBuildResult(shape=shape, is_tiny=tiny)
 
 
 def replicate_layout(
