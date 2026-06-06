@@ -14,8 +14,10 @@ from typing import TYPE_CHECKING, Any
 
 import FreeCAD as fc  # noqa: N813
 import FreeCADGui as fcg  # noqa: N813
-import Part
 from PySide.QtCore import Qt
+
+if TYPE_CHECKING:
+    import Part
 from PySide.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
@@ -611,19 +613,7 @@ class CreateConnectingClipTaskPanel(SingleFeatureTaskPanel):
         return self._params
 
     def _build_preview_shape(self, params: CombinedParams) -> Part.Shape:
-        data = params.data()
-        half_width = data.fundamentals.main_half_width
-        height = data.fundamentals.main_height
-        tolerance = data.connecting_clips.tolerance
-        clip_length = data.connecting_clips.clip_length
-
-        wire = clip_profiles.build_clip_profile_wire(half_width, height, tolerance)
-        length = clip_length - 2 * tolerance
-        return (
-            Part.Face(wire)
-            .extrude(fc.Vector(float(length), 0, 0))
-            .translate(fc.Vector(-float(length) / 2, 0, 0))
-        )
+        return clip_profiles.build_connecting_clip_shape(params.data())
 
     def _format_label(self, params: CombinedParams) -> str:  # noqa: ARG002
         return "ConnectingClip"

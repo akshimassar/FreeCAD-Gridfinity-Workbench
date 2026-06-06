@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import FreeCAD as fc  # noqa: N813
 import Part
+
+if TYPE_CHECKING:
+    from .param import CombinedConnectingClipsParamsData
 
 
 def _profile_scales(
@@ -79,3 +84,18 @@ def build_clip_cutout_profile_wire(
     ref_points = forward + mirrored + [forward[0]]
     pts = [_scale_profile_yz(y, z, scale_y, scale_z) for y, z in ref_points]
     return Part.Wire(Part.makePolygon(pts))
+
+
+def build_connecting_clip_shape(data: CombinedConnectingClipsParamsData) -> Part.Shape:
+    """Build a connecting clip shape from params data."""
+    wire = build_clip_profile_wire(
+        data.fundamentals.main_half_width,
+        data.fundamentals.main_height,
+        data.connecting_clips.tolerance,
+    )
+    length = data.connecting_clips.clip_length - 2 * data.connecting_clips.tolerance
+    return (
+        Part.Face(wire)
+        .extrude(fc.Vector(float(length), 0, 0))
+        .translate(fc.Vector(-float(length) / 2, 0, 0))
+    )

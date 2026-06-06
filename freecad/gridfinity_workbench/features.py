@@ -1467,27 +1467,5 @@ class ConnectingClip(FoundationGridfinity):
         params.add_all_properties_to_object(obj)
 
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
-        # Create param group and extract values from object
         params = CombinedConnectingClipsParams().from_obj(obj)
-
-        # Get frozen data object with all parameter values
-        data = params.data()
-
-        # Use the data object for geometry creation
-        # Use the fundamentals for profile dimensions and clip-specific for geometry parameters
-        half_width_value = data.fundamentals.main_half_width
-        height_value = data.fundamentals.main_height
-        tolerance_value = data.connecting_clips.tolerance
-        clip_length_value = data.connecting_clips.clip_length
-
-        wire = clip_profiles.build_clip_profile_wire(
-            half_width_value,
-            height_value,
-            tolerance_value,
-        )
-        length = clip_length_value - 2 * tolerance_value
-        return (
-            Part.Face(wire)
-            .extrude(fc.Vector(float(length), 0, 0))
-            .translate(fc.Vector(-float(length) / 2, 0, 0))
-        )
+        return clip_profiles.build_connecting_clip_shape(params.data())
