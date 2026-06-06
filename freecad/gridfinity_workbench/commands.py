@@ -455,18 +455,10 @@ class CreateDrawerBaseplateTaskPanel(GroupFeatureTaskPanel):
         return self._params
 
     def _build_preview_shape(self, params: CombinedParams) -> Part.Shape:
-        if self._target_obj is None:
-            return Part.Shape()
+        from .param import CombinedDrawerBaseplateParams
 
-        # Apply params to group for preview calculation
-        params.to_obj(self._target_obj)
-        if hasattr(self._target_obj, "PreviewBuildMode"):
-            self._target_obj.PreviewBuildMode = True
-
-        proxy = getattr(self._target_obj, "Proxy", None)
-        if proxy is not None and hasattr(proxy, "build_preview_shape"):
-            return proxy.build_preview_shape(self._target_obj)
-        return Part.Shape()
+        drawer_params = typing.cast(CombinedDrawerBaseplateParams, params)
+        return features.build_drawer_baseplate_preview_shape(drawer_params)
 
     def _format_label(self, params: CombinedParams) -> str:
         data = params.data()
@@ -479,7 +471,6 @@ class CreateDrawerBaseplateTaskPanel(GroupFeatureTaskPanel):
         raise NotImplementedError("Groups are created in __init__, not on accept")
 
     def _on_accept_finalize(self, output_obj: fc.DocumentObject, params: CombinedParams) -> None:
-        # Group's execute() creates children when PreviewBuildMode is False
         pass
 
     def _get_child_companion_managers(

@@ -442,9 +442,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 obj.printer__bed_depth = 240
                 obj.drawer__width_filler_alignment = "Right"
                 obj.drawer__depth_filler_alignment = "Top"
-                obj.PreviewBuildMode = True
 
-                # Build preview shape via proxy method (preview mode doesn't create children)
+                # Build preview shape via proxy method
                 start = time.perf_counter()
                 preview_shape = obj.Proxy.build_preview_shape(obj)
                 elapsed = time.perf_counter() - start

@@ -41,6 +41,7 @@ from .param import (
     CombinedBaseplateParams,
     CombinedConnectingClipsParams,
     CombinedDrawerBaseplateParams,
+    CombinedDrawerBaseplateParamsData,
     CombinedSupportBaseplateParams,
     ConnectingClipsParams,
     FundamentalsParams,
@@ -387,14 +388,6 @@ class Baseplate(FoundationGridfinity):
         super().__init__(obj)
         CombinedBaseplateParams().add_all_properties_to_object(obj)
 
-        # Additional runtime property not part of param system
-        obj.addProperty(
-            "App::PropertyBool",
-            "PreviewBuildMode",
-            "ShouldBeHidden",
-            "Internal flag for simplified interactive preview build",
-        ).PreviewBuildMode = False
-
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         params = CombinedBaseplateParams().from_obj(obj)
         data = params.data()
@@ -409,16 +402,7 @@ class Baseplate(FoundationGridfinity):
             include_snap_springs=data.click_springs.enabled,
         )
 
-        # When stacking is enabled, build stacked baseplates
         if data.stacking.enabled:
-            # In preview mode, just show a single baseplate for speed
-            if bool(getattr(obj, "PreviewBuildMode", False)):
-                return baseplate_builder.build_simple_baseplate_from_params(
-                    data,
-                    layout,
-                    options,
-                    preview=False,
-                )
             return _build_stacked_baseplates_shape(obj)
 
         return baseplate_builder.build_simple_baseplate_from_params(
@@ -461,12 +445,6 @@ class DrawerBaseplateGroup:
             "ReferenceParameters",
             "Deterministic names for generated drawer baseplate pieces",
         ).PieceNames = []
-        obj.addProperty(
-            "App::PropertyBool",
-            "PreviewBuildMode",
-            "ShouldBeHidden",
-            "Internal flag for simplified interactive preview build",
-        ).PreviewBuildMode = False
         # Use PropertyLinkListHidden to store children without creating recompute dependencies
         # Visual nesting in tree is handled by claimChildren() in ViewProvider
         obj.addProperty(
@@ -482,16 +460,8 @@ class DrawerBaseplateGroup:
         check_version.migrate_object_version(obj)
 
     def execute(self, obj: fc.DocumentObject) -> None:
-        """Create/update/remove child Baseplate objects.
-
-        In preview mode (PreviewBuildMode=True), does nothing - preview is handled
-        externally via build_preview_shape().
-        """
-        if bool(getattr(obj, "PreviewBuildMode", False)):
-            # Preview mode: don't create children, preview handled externally
-            return
-
-        x_chunks, y_chunks_for_rows, grid_mm, full_data = _compute_drawer_splits(obj)
+        """Create/update/remove child Baseplate objects."""
+        x_chunks, y_chunks_for_rows, grid_mm, full_data = _compute_drawer_splits_from_obj(obj)
         if x_chunks is None:
             return
 
@@ -511,62 +481,12 @@ class DrawerBaseplateGroup:
     def build_preview_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         """Build combined preview shape for all pieces without creating children.
 
-        Returns a compound shape containing simplified preview shapes for all pieces,
-        positioned according to the tile layout.
+        Delegates to standalone build_drawer_baseplate_preview_shape() function.
         """
-        x_chunks, y_chunks_for_rows, grid_mm, full_data = _compute_drawer_splits(obj)
-        if x_chunks is None:
-            return Part.Shape()
-
-        combined_params: CombinedDrawerBaseplateParams = (
+        params: CombinedDrawerBaseplateParams = (
             CombinedDrawerBaseplateParams().from_obj(obj)  # type: ignore[assignment]
         )
-        required_pieces = _build_required_pieces(x_chunks, y_chunks_for_rows)
-
-        # Tile positioning parameters
-        bed_w = float(full_data.printer.bed_width)
-        bed_d = float(full_data.printer.bed_depth)
-        plate_gap_x = 42.0
-        plate_gap_y = 42.0
-        y_chunk_count = len(y_chunks_for_rows)
-
-        shapes: list[Part.Shape] = []
-
-        for row_index, column_index in required_pieces.values():
-            x_chunk = x_chunks[column_index]
-            y_chunk = y_chunks_for_rows[row_index]
-
-            # Build params for this chunk
-            baseplate_params = _build_baseplate_params_for_chunk(combined_params, x_chunk, y_chunk)
-
-            # Build preview shape (simplified, no screws/clips/springs)
-            layout = [[True] * y_chunk.cells for _ in range(x_chunk.cells)]
-            options = baseplate_builder.BaseplateBuildOptions(
-                include_junction_screws=False,
-                include_clip_cutouts=False,
-                include_snap_springs=False,
-            )
-            shape = baseplate_builder.build_simple_baseplate_from_params_cached(
-                baseplate_params.data(),
-                layout,
-                options,
-                preview=True,
-            )
-
-            # Compute placement
-            width_mm = x_chunk.cells * grid_mm + x_chunk.low_fill_mm + x_chunk.high_fill_mm
-            depth_mm = y_chunk.cells * grid_mm + y_chunk.low_fill_mm + y_chunk.high_fill_mm
-            tile_center_x = (column_index * (bed_w + plate_gap_x)) + (0.5 * bed_w)
-            tile_center_y = (y_chunk_count - 1 - row_index) * (bed_d + plate_gap_y) + 0.5 * bed_d
-            placement_x = tile_center_x - (width_mm / 2)
-            placement_y = tile_center_y - (depth_mm / 2)
-
-            # Translate shape to tile position
-            shape = shape.copy()
-            shape.translate(fc.Vector(placement_x, placement_y, 0))
-            shapes.append(shape)
-
-        return Part.makeCompound(shapes) if shapes else Part.Shape()
+        return build_drawer_baseplate_preview_shape(params)
 
     def _remove_stale_children(
         self,
@@ -703,7 +623,7 @@ class DrawerBaseplateGroup:
         baseplate_params.to_obj(child)
 
         # Add to Children property (no dependency, just tracking)
-        obj.Children = obj.Children + [child]
+        obj.Children = [*obj.Children, child]
 
         # Set placement (shapes are built at origin)
         child.Placement.Base = fc.Vector(placement_x, placement_y, 0)
@@ -738,16 +658,18 @@ class DrawerBaseplateGroup:
         pass
 
 
-def _compute_drawer_splits(obj: fc.DocumentObject) -> tuple:
-    """Compute drawer split chunks from group params."""
-    combined_params = CombinedDrawerBaseplateParams().from_obj(obj)
-    full_data = combined_params.data()
+def _compute_drawer_splits_from_data(
+    full_data: CombinedDrawerBaseplateParamsData,
+) -> tuple[list | None, list | None, float | None]:
+    """Compute drawer split chunks from params data.
 
+    Returns (x_chunks, y_chunks_for_rows, grid_mm) or (None, None, None) if invalid.
+    """
     grid_mm = float(full_data.fundamentals.grid_size)
     algo = full_data.drawer.split_algorithm
     split_algorithm = "balanced" if algo == "Balanced" else "greedy" if algo == "Greedy" else None
     if split_algorithm is None:
-        return None, None, None, None
+        return None, None, None
 
     x_chunks = split_axis_into_printable_chunks(
         length_mm=float(full_data.drawer.drawer_width),
@@ -771,7 +693,20 @@ def _compute_drawer_splits(obj: fc.DocumentObject) -> tuple:
         ),
         algorithm=split_algorithm,
     )
-    return x_chunks, list(reversed(y_chunks)), grid_mm, full_data
+    return x_chunks, list(reversed(y_chunks)), grid_mm
+
+
+def _compute_drawer_splits_from_obj(obj: fc.DocumentObject) -> tuple:
+    """Compute drawer split chunks from group object params.
+
+    Returns (x_chunks, y_chunks_for_rows, grid_mm, full_data) or (None, None, None, None).
+    """
+    combined_params = CombinedDrawerBaseplateParams().from_obj(obj)
+    full_data = combined_params.data()
+    x_chunks, y_chunks_for_rows, grid_mm = _compute_drawer_splits_from_data(full_data)
+    if x_chunks is None:
+        return None, None, None, None
+    return x_chunks, y_chunks_for_rows, grid_mm, full_data
 
 
 def _build_required_pieces(x_chunks: list, y_chunks_for_rows: list) -> dict[str, tuple[int, int]]:
@@ -782,6 +717,70 @@ def _build_required_pieces(x_chunks: list, y_chunks_for_rows: list) -> dict[str,
             if x_chunk.cells >= 1 and y_chunk.cells >= 1:
                 required[f"Piece_{row_index}_{col_index}"] = (row_index, col_index)
     return required
+
+
+def build_drawer_baseplate_preview_shape(
+    params: CombinedDrawerBaseplateParams,
+) -> Part.Shape:
+    """Build combined preview shape for drawer baseplate pieces.
+
+    Returns a compound shape containing simplified preview shapes for all pieces,
+    positioned according to the tile layout.
+
+    This is a standalone function that can be called from task panels without
+    creating a DrawerBaseplateGroup object.
+    """
+    full_data = params.data()
+    x_chunks, y_chunks_for_rows, grid_mm = _compute_drawer_splits_from_data(full_data)
+    if x_chunks is None or y_chunks_for_rows is None or grid_mm is None:
+        return Part.Shape()
+
+    required_pieces = _build_required_pieces(x_chunks, y_chunks_for_rows)
+
+    # Tile positioning parameters
+    bed_w = float(full_data.printer.bed_width)
+    bed_d = float(full_data.printer.bed_depth)
+    plate_gap_x = 42.0
+    plate_gap_y = 42.0
+    y_chunk_count = len(y_chunks_for_rows)
+
+    shapes: list[Part.Shape] = []
+
+    for row_index, column_index in required_pieces.values():
+        x_chunk = x_chunks[column_index]
+        y_chunk = y_chunks_for_rows[row_index]
+
+        # Build params for this chunk
+        baseplate_params = _build_baseplate_params_for_chunk(params, x_chunk, y_chunk)
+
+        # Build preview shape (simplified, no screws/clips/springs)
+        layout = [[True] * y_chunk.cells for _ in range(x_chunk.cells)]
+        options = baseplate_builder.BaseplateBuildOptions(
+            include_junction_screws=False,
+            include_clip_cutouts=False,
+            include_snap_springs=False,
+        )
+        shape = baseplate_builder.build_simple_baseplate_from_params_cached(
+            baseplate_params.data(),
+            layout,
+            options,
+            preview=True,
+        )
+
+        # Compute placement
+        width_mm = x_chunk.cells * grid_mm + x_chunk.low_fill_mm + x_chunk.high_fill_mm
+        depth_mm = y_chunk.cells * grid_mm + y_chunk.low_fill_mm + y_chunk.high_fill_mm
+        tile_center_x = (column_index * (bed_w + plate_gap_x)) + (0.5 * bed_w)
+        tile_center_y = (y_chunk_count - 1 - row_index) * (bed_d + plate_gap_y) + 0.5 * bed_d
+        placement_x = tile_center_x - (width_mm / 2)
+        placement_y = tile_center_y - (depth_mm / 2)
+
+        # Translate shape to tile position
+        shape = shape.copy()
+        shape.translate(fc.Vector(placement_x, placement_y, 0))
+        shapes.append(shape)
+
+    return Part.makeCompound(shapes) if shapes else Part.Shape()
 
 
 def _copy_stacking_params(source: StackingParams) -> StackingParams:

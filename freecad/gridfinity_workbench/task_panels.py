@@ -374,9 +374,7 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
             self._target_obj = self._edit_obj
             self._original_label = self._edit_obj.Label
         else:
-            self._target_obj = fc.ActiveDocument.addObject(
-                "Part::FeaturePython", group_name
-            )
+            self._target_obj = fc.ActiveDocument.addObject("Part::FeaturePython", group_name)
             self._created_new_group = True
             group_feature_class(self._target_obj)
             if fc.GuiUp and self._target_obj is not None:
@@ -396,10 +394,6 @@ class GroupFeatureTaskPanel(BaseFeatureTaskPanel):
 
         params.to_obj(self._target_obj)
         self._target_obj.Label = self._format_label(params)
-
-        # Set preview mode off to trigger child creation on recompute
-        if hasattr(self._target_obj, "PreviewBuildMode"):
-            self._target_obj.PreviewBuildMode = False
 
         self._on_accept_finalize(self._target_obj, params)
 

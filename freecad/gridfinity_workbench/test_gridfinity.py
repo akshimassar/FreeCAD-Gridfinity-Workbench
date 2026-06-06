@@ -956,7 +956,7 @@ class TestGroupDependencyBehavior(TestWithDocument):
             def __init__(self, obj: fc.DocumentObject) -> None:
                 obj.Proxy = self
 
-            def execute(self, obj: fc.DocumentObject) -> None:
+            def execute(self, obj: fc.DocumentObject) -> None:  # noqa: ARG002
                 execute_count[0] += 1
 
         GroupProxy(group)
@@ -1042,7 +1042,7 @@ class TestGroupDependencyBehavior(TestWithDocument):
                 )
                 obj.Proxy = self
 
-            def execute(self, obj: fc.DocumentObject) -> None:
+            def execute(self, obj: fc.DocumentObject) -> None:  # noqa: ARG002
                 execute_count[0] += 1
 
         ContainerProxy(container)
@@ -1109,25 +1109,25 @@ class TestGroupDependencyBehavior(TestWithDocument):
                 )
                 obj.Proxy = self
 
-            def execute(self, obj: fc.DocumentObject) -> None:
+            def execute(self, obj: fc.DocumentObject) -> None:  # noqa: ARG002
                 execute_count[0] += 1
 
         class ContainerViewProvider:
-            def __init__(self, vobj: Any) -> None:
+            def __init__(self, vobj: Any) -> None:  # noqa: ANN401
                 vobj.Proxy = self
                 self.Object = vobj.Object
 
-            def claimChildren(self) -> list:
+            def claimChildren(self) -> list:  # noqa: N802
                 """Return children for visual nesting in tree."""
                 return self.Object.Children if hasattr(self.Object, "Children") else []
 
-            def attach(self, vobj: Any) -> None:
+            def attach(self, vobj: Any) -> None:  # noqa: ANN401
                 self.Object = vobj.Object
 
             def __getstate__(self) -> None:
                 return None
 
-            def __setstate__(self, state: Any) -> None:
+            def __setstate__(self, state: Any) -> None:  # noqa: ANN401
                 pass
 
         ContainerProxy(container)
