@@ -133,13 +133,12 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     junction_screws=JunctionScrewsParams(enabled=False),
                     connecting_clips=ConnectingClipsParams(enabled=False),
                 )
-                layout = [[True]]
                 options = BaseplateBuildOptions(
                     include_snap_springs=click_springs,
                     include_junction_screws=False,
                     include_clip_cutouts=False,
                 )
-                shape = build_simple_baseplate_from_params(params.data(), layout, options)
+                shape = build_simple_baseplate_from_params(params.data(), options)
                 return {{
                     "volume": float(shape.Volume),
                     "solids": int(len(shape.Solids)),
@@ -216,9 +215,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     ),
                     click_springs=ClickSpringsParams(enabled=click_springs),
                 )
-                layout = [[True, True], [True, True]]
                 options = BaseplateBuildOptions(include_snap_springs=click_springs)
-                shape = build_simple_baseplate_from_params(params.data(), layout, options)
+                shape = build_simple_baseplate_from_params(params.data(), options)
                 bbox = shape.BoundBox
                 return {{
                     "volume": float(shape.Volume),
@@ -513,9 +511,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             params = CombinedBaseplateParams(
                 baseplate_size=BaseplateSizeParams(x_grid_count=2, y_grid_count=2),
             )
-            layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions()  # all features enabled by default
-            shape = build_simple_baseplate_from_params(params.data(), layout, options)
+            shape = build_simple_baseplate_from_params(params.data(), options)
             bbox = shape.BoundBox
             payload = {{
                 "volume": float(shape.Volume),
@@ -605,13 +602,12 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 junction_screws=JunctionScrewsParams(enabled=False),
                 connecting_clips=ConnectingClipsParams(enabled=False),
             )
-            layout = [[], []]  # 0 columns, 2 rows
             options = BaseplateBuildOptions(
                 include_snap_springs=False,
                 include_junction_screws=False,
                 include_clip_cutouts=False,
             )
-            shape = build_simple_baseplate_from_params(params.data(), layout, options)
+            shape = build_simple_baseplate_from_params(params.data(), options)
             bbox = shape.BoundBox
             payload = {{
                 "solids": int(len(shape.Solids)),
@@ -668,9 +664,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     filler_right_enabled=True, filler_right_width=fc.Units.Quantity("2 mm"),
                 ),
             )
-            layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions()
-            shape = build_simple_baseplate_from_params(params.data(), layout, options, preview=True)
+            shape = build_simple_baseplate_from_params(params.data(), options, preview=True)
             payload = {{
                 "solids": int(len(shape.Solids)),
                 "valid": bool(shape.isValid()),
@@ -809,13 +804,12 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 junction_screws=JunctionScrewsParams(enabled=False),
                 connecting_clips=ConnectingClipsParams(enabled=False),
             )
-            layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions(
                 include_snap_springs=False,
                 include_junction_screws=False,
                 include_clip_cutouts=False,
             )
-            shape = build_simple_baseplate_from_params(params.data(), layout, options)
+            shape = build_simple_baseplate_from_params(params.data(), options)
             """,
         ).format(module_root=repr(freecad_module_root))
 
@@ -862,9 +856,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     filler_right_enabled=True, filler_right_width=fc.Units.Quantity("2 mm"),
                 ),
             )
-            layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions()
-            shape = build_simple_baseplate_from_params(params.data(), layout, options)
+            shape = build_simple_baseplate_from_params(params.data(), options)
             payload = {{
                 "solids": int(len(shape.Solids)),
                 "valid": bool(shape.isValid()),
@@ -924,9 +917,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             if "click_springs.click_thickness" in errors:
                 print("Invalid click spring geometry: ClickThickness", file=sys.stderr)
             else:
-                layout = [[True, True], [True, True]]
                 options = BaseplateBuildOptions()
-                shape = build_simple_baseplate_from_params(params.data(), layout, options)
+                shape = build_simple_baseplate_from_params(params.data(), options)
             """,
         ).format(module_root=repr(freecad_module_root))
 
@@ -1001,9 +993,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     ),
                     connecting_clips=ConnectingClipsParams(enabled=False),
                 )
-                layout = [[True, True], [True, True]]
                 options = BaseplateBuildOptions(include_clip_cutouts=False)
-                shape = build_simple_baseplate_from_params(params.data(), layout, options)
+                shape = build_simple_baseplate_from_params(params.data(), options)
                 data = params.data()
                 h = float(data.fundamentals.main_height)
                 w = float(data.fundamentals.main_half_width)
@@ -1380,9 +1371,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 ),
                 connecting_clips=ConnectingClipsParams(enabled=False),
             )
-            layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions(include_clip_cutouts=False)
-            shape = build_simple_baseplate_from_params(params.data(), layout, options)
+            shape = build_simple_baseplate_from_params(params.data(), options)
             result = {{
                 "volume": float(shape.Volume),
                 "solids": int(len(shape.Solids)),
@@ -1443,9 +1433,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 ),
                 connecting_clips=ConnectingClipsParams(enabled=False),
             )
-            layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions(include_clip_cutouts=False)
-            shape = build_simple_baseplate_from_params(params.data(), layout, options)
+            shape = build_simple_baseplate_from_params(params.data(), options)
             result = {{
                 "volume": float(shape.Volume),
                 "solids": int(len(shape.Solids)),
@@ -1506,9 +1495,8 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 ),
                 connecting_clips=ConnectingClipsParams(enabled=False),
             )
-            layout = [[True, True], [True, True]]
             options = BaseplateBuildOptions(include_clip_cutouts=False)
-            shape = build_simple_baseplate_from_params(params.data(), layout, options)
+            shape = build_simple_baseplate_from_params(params.data(), options)
             result = {{
                 "volume": float(shape.Volume),
                 "solids": int(len(shape.Solids)),

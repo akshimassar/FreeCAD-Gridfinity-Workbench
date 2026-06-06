@@ -391,11 +391,6 @@ class Baseplate(FoundationGridfinity):
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         params = CombinedBaseplateParams().from_obj(obj)
         data = params.data()
-        size = data.baseplate_size
-        if size.custom_layout_enabled and size.custom_layout:
-            layout = size.custom_layout
-        else:
-            layout = [[True] * size.y_grid_count for _ in range(size.x_grid_count)]
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=data.junction_screws.enabled,
             include_clip_cutouts=data.connecting_clips.enabled,
@@ -407,7 +402,6 @@ class Baseplate(FoundationGridfinity):
 
         return baseplate_builder.build_simple_baseplate_from_params(
             data,
-            layout,
             options,
             preview=False,
         )
@@ -754,7 +748,6 @@ def build_drawer_baseplate_preview_shape(
         baseplate_params = _build_baseplate_params_for_chunk(params, x_chunk, y_chunk)
 
         # Build preview shape (simplified, no screws/clips/springs)
-        layout = [[True] * y_chunk.cells for _ in range(x_chunk.cells)]
         options = baseplate_builder.BaseplateBuildOptions(
             include_junction_screws=False,
             include_clip_cutouts=False,
@@ -762,7 +755,6 @@ def build_drawer_baseplate_preview_shape(
         )
         shape = baseplate_builder.build_simple_baseplate_from_params_cached(
             baseplate_params.data(),
-            layout,
             options,
             preview=True,
         )
@@ -861,11 +853,7 @@ class SupportBaseplate(FoundationGridfinity):
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         params = CombinedSupportBaseplateParams().from_obj(obj)
         data = params.data()
-        layout = [
-            [True] * data.baseplate_size.y_grid_count
-            for _ in range(data.baseplate_size.x_grid_count)
-        ]
-        return baseplate_builder.build_baseplate_support_cached(data, layout)
+        return baseplate_builder.build_baseplate_support_cached(data)
 
 
 class BaseplateSupport(FoundationGridfinity):
@@ -891,10 +879,7 @@ def _stacked_support_prototype(obj: fc.DocumentObject) -> Part.Shape:
     """Build a single support layer for stacked baseplates."""
     params = CombinedBaseplateParams().from_obj(obj)
     data = params.data()
-    layout = [
-        [True] * data.baseplate_size.y_grid_count for _ in range(data.baseplate_size.x_grid_count)
-    ]
-    return baseplate_builder.build_baseplate_support_cached(data, layout)
+    return baseplate_builder.build_baseplate_support_cached(data)
 
 
 def _build_corner_stitching_shape(
@@ -983,9 +968,6 @@ def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
     # Build a single baseplate using params
     params = CombinedBaseplateParams().from_obj(obj)
     data = params.data()
-    layout = [
-        [True] * data.baseplate_size.y_grid_count for _ in range(data.baseplate_size.x_grid_count)
-    ]
     options = baseplate_builder.BaseplateBuildOptions(
         include_junction_screws=data.junction_screws.enabled,
         include_clip_cutouts=data.connecting_clips.enabled,
@@ -993,7 +975,6 @@ def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
     )
     baseplate_shape = baseplate_builder.build_simple_baseplate_from_params(
         data,
-        layout,
         options,
         preview=False,
     )

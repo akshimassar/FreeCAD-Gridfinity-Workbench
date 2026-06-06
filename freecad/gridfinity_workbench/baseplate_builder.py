@@ -81,15 +81,14 @@ def _cache_normalize(value: object) -> object:  # noqa: PLR0911
 
 def _baseplate_cache_key(
     params: CombinedBaseplateParamsData,
-    layout: GridfinityLayout,
     options: BaseplateBuildOptions,
     *,
     preview: bool,
 ) -> str:
+    # Layout is derived from params, so params alone determines layout
     payload = {
         "kind": "simple_baseplate",
         "params": _cache_normalize(params),
-        "layout": _cache_normalize(layout),
         "options": _cache_normalize(options),
         "preview": bool(preview),
     }
@@ -115,16 +114,15 @@ def _shape_cache_get_or_build(key: str, build_fn: Callable[[], Part.Shape]) -> P
 
 def build_baseplate_support_cached(
     params: CombinedBaseplateParamsData | CombinedSupportBaseplateParamsData,
-    layout: GridfinityLayout,
 ) -> Part.Shape:
     """Build baseplate top support with caching."""
+    layout = _derive_layout_from_params(params)
     # Create cache key from params data
     params_payload = _cache_normalize(params)
     key = json.dumps(
         {
             "kind": "support_baseplate",
             "params": params_payload,
-            "layout": _cache_normalize(layout),
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -783,33 +781,31 @@ def apply_snap_springs(
 
 def build_simple_baseplate(
     obj: fc.DocumentObject,
-    layout: GridfinityLayout,
     options: BaseplateBuildOptions,
     *,
     preview: bool = False,
 ) -> Part.Shape:
     """Build a simple baseplate from a FreeCAD object."""
     params = CombinedBaseplateParams().from_obj(obj).data()
-    return build_simple_baseplate_from_params_cached(params, layout, options, preview=preview)
+    return build_simple_baseplate_from_params_cached(params, options, preview=preview)
 
 
 def build_simple_baseplate_from_params_cached(
     params: CombinedBaseplateParamsData,
-    layout: GridfinityLayout,
     options: BaseplateBuildOptions,
     *,
     preview: bool = False,
 ) -> Part.Shape:
     """Build a simple baseplate from params with caching."""
     if _BASEPLATE_SHAPE_CACHE_MAX <= 0:
-        return build_simple_baseplate_from_params(params, layout, options, preview=preview)
+        return build_simple_baseplate_from_params(params, options, preview=preview)
 
-    key = _baseplate_cache_key(params, layout, options, preview=preview)
+    key = _baseplate_cache_key(params, options, preview=preview)
     cached_shape = _BASEPLATE_SHAPE_CACHE.get(key)
     if cached_shape is not None:
         _BASEPLATE_SHAPE_CACHE.move_to_end(key)
         return cached_shape.copy()
-    shape = build_simple_baseplate_from_params(params, layout, options, preview=preview)
+    shape = build_simple_baseplate_from_params(params, options, preview=preview)
     _BASEPLATE_SHAPE_CACHE[key] = shape
     _BASEPLATE_SHAPE_CACHE.move_to_end(key)
     while len(_BASEPLATE_SHAPE_CACHE) > _BASEPLATE_SHAPE_CACHE_MAX:
@@ -817,14 +813,28 @@ def build_simple_baseplate_from_params_cached(
     return shape.copy()
 
 
+def _derive_layout_from_params(
+    params: CombinedBaseplateParamsData | CombinedSupportBaseplateParamsData,
+) -> GridfinityLayout:
+    """Derive the cell layout from params data.
+
+    Uses custom_layout if enabled and present, otherwise generates
+    a rectangular grid from x_grid_count x y_grid_count.
+    """
+    size = params.baseplate_size
+    if size.custom_layout_enabled and size.custom_layout:
+        return size.custom_layout
+    return [[True] * size.y_grid_count for _ in range(size.x_grid_count)]
+
+
 def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
     params: CombinedBaseplateParamsData,
-    layout: GridfinityLayout,
     options: BaseplateBuildOptions,
     *,
     preview: bool = False,
 ) -> Part.Shape:
     """Build a simple baseplate from params."""
+    layout = _derive_layout_from_params(params)
     timing_on = _timing_enabled()
     t_total = time.perf_counter() if timing_on else 0.0
     nx = max(0, int(params.baseplate_size.x_grid_count))
