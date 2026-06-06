@@ -17,16 +17,12 @@ from . import baseplate_cell_cache, baseplate_corner_roundover, baseplate_full_l
 from . import baseplate_click_springs as click_springs
 from . import baseplate_feature_construction as baseplate_feat
 from . import feature_construction as feat
-from .param import (
-    CombinedBaseplateParams,
-    CombinedBaseplateParamsData,
-    CombinedSupportBaseplateParamsData,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from .baseplate_full_layout import GridfinityLayout, GridfinityLayoutGeometry
+    from .param import CombinedBaseplateParamsData, CombinedSupportBaseplateParamsData
 
 
 def _timing_enabled() -> bool:
@@ -81,7 +77,6 @@ def _cache_normalize(value: object) -> object:  # noqa: PLR0911
 
 def _baseplate_cache_key(
     params: CombinedBaseplateParamsData,
-    options: BaseplateBuildOptions,
     *,
     preview: bool,
 ) -> str:
@@ -89,7 +84,6 @@ def _baseplate_cache_key(
     payload = {
         "kind": "simple_baseplate",
         "params": _cache_normalize(params),
-        "options": _cache_normalize(options),
         "preview": bool(preview),
     }
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -176,15 +170,6 @@ def _matrix_not(mask: list[list[bool]]) -> list[list[bool]]:
 
 
 @dataclass
-class BaseplateBuildOptions:
-    """Configuration options for baseplate building."""
-
-    include_junction_screws: bool = True
-    include_clip_cutouts: bool = True
-    include_snap_springs: bool = True
-
-
-@dataclass
 class CoreCellBuildResult:
     """Result of building a single core cell."""
 
@@ -252,7 +237,6 @@ def baseplate_cell_top_crop(
 
 def build_single_cell_baseplate_core(
     params: CombinedBaseplateParamsData,
-    _options: BaseplateBuildOptions,
     *,
     x_size_override: float | None = None,
     y_size_override: float | None = None,
@@ -261,7 +245,6 @@ def build_single_cell_baseplate_core(
 
     Args:
         params: Combined baseplate parameters with fundamentals.grid_size as standard size.
-        _options: Build options.
         x_size_override: Optional override for cell X dimension (for filler cells).
         y_size_override: Optional override for cell Y dimension (for filler cells).
 
@@ -288,7 +271,6 @@ def build_single_cell_baseplate_core(
 
 def build_single_cell_baseplate_core_cached(
     params: CombinedBaseplateParamsData,
-    options: BaseplateBuildOptions,
     *,
     x_size_override: float | None = None,
     y_size_override: float | None = None,
@@ -298,7 +280,6 @@ def build_single_cell_baseplate_core_cached(
         {
             "kind": "baseplate_core_cell",
             "params": params,
-            "options": options,
             "x_size_override": x_size_override,
             "y_size_override": y_size_override,
         },
@@ -307,7 +288,6 @@ def build_single_cell_baseplate_core_cached(
     def _build() -> Part.Shape:
         return build_single_cell_baseplate_core(
             params,
-            options,
             x_size_override=x_size_override,
             y_size_override=y_size_override,
         ).shape
@@ -400,7 +380,6 @@ def add_filler_strips(
     shape: Part.Shape,
     params: CombinedBaseplateParamsData,
     layout: GridfinityLayout,
-    options: BaseplateBuildOptions,
     *,
     preview: bool = False,
 ) -> tuple[Part.Shape, GridfinityLayoutGeometry]:
@@ -408,9 +387,7 @@ def add_filler_strips(
     expanded = baseplate_full_layout.build_full_layout(
         params,
         layout,
-        include_spring_masks=(
-            not preview and options.include_snap_springs and params.click_springs.enabled
-        ),
+        include_spring_masks=(not preview and params.click_springs.enabled),
     )
     nx, ny = _layout_dims(layout, params)
     expanded_nx, expanded_ny = expanded.size()
@@ -428,7 +405,7 @@ def add_filler_strips(
         y_core_shift = bottom_w if bottom_on else 0 * params.fundamentals.grid_size
         shape.translate(fc.Vector(float(x_core_shift), float(y_core_shift), 0))
 
-    filler_shape = _build_filler_ring_shape(params, expanded, options, preview=preview)
+    filler_shape = _build_filler_ring_shape(params, expanded, preview=preview)
     if shape.isNull():
         return filler_shape, expanded
     combined = shape.fuse(filler_shape)
@@ -448,7 +425,6 @@ def _build_filler_cell_shape(
     params: CombinedBaseplateParamsData,
     target_cell_width: float,
     target_cell_height: float,
-    options: BaseplateBuildOptions,
     *,
     preview: bool = False,
 ) -> CoreCellBuildResult:
@@ -460,7 +436,6 @@ def _build_filler_cell_shape(
         )
     return build_single_cell_baseplate_core_cached(
         params,
-        options,
         x_size_override=target_cell_width,
         y_size_override=target_cell_height,
     )
@@ -469,7 +444,6 @@ def _build_filler_cell_shape(
 def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
     params: CombinedBaseplateParamsData,
     geometry: GridfinityLayoutGeometry,
-    options: BaseplateBuildOptions,
     *,
     preview: bool = False,
 ) -> Part.Shape:
@@ -488,7 +462,7 @@ def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
 
     negative_slots: click_springs.SpringShapeSlots | None = None
     positive_slots: click_springs.SpringShapeSlots | None = None
-    if not preview and options.include_snap_springs and params.click_springs.enabled:
+    if not preview and params.click_springs.enabled:
         negative_slots = click_springs.make_click_spring_prototype_negative(
             params.fundamentals,
             params.click_springs,
@@ -508,7 +482,6 @@ def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
             params,
             width,
             height,
-            options,
             preview=preview,
         )
         cell = filler_result.shape
@@ -693,29 +666,15 @@ def _apply_layout_corner_roundover(
     )
 
 
-def apply_junction_screws(
-    shape: Part.Shape,
-    obj: fc.DocumentObject,
-    layout: GridfinityLayout,
-    options: BaseplateBuildOptions,
-) -> Part.Shape:
-    """Apply junction screw holes to the baseplate shape."""
-    if not options.include_junction_screws:
-        return shape
-    junction_holes = baseplate_feat.make_junction_screw_holes(obj, layout)
-    return shape.cut(junction_holes) if junction_holes is not None else shape
-
-
 def make_post_replication_cutter(
     params: CombinedBaseplateParamsData,
     geometry: GridfinityLayoutGeometry,
-    options: BaseplateBuildOptions,
     top_z: fc.Units.Quantity,
 ) -> Part.Shape | None:
     """Build a cutter shape for post-replication features."""
     cutters: list[Part.Shape] = []
 
-    if options.include_junction_screws:
+    if params.junction_screws.enabled:
         junction_holes = baseplate_feat.make_junction_screw_holes_from_params(
             params.fundamentals,
             params.junction_screws,
@@ -725,7 +684,7 @@ def make_post_replication_cutter(
         if junction_holes is not None:
             cutters.append(junction_holes)
 
-    if options.include_clip_cutouts:
+    if params.connecting_clips.enabled:
         connecting_clip_cutouts = baseplate_feat.make_clip_cutouts_from_params(
             params.fundamentals,
             params.connecting_clips,
@@ -739,26 +698,12 @@ def make_post_replication_cutter(
     return cutters[0].multiFuse(cutters[1:]) if len(cutters) > 1 else cutters[0]
 
 
-def apply_clip_cutouts(
-    shape: Part.Shape,
-    obj: fc.DocumentObject,
-    layout: GridfinityLayout,
-    options: BaseplateBuildOptions,
-) -> Part.Shape:
-    """Apply clip cutouts to the baseplate shape."""
-    if not options.include_clip_cutouts:
-        return shape
-    clip_cutouts = baseplate_feat.make_clip_cutouts(obj, layout)
-    return shape.cut(clip_cutouts) if clip_cutouts is not None else shape
-
-
 def apply_snap_springs(
     shape: Part.Shape,
     params: CombinedBaseplateParamsData,
-    options: BaseplateBuildOptions,
 ) -> Part.Shape:
     """Apply snap spring slots to the baseplate shape."""
-    if not options.include_snap_springs:
+    if not params.click_springs.enabled:
         return shape
     negative_slots = click_springs.make_click_spring_prototype_negative(
         params.fundamentals,
@@ -779,33 +724,21 @@ def apply_snap_springs(
     )
 
 
-def build_simple_baseplate(
-    obj: fc.DocumentObject,
-    options: BaseplateBuildOptions,
-    *,
-    preview: bool = False,
-) -> Part.Shape:
-    """Build a simple baseplate from a FreeCAD object."""
-    params = CombinedBaseplateParams().from_obj(obj).data()
-    return build_simple_baseplate_from_params_cached(params, options, preview=preview)
-
-
 def build_simple_baseplate_from_params_cached(
     params: CombinedBaseplateParamsData,
-    options: BaseplateBuildOptions,
     *,
     preview: bool = False,
 ) -> Part.Shape:
     """Build a simple baseplate from params with caching."""
     if _BASEPLATE_SHAPE_CACHE_MAX <= 0:
-        return build_simple_baseplate_from_params(params, options, preview=preview)
+        return build_simple_baseplate_from_params(params, preview=preview)
 
-    key = _baseplate_cache_key(params, options, preview=preview)
+    key = _baseplate_cache_key(params, preview=preview)
     cached_shape = _BASEPLATE_SHAPE_CACHE.get(key)
     if cached_shape is not None:
         _BASEPLATE_SHAPE_CACHE.move_to_end(key)
         return cached_shape.copy()
-    shape = build_simple_baseplate_from_params(params, options, preview=preview)
+    shape = build_simple_baseplate_from_params(params, preview=preview)
     _BASEPLATE_SHAPE_CACHE[key] = shape
     _BASEPLATE_SHAPE_CACHE.move_to_end(key)
     while len(_BASEPLATE_SHAPE_CACHE) > _BASEPLATE_SHAPE_CACHE_MAX:
@@ -829,7 +762,6 @@ def _derive_layout_from_params(
 
 def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
     params: CombinedBaseplateParamsData,
-    options: BaseplateBuildOptions,
     *,
     preview: bool = False,
 ) -> Part.Shape:
@@ -856,7 +788,7 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
     if nx == 0 or ny == 0:
         empty_shape = Part.Shape()
         t_fill_only = time.perf_counter() if timing_on else 0.0
-        shape, geometry = add_filler_strips(empty_shape, params, layout, options, preview=preview)
+        shape, geometry = add_filler_strips(empty_shape, params, layout, preview=preview)
         if timing_on:
             _timing_print(
                 "baseplate.filler_only.add_filler_strips",
@@ -885,14 +817,14 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
     core_result = (
         build_preview_single_cell_baseplate_core_cached(params)
         if preview
-        else build_single_cell_baseplate_core_cached(params, options)
+        else build_single_cell_baseplate_core_cached(params)
     )
     if timing_on:
         _timing_print("baseplate.core_build", time.perf_counter() - t_core)
     shape = core_result.shape
     if not preview and not core_result.is_tiny:
         t_springs = time.perf_counter() if timing_on else 0.0
-        shape = apply_snap_springs(shape, params, options)
+        shape = apply_snap_springs(shape, params)
         if timing_on:
             _timing_print("baseplate.snap_springs", time.perf_counter() - t_springs)
     if not preview:
@@ -907,7 +839,7 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
         _timing_print("baseplate.replicate_layout", time.perf_counter() - t_repl)
 
     t_fill = time.perf_counter() if timing_on else 0.0
-    shape, geometry = add_filler_strips(shape, params, layout, options, preview=preview)
+    shape, geometry = add_filler_strips(shape, params, layout, preview=preview)
     if timing_on:
         _timing_print("baseplate.add_filler_strips", time.perf_counter() - t_fill)
     geometry_nx, geometry_ny = geometry.size()
@@ -949,7 +881,7 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
         if shape.Vertexes
         else 0 * fc.Units.Quantity("1 mm")
     )
-    post_cutter = make_post_replication_cutter(params, geometry, options, top_z)
+    post_cutter = make_post_replication_cutter(params, geometry, top_z)
     if post_cutter is not None:
         shape = shape.cut(post_cutter)
     if timing_on:

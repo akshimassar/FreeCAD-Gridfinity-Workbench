@@ -519,12 +519,7 @@ class CreateBaseplateTaskPanel(SingleFeatureTaskPanel):
 
     def _build_preview_shape(self, params: CombinedParams) -> Part.Shape:
         data = params.data()
-        options = baseplate_builder.BaseplateBuildOptions(
-            include_junction_screws=data.junction_screws.enabled,
-            include_clip_cutouts=data.connecting_clips.enabled,
-            include_snap_springs=data.click_springs.enabled,
-        )
-        return baseplate_builder.build_simple_baseplate_from_params(data, options, preview=True)
+        return baseplate_builder.build_simple_baseplate_from_params(data, preview=True)
 
     def _format_label(self, params: CombinedParams) -> str:
         data = params.data()

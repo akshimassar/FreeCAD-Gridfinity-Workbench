@@ -391,20 +391,11 @@ class Baseplate(FoundationGridfinity):
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         params = CombinedBaseplateParams().from_obj(obj)
         data = params.data()
-        options = baseplate_builder.BaseplateBuildOptions(
-            include_junction_screws=data.junction_screws.enabled,
-            include_clip_cutouts=data.connecting_clips.enabled,
-            include_snap_springs=data.click_springs.enabled,
-        )
 
         if data.stacking.enabled:
             return _build_stacked_baseplates_shape(obj)
 
-        return baseplate_builder.build_simple_baseplate_from_params(
-            data,
-            options,
-            preview=False,
-        )
+        return baseplate_builder.build_simple_baseplate_from_params(data, preview=False)
 
 
 class DrawerBaseplateGroup:
@@ -748,14 +739,8 @@ def build_drawer_baseplate_preview_shape(
         baseplate_params = _build_baseplate_params_for_chunk(params, x_chunk, y_chunk)
 
         # Build preview shape (simplified, no screws/clips/springs)
-        options = baseplate_builder.BaseplateBuildOptions(
-            include_junction_screws=False,
-            include_clip_cutouts=False,
-            include_snap_springs=False,
-        )
         shape = baseplate_builder.build_simple_baseplate_from_params_cached(
             baseplate_params.data(),
-            options,
             preview=True,
         )
 
@@ -968,16 +953,7 @@ def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
     # Build a single baseplate using params
     params = CombinedBaseplateParams().from_obj(obj)
     data = params.data()
-    options = baseplate_builder.BaseplateBuildOptions(
-        include_junction_screws=data.junction_screws.enabled,
-        include_clip_cutouts=data.connecting_clips.enabled,
-        include_snap_springs=data.click_springs.enabled,
-    )
-    baseplate_shape = baseplate_builder.build_simple_baseplate_from_params(
-        data,
-        options,
-        preview=False,
-    )
+    baseplate_shape = baseplate_builder.build_simple_baseplate_from_params(data, preview=False)
     support_shape = _stacked_support_prototype(obj)
     instance_count = max(1, data.stacking.instance_count)
     z_step = support_shape.BoundBox.ZMax
