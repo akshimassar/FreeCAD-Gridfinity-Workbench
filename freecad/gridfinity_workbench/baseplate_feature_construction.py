@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 
 # Junction neighbor count constants
 _JUNCTION_CLIP_NEIGHBORS = 2
-_JUNCTION_SCREW_NEIGHBORS = 4
 
 # Cached param instances for defaults - loaded once at module init
 _fundamentals = FundamentalsParams()
@@ -341,106 +340,6 @@ def _profile_wire_to_centered_x_solid(profile_wire: Part.Wire, length: float) ->
     return solid
 
 
-def make_clip_cutouts(  # noqa: C901, PLR0912, PLR0915
-    obj: fc.DocumentObject,
-    layout: GridfinityLayout,
-    *,
-    geometry: GridfinityLayoutGeometry | None = None,
-) -> Part.Shape | None:
-    """Create clip cutouts at junctions with exactly 2 orthogonal neighbors."""
-    unitmm = fc.Units.Quantity("1 mm")
-
-    max_clip_length = 2 * obj.BaseProfileMainHalfWidth
-    if obj.ClipLength >= max_clip_length:
-        raise ValueError(
-            f"ClipLength ({obj.ClipLength}) must be smaller than "
-            f"2*BaseProfileMainHalfWidth ({max_clip_length})",
-        )
-
-    use_layout = (
-        [[cell.exists for cell in col] for col in geometry.cells]
-        if geometry is not None
-        else layout
-    )
-    nx = len(use_layout)
-    ny = len(use_layout[0])
-    clip_wire = clip_profiles.build_clip_cutout_profile_wire(
-        obj.BaseProfileMainHalfWidth,
-        obj.BaseProfileMainHeight,
-    )
-    clip_cutout_top_z = clip_wire.BoundBox.ZMax * unitmm
-    max_clip_cutout_top_z = obj.BaseProfileMainHeight + obj.BaseProfileMainHalfWidth
-    if clip_cutout_top_z <= max_clip_cutout_top_z:
-        raise ValueError(
-            f"Clip cutout top Z after scaling ({clip_cutout_top_z}) must be greater than "
-            f"BaseProfileMainHeight + BaseProfileMainHalfWidth ({max_clip_cutout_top_z})",
-        )
-    clip_x = _profile_wire_to_centered_x_solid(clip_wire, obj.ClipLength)
-
-    clip_y = clip_x.copy()
-    clip_y.rotate(fc.Vector(0, 0, 0), fc.Vector(0, 0, 1), 90)
-
-    cutouts = []
-    if geometry is not None:
-        nx, ny = geometry.size()
-        for ix in range(nx + 1):
-            for iy in range(ny + 1):
-                neighbours = geometry.junction_neighbours(ix, iy)
-                if neighbours.count_true() != _JUNCTION_CLIP_NEIGHBORS:
-                    continue
-                orientation = neighbours.exists().is_side()
-                if orientation is None:
-                    continue
-                x = geometry.line_x(ix)
-                y = geometry.line_y(iy)
-                if orientation == "horizontal":
-                    cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
-                else:
-                    cutouts.append(clip_y.translated(fc.Vector(x, y, 0)))
-    else:
-
-        def cell(x: int, y: int) -> bool:
-            if 0 <= x < nx and 0 <= y < ny:
-                return bool(use_layout[x][y])
-            return False
-
-        for ix in range(nx + 1):
-            for iy in range(ny + 1):
-                south_west_present = cell(ix - 1, iy - 1)
-                south_east_present = cell(ix, iy - 1)
-                north_west_present = cell(ix - 1, iy)
-                north_east_present = cell(ix, iy)
-
-                neighbour_count = (
-                    south_west_present
-                    + south_east_present
-                    + north_west_present
-                    + north_east_present
-                )
-                if neighbour_count != _JUNCTION_CLIP_NEIGHBORS:
-                    continue
-
-                has_horizontal_pair = (south_west_present and south_east_present) or (
-                    north_west_present and north_east_present
-                )
-                has_vertical_pair = (south_west_present and north_west_present) or (
-                    south_east_present and north_east_present
-                )
-                if not (has_horizontal_pair or has_vertical_pair):
-                    continue
-
-                x = ix * obj.xGridSize
-                y = iy * obj.yGridSize
-                if has_horizontal_pair:
-                    cutouts.append(clip_x.translated(fc.Vector(x, y, 0)))
-                else:
-                    cutouts.append(clip_y.translated(fc.Vector(x, y, 0)))
-
-    if not cutouts:
-        return None
-    return cutouts[0].multiFuse(cutouts[1:]) if len(cutouts) > 1 else cutouts[0]
-
-
 def make_clip_cutouts_from_params(
     fundamentals: FundamentalsParamsData,
     connecting_clip: ConnectingClipsParamsData,
@@ -498,74 +397,6 @@ def make_clip_cutouts_from_params(
     if not cutouts:
         return None
     return cutouts[0].multiFuse(cutouts[1:]) if len(cutouts) > 1 else cutouts[0]
-
-
-def make_junction_screw_holes(
-    obj: fc.DocumentObject,
-    layout: GridfinityLayout,
-    *,
-    geometry: GridfinityLayoutGeometry | None = None,
-) -> Part.Shape | None:
-    """Create internal junction screw holes with top-side counterbores.
-
-    For custom layouts, a junction hole is only created where all four surrounding
-    cells exist in the layout.
-    """
-    if geometry is None:
-        nx = len(layout)
-        ny = len(layout[0])
-    else:
-        nx, ny = geometry.size()
-
-    through_depth = obj.TotalHeight + 0.1 * fc.Units.Quantity("1 mm")
-    top_z = obj.TotalHeight
-
-    cutters = []
-    for ix in range(1, nx):
-        for iy in range(1, ny):
-            if geometry is None:
-                if not (
-                    layout[ix - 1][iy - 1]
-                    and layout[ix][iy - 1]
-                    and layout[ix - 1][iy]
-                    and layout[ix][iy]
-                ):
-                    continue
-                x = ix * obj.xGridSize
-                y = iy * obj.yGridSize
-            else:
-                neighbours = geometry.junction_neighbours(ix, iy)
-                if neighbours.count_true() != _JUNCTION_SCREW_NEIGHBORS:
-                    continue
-                x = geometry.line_x(ix)
-                y = geometry.line_y(iy)
-
-            through = Part.makeCylinder(
-                obj.JunctionScrewDiameter / 2,
-                through_depth,
-                fc.Vector(x, y, top_z),
-                fc.Vector(0, 0, -1),
-            )
-            counterbore = Part.makeCylinder(
-                obj.JunctionCounterboreDiameter / 2,
-                obj.JunctionCounterboreDepth,
-                fc.Vector(x, y, top_z),
-                fc.Vector(0, 0, -1),
-            )
-            # 90 degree included-angle transition at the end of the counterbore.
-            transition_height = (obj.JunctionCounterboreDiameter - obj.JunctionScrewDiameter) / 2
-            transition = Part.makeCone(
-                obj.JunctionCounterboreDiameter / 2,
-                obj.JunctionScrewDiameter / 2,
-                transition_height,
-                fc.Vector(x, y, top_z - obj.JunctionCounterboreDepth),
-                fc.Vector(0, 0, -1),
-            )
-            cutters.extend([through, counterbore, transition])
-
-    if not cutters:
-        return None
-    return cutters[0].multiFuse(cutters[1:]) if len(cutters) > 1 else cutters[0]
 
 
 def make_junction_screw_holes_from_params(
