@@ -753,9 +753,10 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         freecad_version = str(data.get("freecad_version", ""))
         # NOTE: OCC/FreeCAD geometry kernel differences between versions
         # produce different but stable body volumes for this scenario.
-        expected_volume = 2876.8821069099063
+        # Volume updated after click spring positioning fix (using grid_size for seed).
+        expected_volume = 2891.870652090945
         if freecad_version.startswith("1.1"):
-            expected_volume = 2880.8451891035947
+            expected_volume = 2896.2162059840057
         self.assertAlmostEqual(float(data["volume"]), expected_volume, places=6)
 
     def test_baseplate_x2_y2_radius2_right_filler_5_1_rejected(self) -> None:

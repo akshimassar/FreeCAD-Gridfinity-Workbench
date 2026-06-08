@@ -1091,6 +1091,24 @@ def is_tiny_cell(
     return False
 
 
+def clicksprings_fit(fundamentals: FundamentalsParamsData, width: float, height: float) -> bool:
+    """Check if cell dimensions are large enough for click springs.
+
+    Click springs require at least half grid size in both dimensions.
+
+    Args:
+        fundamentals: Fundamental dimensions.
+        width: Cell width.
+        height: Cell height.
+
+    Returns:
+        True if click springs fit in the cell.
+
+    """
+    half_grid = float(fundamentals.grid_size) / 2
+    return width >= half_grid and height >= half_grid
+
+
 def make_complex_bin_base_single_from_params(
     fundamentals: FundamentalsParamsData,
     core: BaseplateCoreParamsData,
@@ -1186,7 +1204,7 @@ def _top_planar_faces(shape: Part.Shape) -> list[Part.Face]:
     return faces
 
 
-def make_baseplate_top_support(  # noqa: C901, PLR0915
+def make_baseplate_top_support(  # noqa: C901, PLR0912, PLR0915
     params: CombinedBaseplateParamsData | CombinedSupportBaseplateParamsData,
     layout: GridfinityLayout,
     x_location_offset: float = 0.0,
@@ -1260,6 +1278,14 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
     nx_cells = len(geometry.cells)
     ny_cells = len(geometry.cells[0]) if nx_cells > 0 else 0
 
+    # Create click spring seed once per baseplate (uses grid_size for consistent positioning)
+    support_click_spring_seed: Part.Shape | None = None
+    if bool(params.click_springs.enabled):
+        support_click_spring_seed = click_springs.make_support_click_spring_seed(
+            params.fundamentals,
+            params.click_springs,
+        )
+
     slabs: list[Part.Shape] = []
     cutters: list[Part.Shape] = []
     for ix in range(nx_cells):
@@ -1323,18 +1349,12 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
 
             profile_a_face = Part.Face(utils.create_rounded_rectangle(x_a, y_a, 0, r_a))
 
-            if bool(params.click_springs.enabled):
-                seed = click_springs.make_support_click_spring_seed(
-                    cell_inner_width=x_a,
-                    cell_height=cell_height,
-                    click_offset=float(params.click_springs.click_offset),
-                    click_length=float(params.click_springs.click_length),
-                )
+            if support_click_spring_seed is not None:
                 shift_x = cell_meta.spring_shift_x if cell_meta.kind == "Filler" else 0.0
                 shift_y = cell_meta.spring_shift_y if cell_meta.kind == "Filler" else 0.0
                 profile_a_face = click_springs.carve_support_profile_with_click_springs(
                     profile_a_face,
-                    support_seed=seed,
+                    support_seed=support_click_spring_seed,
                     mask=cell_meta.get_mask(),
                     shift_x=shift_x,
                     shift_y=shift_y,
@@ -1354,6 +1374,7 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
                     "r_b": r_b,
                     "loft_height": float(loft_height),
                     "click_enabled": bool(params.click_springs.enabled),
+                    "grid_size": float(params.fundamentals.grid_size),
                     "click_length": float(params.click_springs.click_length),
                     "click_offset": float(params.click_springs.click_offset),
                     "mask": cell_meta.get_mask(),
@@ -1365,8 +1386,27 @@ def make_baseplate_top_support(  # noqa: C901, PLR0915
             def _build_cutter(
                 pb: Part.Wire = profile_b,
                 pa: Part.Wire = profile_a,
+                _ix: int = ix,
+                _iy: int = iy,
+                _center: fc.Vector = cell_center,
             ) -> Part.Shape:
-                return utils.make_loft([pb, pa], solid=True)
+                try:
+                    return utils.make_loft([pb, pa], solid=True)
+                except Exception as e:
+                    # Loft failed - create debug object with two flat faces
+                    fc.Console.PrintError(
+                        f"Support cutter loft failed for cell[{_ix},{_iy}]: {e}\n"
+                    )
+                    face_b = Part.Face(pb)
+                    face_a = Part.Face(pa)
+                    debug_shape = Part.makeCompound([face_b, face_a])
+                    debug_shape.translate(_center)
+                    if fc.ActiveDocument is not None:
+                        debug_obj = fc.ActiveDocument.addObject(
+                            "Part::Feature", f"DebugLoftFail_{_ix}_{_iy}"
+                        )
+                        debug_obj.Shape = debug_shape
+                    raise
 
             cutter = baseplate_cell_cache.get_or_build(cutter_key, _build_cutter)
             cutter.translate(cell_center)

@@ -268,19 +268,24 @@ def apply_click_spring_slots_to_cell(
 
 
 def make_support_click_spring_seed(
-    *,
-    cell_inner_width: float,
-    cell_height: float,
-    click_offset: float,
-    click_length: float,
+    fundamentals: FundamentalsParamsData,
+    click_springs: ClickSpringsParamsData,
 ) -> Part.Shape:
-    """Build click spring seed for support profile carving."""
+    """Build click spring seed for support profile carving.
+
+    Uses grid_size from fundamentals for consistent positioning with baseplate click springs.
+    """
+    x_vert_width = float(fundamentals.grid_size - 2 * fundamentals.main_half_width)
+    click_length = float(click_springs.click_length)
+    click_center_y = float(fundamentals.grid_size) / 4
+    click_offset = float(click_springs.click_offset)
+
     step = click_length / 3
-    x0 = cell_inner_width / 2
+    x0 = x_vert_width / 2
     x1 = x0 - click_offset
     x2 = x1
     x3 = x2 + click_offset
-    y0 = cell_height / 4 + click_length / 2
+    y0 = click_center_y + click_length / 2
     y1 = y0 - step
     y2 = y1 - step
     y3 = y2 - step
@@ -305,18 +310,33 @@ def carve_support_profile_with_click_springs(
     shift_x: float,
     shift_y: float,
 ) -> Part.Face:
-    """Carve click spring notches from a support A-profile face."""
+    """Carve click spring notches from a support A-profile face.
+
+    Uses translate-apply-translate pattern matching baseplate click springs:
+    1. Translate profile TO grid center (+shift)
+    2. Apply click springs at standard grid positions
+    3. Translate profile BACK (-shift)
+    """
     if mask is None:
         return profile_a_face
-    seed = support_seed.copy()
-    if shift_x != 0 or shift_y != 0:
-        seed.translate(fc.Vector(shift_x, shift_y, 0))
-    support_profiles = make_click_spring_prototypes_from_seed(seed).fused(mask)
+    support_profiles = make_click_spring_prototypes_from_seed(support_seed).fused(mask)
     if support_profiles is None:
         return profile_a_face
-    cut = profile_a_face.cut(support_profiles)
+
+    # Translate profile to align with standard grid click spring positions
+    face = profile_a_face.copy()
+    if shift_x != 0 or shift_y != 0:
+        face.translate(fc.Vector(shift_x, shift_y, 0))
+
+    cut = face.cut(support_profiles)
     if not cut.Faces:
         raise ValueError(
             "Support A-profile generation failed after click spring support profile cut",
         )
-    return max(cut.Faces, key=lambda f: f.Area)
+    result = max(cut.Faces, key=lambda f: f.Area)
+
+    # Translate back to original position
+    if shift_x != 0 or shift_y != 0:
+        result.translate(fc.Vector(-shift_x, -shift_y, 0))
+
+    return result

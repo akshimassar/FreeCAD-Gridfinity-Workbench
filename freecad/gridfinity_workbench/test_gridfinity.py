@@ -613,7 +613,8 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
     def test_drawer_stacking_creates_supports_in_group(self) -> None:
         """Test that stacking creates support companions inside the drawer group.
 
-        Creates 55x55 drawer with stacking=2, all features disabled.
+        Creates 65x50 drawer with stacking=2, click springs enabled.
+        Uses dimensions that create ~18mm filler cells to test support cutouts.
         Verifies:
         - Both baseplate and support are in group.Children
         - Baseplate has 2 solids (stacking=2)
@@ -622,18 +623,18 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
         """
         from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
 
-        # Create 55x55 drawer with stacking enabled
+        # Create 65x50 drawer with stacking enabled (creates ~18mm filler)
         panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
         fcg.Control.showDialog(panel)
 
-        # Set drawer size to 55x55 (single piece)
-        panel.drawer__drawer_width.setValue(55)
-        panel.drawer__drawer_depth.setValue(55)
+        # Set drawer size to 65x50 (single piece with filler)
+        panel.drawer__drawer_width.setValue(65)
+        panel.drawer__drawer_depth.setValue(50)
 
-        # Disable all features for simplicity
+        # Disable most features, but enable click springs
         panel.junction_screws__enabled.setChecked(False)
         panel.connecting_clips__enabled.setChecked(False)
-        panel.click_springs__enabled.setChecked(False)
+        panel.click_springs__enabled.setChecked(True)
 
         # Enable stacking with 2 instances
         panel.stacking__enabled.setChecked(True)

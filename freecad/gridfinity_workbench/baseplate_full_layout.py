@@ -361,6 +361,7 @@ def _build_cells(
     params: CombinedBaseplateParamsData,
 ) -> list[list[FullLayoutCell]]:
     from . import baseplate_click_springs as click_springs
+    from . import feature_construction as feat
 
     cells: list[list[FullLayoutCell]] = []
     nx = len(layout)
@@ -371,9 +372,11 @@ def _build_cells(
             exists = bool(layout[ix][iy])
             width = x_sizes[ix]
             height = y_sizes[iy]
-            is_tiny = (
-                width < float(params.fundamentals.grid_size) / 2
-                or height < float(params.fundamentals.grid_size) / 2
+            is_tiny = feat.is_tiny_cell(
+                params.fundamentals,
+                params.baseplate_core,
+                width,
+                height,
             )
             kind = "Core"
             if (
@@ -397,7 +400,8 @@ def _build_cells(
                 target_cell_height=height,
             )
             spring_mask = None
-            if include_spring_masks and exists and not is_tiny:
+            springs_fit = feat.clicksprings_fit(params.fundamentals, width, height)
+            if include_spring_masks and exists and springs_fit:
                 if kind == "Core":
                     spring_mask = click_springs.SpringSlotMask.all_true()
                 else:
