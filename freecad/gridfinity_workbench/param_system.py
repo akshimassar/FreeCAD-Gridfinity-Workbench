@@ -1882,32 +1882,47 @@ class ParameterGroup(ABC):
 
         return field_container
 
-    def _build_collapsible_ui(
+    def _build_collapsible_group_box(
         self,
-        container_layout: QLayout,
         controls: dict[str, object],
         ui_descriptors: dict[str, UIField],
-    ) -> None:
-        """Build UI with collapsible section for params after 'enabled'."""
+        section_title: str,
+    ) -> QWidget:
+        """Build a CollapsibleGroupBox with checkbox in header.
+
+        Returns the CollapsibleGroupBox widget.
+        """
         from PySide.QtWidgets import QFormLayout, QVBoxLayout, QWidget
 
-        from freecad.gridfinity_workbench.widgets import CollapsibleSection
+        from freecad.gridfinity_workbench.widgets import CollapsibleGroupBox
 
-        # Add enabled row to main layout
-        enabled_form = QFormLayout()
         enabled_control = controls.get("enabled")
-        if enabled_control is not None:
-            enabled_container = self._build_field_container("enabled", enabled_control)
-            enabled_form.addRow(ui_descriptors["enabled"].label, enabled_container)
-        container_layout.addLayout(enabled_form)
 
-        # Build collapsible section for remaining params
-        collapsible = CollapsibleSection("Options...")
-        rest_widget = QWidget()
-        rest_layout = QVBoxLayout(rest_widget)
-        rest_form = QFormLayout()
+        # Build collapsible group box
+        group_box = CollapsibleGroupBox(
+            title=section_title,
+            tooltip=self.tooltip,
+        )
+
+        # Use QGroupBox's checkable feature for the enabled checkbox
+        if enabled_control is not None:
+            group_box.setCheckable(True)
+            # Sync initial state from control
+            group_box.setChecked(enabled_control.isChecked())
+            # Bidirectional sync between QGroupBox checkbox and our control
+            group_box.toggled.connect(enabled_control.setChecked)
+            enabled_control.toggled.connect(group_box.setChecked)
+            # Connect to expand/collapse
+            group_box.toggled.connect(lambda checked: group_box.set_collapsed(not checked))
+
+        # Create content widget to hold all form fields
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        form_layout = QFormLayout()
 
         for param_name, control in controls.items():
+            # Skip enabled - it's now in the header via setCheckable
             if param_name == "enabled" or param_name not in ui_descriptors:
                 continue
             ui_field = ui_descriptors[param_name]
@@ -1915,29 +1930,27 @@ class ParameterGroup(ABC):
             # Child groups are stored as (child_controls, widget) tuple
             if ui_field.control_type == "group":
                 # Add form layout collected so far, then add child widget
-                if rest_form.rowCount() > 0:
-                    rest_layout.addLayout(rest_form)
-                    rest_form = QFormLayout()
+                if form_layout.rowCount() > 0:
+                    content_layout.addLayout(form_layout)
+                    form_layout = QFormLayout()
                 child_widget: QWidget | None = control[1]  # type: ignore[index]
                 if child_widget is not None:
-                    rest_layout.addWidget(child_widget)
+                    content_layout.addWidget(child_widget)
             else:
                 field_container = self._build_field_container(param_name, control)
                 label_widget = self._build_label_with_tooltip(param_name, ui_field.label)
-                rest_form.addRow(label_widget, field_container)
+                form_layout.addRow(label_widget, field_container)
 
         # Add remaining form items
-        if rest_form.rowCount() > 0:
-            rest_layout.addLayout(rest_form)
+        if form_layout.rowCount() > 0:
+            content_layout.addLayout(form_layout)
 
-        collapsible.set_content(rest_widget)
-        # Always start collapsed on dialog open
-        # Connect enabled checkbox to expand/collapse
-        if enabled_control is not None:
-            enabled_control.toggled.connect(  # type: ignore[union-attr]
-                lambda checked: collapsible.set_collapsed(not checked)
-            )
-        container_layout.addWidget(collapsible)
+        # Set up the group box layout and content
+        group_layout = QVBoxLayout(group_box)
+        group_layout.addWidget(content_widget)
+        group_box.set_content_widget(content_widget)
+
+        return group_box
 
     def _build_standard_ui(
         self,
@@ -2005,26 +2018,24 @@ class ParameterGroup(ABC):
         self._error_displays: dict[str, ParamErrorDisplay] = {}
         self._warning_displays: dict[str, ParamWarningDisplay] = {}
 
-        # Use QGroupBox for proper visual grouping with title
-        group_box = QGroupBox(section_title)
-        if self.tooltip:
-            group_box.setToolTip(self.tooltip)
-        container_layout = QVBoxLayout(group_box)
-
         controls = self.get_ui_controls()
         ui_descriptors = self.ui_descriptors()
 
         # Use collapsible pattern if first param is BooleanParam "enabled"
         if self._has_enabled_first_param():
-            self._build_collapsible_ui(container_layout, controls, ui_descriptors)
+            widget = self._build_collapsible_group_box(controls, ui_descriptors, section_title)
         else:
+            widget = QGroupBox(section_title)
+            if self.tooltip:
+                widget.setToolTip(self.tooltip)
+            container_layout = QVBoxLayout(widget)
             self._build_standard_ui(container_layout, controls, ui_descriptors)
 
         # If a layout was provided, add our widget to it
         if layout:
-            layout.addWidget(group_box)
+            layout.addWidget(widget)
 
-        return controls, group_box
+        return controls, widget
 
     def render_errors(  # noqa: C901, PLR0912
         self,
