@@ -579,6 +579,8 @@ class DrawerBaseplateGroup:
                 status_bar.showMessage(
                     f"Drawer baseplates: {built_count}/{total_pieces} ({baseplate_name})"
                 )
+                with contextlib.suppress(Exception):
+                    status_bar.repaint()
 
         if status_bar is not None:
             status_bar.showMessage(f"Drawer baseplates: {total_pieces} pieces ready", 2500)
