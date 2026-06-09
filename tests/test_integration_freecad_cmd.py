@@ -700,20 +700,34 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             doc = fc.newDocument("SupportFillLocked")
             try:
-                obj = doc.addObject("Part::FeaturePython", "SupportBaseplate")
-                features.SupportBaseplate(obj)
-                obj.baseplate_size__filler_top_enabled = True
-                obj.baseplate_size__filler_right_enabled = True
-                obj.baseplate_size__filler_right_width = 3
-                obj.baseplate_size__filler_left_enabled = False
-                obj.baseplate_size__filler_bottom_enabled = False
+                base_obj = doc.addObject("Part::FeaturePython", "Baseplate")
+                features.Baseplate(base_obj)
+                base_obj.stacking__enabled = True
+                base_obj.stacking__instance_count = 2
+                base_obj.baseplate_size__filler_top_enabled = True
+                base_obj.baseplate_size__filler_right_enabled = True
+                base_obj.baseplate_size__filler_right_width = 3
+
+                support_obj = doc.addObject("Part::FeaturePython", "BaseplateSupport")
+                features.BaseplateSupport(support_obj, base_obj)
+
                 doc.recompute()
-                shape = obj.Shape
+
+                base_shape = base_obj.Shape
+                support_shape = support_obj.Shape
+
+                # Measure individual baseplate solid volumes
+                base_solid_volumes = [float(s.Volume) for s in base_shape.Solids]
+
                 payload = {{
                     "freecad_version": ".".join(str(part) for part in fc.Version()[:3]),
-                    "volume": float(shape.Volume),
-                    "solids": int(len(shape.Solids)),
-                    "valid": bool(shape.isValid()),
+                    "support_volume": float(support_shape.Volume),
+                    "support_solids": int(len(support_shape.Solids)),
+                    "support_valid": bool(support_shape.isValid()),
+                    "base_volume": float(base_shape.Volume),
+                    "base_solids": int(len(base_shape.Solids)),
+                    "base_valid": bool(base_shape.isValid()),
+                    "base_solid_volumes": base_solid_volumes,
                 }}
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
@@ -748,16 +762,52 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
         data = json.loads(line[len(RESULT_PREFIX) :])
-        self.assertEqual(int(data["solids"]), 1)
-        self.assertTrue(bool(data["valid"]))
+
+        # Support validation
+        self.assertEqual(int(data["support_solids"]), 1)
+        self.assertTrue(bool(data["support_valid"]))
+
+        # Baseplate validation
+        self.assertEqual(int(data["base_solids"]), 2)
+        self.assertTrue(bool(data["base_valid"]))
+
+        # Verify both baseplate solids have equal volume
+        base_solid_volumes = data["base_solid_volumes"]
+        self.assertEqual(len(base_solid_volumes), 2)
+        self.assertAlmostEqual(
+            base_solid_volumes[0],
+            base_solid_volumes[1],
+            places=6,
+            msg="Both baseplate solids should have equal volume",
+        )
+
         freecad_version = str(data.get("freecad_version", ""))
         # NOTE: OCC/FreeCAD geometry kernel differences between versions
         # produce different but stable body volumes for this scenario.
         # Volume updated after click spring positioning fix (using grid_size for seed).
-        expected_volume = 2891.870652090945
+        expected_support_volume = 2891.870652090945
+        expected_base_solid_volume = 7858.283308613668
         if freecad_version.startswith("1.1"):
-            expected_volume = 2896.2162059840057
-        self.assertAlmostEqual(float(data["volume"]), expected_volume, places=6)
+            expected_support_volume = 2896.2162059840057
+
+        self.assertAlmostEqual(
+            float(data["support_volume"]),
+            expected_support_volume,
+            places=6,
+            msg="Support volume drift detected",
+        )
+        self.assertAlmostEqual(
+            base_solid_volumes[0],
+            expected_base_solid_volume,
+            places=6,
+            msg="Baseplate solid 0 volume drift detected",
+        )
+        self.assertAlmostEqual(
+            base_solid_volumes[1],
+            expected_base_solid_volume,
+            places=6,
+            msg="Baseplate solid 1 volume drift detected",
+        )
 
     def test_baseplate_x2_y2_radius2_right_filler_5_1_rejected(self) -> None:
         freecad_cmd = _resolve_freecad_cmd()
