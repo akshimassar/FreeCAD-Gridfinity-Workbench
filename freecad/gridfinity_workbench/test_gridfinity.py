@@ -666,10 +666,17 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
         # Verify baseplate
         self.assertTrue(baseplate.Shape.isValid(), "Baseplate shape should be valid")
         self.assertEqual(len(baseplate.Shape.Solids), 2, "Baseplate should have 2 solids")
+        # LOCKED INVARIANT: baseplate volume for 65x50 drawer with stacking=2
+        self.assertAlmostEqual(baseplate.Shape.Volume, 8112.99, places=2)
 
         # Verify support
         self.assertTrue(support.Shape.isValid(), "Support shape should be valid")
         self.assertEqual(len(support.Shape.Solids), 1, "Support should have 1 solid")
+        # LOCKED INVARIANT: support volume for 65x50 drawer with stacking=2
+        # Link branch has slightly different volume due to kernel differences
+        is_link = fc.Version()[0] == "2024"
+        expected_support_volume = 1540.54 if is_link else 1541.72
+        self.assertAlmostEqual(support.Shape.Volume, expected_support_volume, places=2)
 
         # Verify support references the baseplate
         self.assertEqual(support.SourceBaseplate, baseplate)

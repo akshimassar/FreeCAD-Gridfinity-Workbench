@@ -720,7 +720,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 base_solid_volumes = [float(s.Volume) for s in base_shape.Solids]
 
                 payload = {{
-                    "freecad_version": ".".join(str(part) for part in fc.Version()[:3]),
+                    "freecad_version_major": str(fc.Version()[0]),
                     "support_volume": float(support_shape.Volume),
                     "support_solids": int(len(support_shape.Solids)),
                     "support_valid": bool(support_shape.isValid()),
@@ -781,14 +781,13 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             msg="Both baseplate solids should have equal volume",
         )
 
-        freecad_version = str(data.get("freecad_version", ""))
+        freecad_version_major = str(data.get("freecad_version_major", ""))
         # NOTE: OCC/FreeCAD geometry kernel differences between versions
         # produce different but stable body volumes for this scenario.
         # Volume updated after click spring positioning fix (using grid_size for seed).
-        expected_support_volume = 2891.870652090945
+        is_link = freecad_version_major == "2024"
+        expected_support_volume = 2891.870652090945 if is_link else 2896.2162059840057
         expected_base_solid_volume = 7858.283308613668
-        if freecad_version.startswith("1.1"):
-            expected_support_volume = 2896.2162059840057
 
         self.assertAlmostEqual(
             float(data["support_volume"]),
