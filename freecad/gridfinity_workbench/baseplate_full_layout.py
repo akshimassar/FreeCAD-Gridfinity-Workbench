@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 GridfinityLayout = list[list[bool]]
 
 _MATRIX_2X2_SIZE = 2
-_MIN_CORE_GRID_SIZE = 3  # Minimum size for core cells to exist (with fillers)
 
 
 @dataclass(frozen=True)
@@ -378,13 +377,8 @@ def _build_cells(
                 width,
                 height,
             )
-            kind = "Core"
-            if (
-                nx >= _MIN_CORE_GRID_SIZE
-                and ny >= _MIN_CORE_GRID_SIZE
-                and (ix in (0, nx - 1) or iy in (0, ny - 1))
-            ):
-                kind = "Filler"
+            grid_size = float(params.fundamentals.grid_size)
+            kind = "Filler" if (width != grid_size or height != grid_size) else "Core"
 
             leftmost = ix == 0
             rightmost = ix == nx - 1

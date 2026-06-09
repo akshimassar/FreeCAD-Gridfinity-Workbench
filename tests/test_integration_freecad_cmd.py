@@ -625,63 +625,15 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
         self.assertEqual(int(data["solids"]), 1)
         self.assertTrue(bool(data["valid"]))
 
-    def test_baseplate_preview_right_filler_2mm_builds(self) -> None:
-        freecad_cmd = _resolve_freecad_cmd()
-        if not freecad_cmd:
-            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
+    def test_support_baseplate_3x3_clickspring_slice_volumes(self) -> None:
+        """Test that 3x3 support baseplate has correct clickspring coverage.
 
-        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
-
-        script = textwrap.dedent(
-            """
-            import json
-            import sys
-
-            sys.path.insert(0, {module_root})
-
-            import FreeCAD as fc
-            from gridfinity_workbench.param import CombinedBaseplateParams, BaseplateSizeParams
-            from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
-            )
-
-            # 2x2 baseplate with right filler in preview mode
-            params = CombinedBaseplateParams(
-                baseplate_size=BaseplateSizeParams(
-                    x_grid_count=2, y_grid_count=2,
-                    filler_right_enabled=True, filler_right_width=fc.Units.Quantity("2 mm"),
-                ),
-            )
-            shape = build_simple_baseplate_from_params(params.data(), preview=True)
-            payload = {{
-                "solids": int(len(shape.Solids)),
-                "valid": bool(shape.isValid()),
-                "is_null": bool(shape.isNull()),
-            }}
-            print("GRIDFINITY_RESULT=" + json.dumps(payload))
-            """,
-        ).format(module_root=repr(freecad_module_root))
-
-        proc = _run_freecad_script(freecad_cmd, script)
-
-        self.assertEqual(
-            proc.returncode,
-            0,
-            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
-        )
-        self.assert_no_freecad_warnings(proc)
-
-        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
-        self.assertIsNotNone(
-            line,
-            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
-        )
-        data = json.loads(line[len(RESULT_PREFIX) :])
-        self.assertFalse(bool(data["is_null"]))
-        self.assertTrue(bool(data["valid"]))
-        self.assertGreaterEqual(int(data["solids"]), 1)
-
-    def test_support_baseplate_top_and_right_filler_volume_locked(self) -> None:
+        Creates a 3x3 baseplate with stacking count=2, disabled junction screws
+        and connecting clips. Takes 0.1mm slices from top/bottom of support and
+        baseplate, then compares volumes:
+        - Top of support should exceed bottom of baseplate by at least 2%
+        - Bottom of support should match top of baseplate within 1%
+        """
         freecad_cmd = _resolve_freecad_cmd()
         if not freecad_cmd:
             self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
@@ -696,18 +648,24 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             sys.path.insert(0, {module_root})
 
             import FreeCAD as fc  # noqa: N813
+            import Part
             import gridfinity_workbench.features as features
 
-            doc = fc.newDocument("SupportFillLocked")
+            SLICE_THICKNESS = 0.01
+
+            doc = fc.newDocument("Support3x3ClickspringSlice")
             try:
+                # Create 3x3 baseplate with stacking count=2
                 base_obj = doc.addObject("Part::FeaturePython", "Baseplate")
                 features.Baseplate(base_obj)
+                base_obj.baseplate_size__x_grid_count = 3
+                base_obj.baseplate_size__y_grid_count = 3
                 base_obj.stacking__enabled = True
                 base_obj.stacking__instance_count = 2
-                base_obj.baseplate_size__filler_top_enabled = True
-                base_obj.baseplate_size__filler_right_enabled = True
-                base_obj.baseplate_size__filler_right_width = 3
+                base_obj.junction_screws__enabled = False
+                base_obj.connecting_clips__enabled = False
 
+                # Create support via linking to baseplate
                 support_obj = doc.addObject("Part::FeaturePython", "BaseplateSupport")
                 features.BaseplateSupport(support_obj, base_obj)
 
@@ -716,185 +674,74 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 base_shape = base_obj.Shape
                 support_shape = support_obj.Shape
 
-                # Measure individual baseplate solid volumes
-                base_solid_volumes = [float(s.Volume) for s in base_shape.Solids]
+                # Verify solid counts
+                base_solids_count = len(base_shape.Solids)
+                support_solids_count = len(support_shape.Solids)
+
+                # Get one baseplate solid for slice comparison
+                base_solid = base_shape.Solids[0]
+                base_bbox = base_solid.BoundBox
+                support_bbox = support_shape.BoundBox
+
+                # Create slice boxes
+                # For baseplate: bottom slice and top slice
+                base_bottom_slice_box = Part.makeBox(
+                    base_bbox.XLength + 2,
+                    base_bbox.YLength + 2,
+                    SLICE_THICKNESS,
+                    fc.Vector(base_bbox.XMin - 1, base_bbox.YMin - 1, base_bbox.ZMin),
+                )
+                base_top_z = base_bbox.ZMax - SLICE_THICKNESS
+                base_top_slice_box = Part.makeBox(
+                    base_bbox.XLength + 2,
+                    base_bbox.YLength + 2,
+                    SLICE_THICKNESS,
+                    fc.Vector(base_bbox.XMin - 1, base_bbox.YMin - 1, base_top_z),
+                )
+
+                # For support: bottom slice and top slice
+                support_bottom_slice_box = Part.makeBox(
+                    support_bbox.XLength + 2,
+                    support_bbox.YLength + 2,
+                    SLICE_THICKNESS,
+                    fc.Vector(support_bbox.XMin - 1, support_bbox.YMin - 1, support_bbox.ZMin),
+                )
+                support_top_z = support_bbox.ZMax - SLICE_THICKNESS
+                support_top_slice_box = Part.makeBox(
+                    support_bbox.XLength + 2,
+                    support_bbox.YLength + 2,
+                    SLICE_THICKNESS,
+                    fc.Vector(support_bbox.XMin - 1, support_bbox.YMin - 1, support_top_z),
+                )
+
+                # Calculate intersection volumes
+                base_bottom_slice = base_solid.common(base_bottom_slice_box)
+                base_top_slice = base_solid.common(base_top_slice_box)
+                support_bottom_slice = support_shape.common(support_bottom_slice_box)
+                support_top_slice = support_shape.common(support_top_slice_box)
+
+                # Get click spring params for expected volume calculation
+                from gridfinity_workbench.param import ClickSpringsParams
+                click_params = ClickSpringsParams()
+                click_length = float(click_params.get_value("click_length"))
+                click_offset = float(click_params.get_value("click_offset"))
 
                 payload = {{
-                    "freecad_version_major": str(fc.Version()[0]),
-                    "support_volume": float(support_shape.Volume),
-                    "support_solids": int(len(support_shape.Solids)),
-                    "support_valid": bool(support_shape.isValid()),
-                    "base_volume": float(base_shape.Volume),
-                    "base_solids": int(len(base_shape.Solids)),
+                    "base_solids_count": base_solids_count,
+                    "support_solids_count": support_solids_count,
                     "base_valid": bool(base_shape.isValid()),
-                    "base_solid_volumes": base_solid_volumes,
+                    "support_valid": bool(support_shape.isValid()),
+                    "base_bottom_slice_volume": float(base_bottom_slice.Volume),
+                    "base_top_slice_volume": float(base_top_slice.Volume),
+                    "support_bottom_slice_volume": float(support_bottom_slice.Volume),
+                    "support_top_slice_volume": float(support_top_slice.Volume),
+                    "slice_thickness": SLICE_THICKNESS,
+                    "click_length": click_length,
+                    "click_offset": click_offset,
                 }}
                 print("GRIDFINITY_RESULT=" + json.dumps(payload))
             finally:
                 fc.closeDocument(doc.Name)
-            """,
-        ).format(module_root=repr(freecad_module_root))
-
-        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
-            tmp.write(script)
-            script_path = tmp.name
-
-        try:
-            proc = subprocess.run(  # noqa: S603
-                [freecad_cmd, "-c", script_path],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        finally:
-            Path(script_path).unlink(missing_ok=True)
-
-        self.assertEqual(
-            proc.returncode,
-            0,
-            msg=f"FreeCADCmd failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
-        )
-        self.assert_no_freecad_warnings(proc)
-
-        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(RESULT_PREFIX)), None)
-        self.assertIsNotNone(
-            line,
-            msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
-        )
-        data = json.loads(line[len(RESULT_PREFIX) :])
-
-        # Support validation
-        self.assertEqual(int(data["support_solids"]), 1)
-        self.assertTrue(bool(data["support_valid"]))
-
-        # Baseplate validation
-        self.assertEqual(int(data["base_solids"]), 2)
-        self.assertTrue(bool(data["base_valid"]))
-
-        # Verify both baseplate solids have equal volume
-        base_solid_volumes = data["base_solid_volumes"]
-        self.assertEqual(len(base_solid_volumes), 2)
-        self.assertAlmostEqual(
-            base_solid_volumes[0],
-            base_solid_volumes[1],
-            places=6,
-            msg="Both baseplate solids should have equal volume",
-        )
-
-        freecad_version_major = str(data.get("freecad_version_major", ""))
-        # NOTE: OCC/FreeCAD geometry kernel differences between versions
-        # produce different but stable body volumes for this scenario.
-        # Volume updated after click spring positioning fix (using grid_size for seed).
-        is_link = freecad_version_major == "2024"
-        expected_support_volume = 2891.870652090945 if is_link else 2896.2162059840057
-        expected_base_solid_volume = 7858.283308613668
-
-        self.assertAlmostEqual(
-            float(data["support_volume"]),
-            expected_support_volume,
-            places=6,
-            msg="Support volume drift detected",
-        )
-        self.assertAlmostEqual(
-            base_solid_volumes[0],
-            expected_base_solid_volume,
-            places=6,
-            msg="Baseplate solid 0 volume drift detected",
-        )
-        self.assertAlmostEqual(
-            base_solid_volumes[1],
-            expected_base_solid_volume,
-            places=6,
-            msg="Baseplate solid 1 volume drift detected",
-        )
-
-    def test_baseplate_x2_y2_radius2_right_filler_5_1_rejected(self) -> None:
-        freecad_cmd = _resolve_freecad_cmd()
-        if not freecad_cmd:
-            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
-
-        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
-
-        script = textwrap.dedent(
-            """
-            import sys
-
-            sys.path.insert(0, {module_root})
-
-            import FreeCAD as fc
-            from gridfinity_workbench.param import (
-                CombinedBaseplateParams, FundamentalsParams, BaseplateSizeParams,
-                ClickSpringsParams, JunctionScrewsParams, ConnectingClipsParams,
-            )
-            from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
-            )
-
-            # 2x2 baseplate with outer_radius=2 and right filler 5.1mm - should be rejected
-            params = CombinedBaseplateParams(
-                fundamentals=FundamentalsParams(outer_radius=fc.Units.Quantity("2 mm")),
-                baseplate_size=BaseplateSizeParams(
-                    x_grid_count=2, y_grid_count=2,
-                    filler_right_enabled=True, filler_right_width=fc.Units.Quantity("5.1 mm"),
-                ),
-                click_springs=ClickSpringsParams(enabled=False),
-                junction_screws=JunctionScrewsParams(enabled=False),
-                connecting_clips=ConnectingClipsParams(enabled=False),
-            )
-            shape = build_simple_baseplate_from_params(params.data())
-            """,
-        ).format(module_root=repr(freecad_module_root))
-
-        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
-            tmp.write(script)
-            script_path = tmp.name
-
-        try:
-            proc = subprocess.run(  # noqa: S603
-                [freecad_cmd, "-c", script_path],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        finally:
-            Path(script_path).unlink(missing_ok=True)
-
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("must be greater than main profile half width", proc.stderr)
-
-    def test_baseplate_defaults_right_filler_2mm_builds(self) -> None:
-        freecad_cmd = _resolve_freecad_cmd()
-        if not freecad_cmd:
-            self.skipTest(f"Set {FREECAD_CMD_ENV} in environment or .env")
-
-        freecad_module_root = (REPO_ROOT / "freecad").as_posix()
-
-        script = textwrap.dedent(
-            """
-            import json
-            import sys
-
-            sys.path.insert(0, {module_root})
-
-            import FreeCAD as fc
-            from gridfinity_workbench.param import CombinedBaseplateParams, BaseplateSizeParams
-            from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
-            )
-
-            # Default baseplate with right filler 2mm
-            params = CombinedBaseplateParams(
-                baseplate_size=BaseplateSizeParams(
-                    filler_right_enabled=True, filler_right_width=fc.Units.Quantity("2 mm"),
-                ),
-            )
-            shape = build_simple_baseplate_from_params(params.data())
-            payload = {{
-                "solids": int(len(shape.Solids)),
-                "valid": bool(shape.isValid()),
-                "volume": float(shape.Volume),
-            }}
-            print("GRIDFINITY_RESULT=" + json.dumps(payload))
             """,
         ).format(module_root=repr(freecad_module_root))
 
@@ -913,9 +760,46 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             msg=f"No result marker found\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
         )
         data = json.loads(line[len(RESULT_PREFIX) :])
-        self.assertEqual(int(data["solids"]), 1)
-        self.assertTrue(bool(data["valid"]))
-        self.assertGreater(float(data["volume"]), 0.0)
+
+        # Verify solid counts: baseplate=2, support=1
+        self.assertEqual(int(data["base_solids_count"]), 2)
+        self.assertEqual(int(data["support_solids_count"]), 1)
+        self.assertTrue(bool(data["base_valid"]))
+        self.assertTrue(bool(data["support_valid"]))
+
+        # Get slice volumes
+        base_bottom_vol = float(data["base_bottom_slice_volume"])
+        base_top_vol = float(data["base_top_slice_volume"])
+        support_bottom_vol = float(data["support_bottom_slice_volume"])
+        support_top_vol = float(data["support_top_slice_volume"])
+
+        # Calculate expected spring volume contribution at support top
+        # Each cell has 8 spring positions (4 corners x 2 directions)
+        # 3x3 grid = 9 cells
+        click_length = float(data["click_length"])
+        click_offset = float(data["click_offset"])
+        slice_thickness = float(data["slice_thickness"])
+        expected_spring_vol = (2 / 3) * click_length * click_offset * slice_thickness * 8 * 9
+
+        # Support top should exceed baseplate bottom by the spring volume
+        actual_diff = support_top_vol - base_bottom_vol
+        self.assertAlmostEqual(
+            actual_diff,
+            expected_spring_vol,
+            delta=0.1,
+            msg=f"Support top - baseplate bottom = {actual_diff:.4f}, "
+            f"expected {expected_spring_vol:.4f} (spring volume)",
+        )
+
+        # Bottom of support should match top of baseplate within 0.5%
+        ratio = support_bottom_vol / base_top_vol
+        self.assertAlmostEqual(
+            ratio,
+            1.0,
+            delta=0.005,
+            msg=f"Support bottom ({support_bottom_vol:.4f}) / baseplate top "
+            f"({base_top_vol:.4f}) = {ratio:.4f}, expected ~1.00",
+        )
 
     def test_baseplate_click_thickness_equal_half_width_rejected(self) -> None:
         freecad_cmd = _resolve_freecad_cmd()

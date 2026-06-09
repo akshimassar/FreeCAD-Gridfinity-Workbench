@@ -144,13 +144,6 @@ def build_baseplate_support_cached(
     return _shape_cache_get_or_build(key, _build)
 
 
-def _layout_dims(layout: GridfinityLayout, params: CombinedBaseplateParamsData) -> tuple[int, int]:
-    nx = len(layout)
-    if nx == 0:
-        return 0, max(0, int(params.baseplate_size.y_grid_count))
-    return nx, len(layout[0])
-
-
 def _layout_min_indices(layout: GridfinityLayout) -> tuple[int, int]:
     """Find minimum x and y indices that have True cells in the layout."""
     min_x = None
@@ -317,127 +310,66 @@ def build_single_cell_baseplate_core_cached(
     return CoreCellBuildResult(shape=shape, is_tiny=tiny_cell)
 
 
-def replicate_layout(
-    shape: Part.Shape,
+def build_complete_cell_cached(
     params: CombinedBaseplateParamsData,
-    layout: GridfinityLayout,
-) -> Part.Shape:
-    """Replicate a single cell shape across the layout grid."""
-    base_cell = shape.copy()
-    base_cell.translate(
-        fc.Vector(
-            params.fundamentals.grid_size / 2,
-            params.fundamentals.grid_size / 2,
-            0,
-        ),
-    )
-    return utils.copy_in_layout(
-        base_cell,
-        layout,
-        params.fundamentals.grid_size,
-        params.fundamentals.grid_size,
-    )
-
-
-def add_filler_strips(
-    shape: Part.Shape,
-    params: CombinedBaseplateParamsData,
-    layout: GridfinityLayout,
-    *,
-    preview: bool = False,
-) -> tuple[Part.Shape, GridfinityLayoutGeometry]:
-    """Add filler strips around the core layout."""
-    expanded = baseplate_full_layout.build_full_layout(
-        params,
-        layout,
-        include_spring_masks=(not preview and params.click_springs.enabled),
-    )
-    nx, ny = _layout_dims(layout, params)
-    expanded_nx, expanded_ny = expanded.size()
-    has_fillers = expanded_nx != nx or expanded_ny != ny
-    if not has_fillers:
-        return shape, expanded
-
-    if not shape.isNull():
-        left_w = params.baseplate_size.filler_left_width
-        left_on = params.baseplate_size.filler_left_enabled and float(left_w) > 0
-        x_core_shift = left_w if left_on else 0 * params.fundamentals.grid_size
-
-        bottom_w = params.baseplate_size.filler_bottom_width
-        bottom_on = params.baseplate_size.filler_bottom_enabled and float(bottom_w) > 0
-        y_core_shift = bottom_w if bottom_on else 0 * params.fundamentals.grid_size
-        shape.translate(fc.Vector(float(x_core_shift), float(y_core_shift), 0))
-
-    filler_shape = _build_filler_ring_shape(params, expanded, preview=preview)
-    if shape.isNull():
-        return filler_shape, expanded
-    combined = shape.fuse(filler_shape)
-    return combined, expanded
-
-
-def _build_filler_cell_shape(
-    params: CombinedBaseplateParamsData,
-    target_cell_width: float,
-    target_cell_height: float,
+    cell_meta: baseplate_full_layout.FullLayoutCell,
     *,
     preview: bool = False,
 ) -> CoreCellBuildResult:
-    return build_single_cell_baseplate_core_cached(
-        params,
-        preview=preview,
-        x_size_override=target_cell_width,
-        y_size_override=target_cell_height,
+    """Build a complete baseplate cell with springs and top crop, using cache.
+
+    The cache key includes cell size, spring mask, shift values, and click_springs.enabled,
+    so cells with identical parameters share cached shapes.
+    """
+    grid_size = float(params.fundamentals.grid_size)
+    width = cell_meta.width
+    height = cell_meta.height
+    x_override = width if width != grid_size else None
+    y_override = height if height != grid_size else None
+    mask = cell_meta.get_mask()
+    shift_x = cell_meta.spring_shift_x if cell_meta.kind == "Filler" else 0.0
+    shift_y = cell_meta.spring_shift_y if cell_meta.kind == "Filler" else 0.0
+
+    key = baseplate_cell_cache.make_key(
+        {
+            "kind": "baseplate_complete_cell",
+            "params": params,
+            "preview": preview,
+            "width": width,
+            "height": height,
+            "mask": mask,
+            "click_springs_enabled": params.click_springs.enabled,
+            "shift_x": shift_x,
+            "shift_y": shift_y,
+        },
     )
 
-
-def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
-    params: CombinedBaseplateParamsData,
-    geometry: GridfinityLayoutGeometry,
-    *,
-    preview: bool = False,
-) -> Part.Shape:
-    timing_on = _timing_enabled()
-    t_total = time.perf_counter() if timing_on else 0.0
-
-    nx_exp, ny_exp = geometry.size()
-    nx = nx_exp - 2
-    ny = ny_exp - 2
-
-    f = params.baseplate_size
-    left_on = f.filler_left_enabled and float(f.filler_left_width) > 0
-    right_on = f.filler_right_enabled and float(f.filler_right_width) > 0
-    bottom_on = f.filler_bottom_enabled and float(f.filler_bottom_width) > 0
-    top_on = f.filler_top_enabled and float(f.filler_top_width) > 0
-
-    negative_slots: click_springs.SpringShapeSlots | None = None
-    positive_slots: click_springs.SpringShapeSlots | None = None
-    if not preview and params.click_springs.enabled:
-        negative_slots = click_springs.make_click_spring_prototype_negative(
-            params.fundamentals,
-            params.click_springs,
-        )
-        positive_slots = click_springs.make_click_spring_prototype_positive(
-            params.fundamentals,
-            params.click_springs,
-        )
-
-    def proto(
-        width: float,
-        height: float,
-        *,
-        cell_meta: baseplate_full_layout.FullLayoutCell,
-    ) -> CoreCellBuildResult:
-        filler_result = _build_filler_cell_shape(
+    def _build() -> Part.Shape:
+        # Build base cell shape
+        core_result = build_single_cell_baseplate_core(
             params,
-            width,
-            height,
             preview=preview,
+            x_size_override=x_override,
+            y_size_override=y_override,
         )
-        cell = filler_result.shape
-        mask = cell_meta.get_mask()
-        if negative_slots is not None and positive_slots is not None and mask is not None:
-            align_shift = fc.Vector(cell_meta.spring_shift_x, cell_meta.spring_shift_y, 0)
-            cell.translate(align_shift)
+        cell = core_result.shape
+
+        if preview:
+            return cell  # Preview: no springs, no top crop
+
+        # Apply springs only for non-tiny cells
+        if not core_result.is_tiny and params.click_springs.enabled and mask is not None:
+            negative_slots = click_springs.make_click_spring_prototype_negative(
+                params.fundamentals,
+                params.click_springs,
+            )
+            positive_slots = click_springs.make_click_spring_prototype_positive(
+                params.fundamentals,
+                params.click_springs,
+            )
+            # Apply alignment shift for filler cells
+            if shift_x != 0.0 or shift_y != 0.0:
+                cell.translate(fc.Vector(shift_x, shift_y, 0))
             cell = click_springs.apply_click_spring_slots_to_cell(
                 cell,
                 params.fundamentals,
@@ -447,154 +379,55 @@ def _build_filler_ring_shape(  # noqa: C901, PLR0912, PLR0915
                 positive_slots,
                 mask,
             )
-            cell.translate(fc.Vector(-align_shift.x, -align_shift.y, 0))
+            if shift_x != 0.0 or shift_y != 0.0:
+                cell.translate(fc.Vector(-shift_x, -shift_y, 0))
+
+        # Apply top crop
         cell = baseplate_cell_top_crop(
             cell,
             params,
-            x_size_override=width,
-            y_size_override=height,
+            x_size_override=x_override,
+            y_size_override=y_override,
         )
-        return CoreCellBuildResult(shape=cell, is_tiny=filler_result.is_tiny)
+        return cell
 
-    def center(ix: int, iy: int) -> fc.Vector:
-        x, y = geometry.cell_center(ix, iy)
-        return fc.Vector(x, y, 0)
+    shape = baseplate_cell_cache.get_or_build(key, _build)
+    tiny_cell = feat.is_tiny_cell(params.fundamentals, params.baseplate_core, width, height)
+    return CoreCellBuildResult(shape=shape, is_tiny=tiny_cell)
 
+
+def build_cells_from_geometry(
+    params: CombinedBaseplateParamsData,
+    geometry: baseplate_full_layout.GridfinityLayoutGeometry,
+    *,
+    preview: bool = False,
+) -> Part.Shape:
+    """Build all cells from geometry, placing each at its position.
+
+    Uses build_complete_cell_cached for each cell, which handles springs with masks.
+    """
+    nx, ny = geometry.size()
     pieces: list[Part.Shape] = []
-    t_sides = 0.0
-    t_corners = 0.0
-    t_proto = 0.0
-    t_translate = 0.0
 
-    side_specs = [
-        {
-            "enabled": left_on,
-            "width": geometry.cells[0][1].width,
-            "height": geometry.cells[0][1].height,
-            "flags": (True, False, False, False),
-            "vectors": [center(0, iy) for iy in range(1, ny + 1)],
-            "indices": [(0, iy) for iy in range(1, ny + 1)],
-        },
-        {
-            "enabled": right_on,
-            "width": geometry.cells[nx + 1][1].width,
-            "height": geometry.cells[nx + 1][1].height,
-            "flags": (False, True, False, False),
-            "vectors": [center(nx + 1, iy) for iy in range(1, ny + 1)],
-            "indices": [(nx + 1, iy) for iy in range(1, ny + 1)],
-        },
-        {
-            "enabled": bottom_on,
-            "width": geometry.cells[1][0].width,
-            "height": geometry.cells[1][0].height,
-            "flags": (False, False, True, False),
-            "vectors": [center(ix, 0) for ix in range(1, nx + 1)],
-            "indices": [(ix, 0) for ix in range(1, nx + 1)],
-        },
-        {
-            "enabled": top_on,
-            "width": geometry.cells[1][ny + 1].width,
-            "height": geometry.cells[1][ny + 1].height,
-            "flags": (False, False, False, True),
-            "vectors": [center(ix, ny + 1) for ix in range(1, nx + 1)],
-            "indices": [(ix, ny + 1) for ix in range(1, nx + 1)],
-        },
-    ]
+    for ix in range(nx):
+        for iy in range(ny):
+            cell_meta = geometry.cells[ix][iy]
+            if not cell_meta.exists:
+                continue
 
-    for spec in side_specs:
-        if not spec["enabled"]:
-            continue
-        t_side = time.perf_counter() if timing_on else 0.0
-        if not spec["indices"]:
-            continue
-        for (ix, iy), vec in zip(spec["indices"], spec["vectors"], strict=False):
-            t0 = time.perf_counter() if timing_on else 0.0
-            side_result = proto(
-                float(spec["width"]),  # type: ignore[arg-type]
-                float(spec["height"]),  # type: ignore[arg-type]
-                cell_meta=geometry.cells[ix][iy],
-            )
-            if timing_on:
-                t_proto += time.perf_counter() - t0
-                t1 = time.perf_counter()
-            side = side_result.shape.copy()
-            side.translate(vec)
-            pieces.append(side)
-            if timing_on:
-                t_translate += time.perf_counter() - t1
-            geometry.cells[ix][iy].is_tiny = side_result.is_tiny
-        if timing_on:
-            t_sides += time.perf_counter() - t_side
+            cell_result = build_complete_cell_cached(params, cell_meta, preview=preview)
+            cell_shape = cell_result.shape.copy()
 
-    corner_specs = [
-        {
-            "enabled": left_on and bottom_on,
-            "ix": 0,
-            "iy": 0,
-            "width": geometry.cells[0][0].width,
-            "height": geometry.cells[0][0].height,
-            "flags": (True, False, True, False),
-        },
-        {
-            "enabled": left_on and top_on,
-            "ix": 0,
-            "iy": ny + 1,
-            "width": geometry.cells[0][ny + 1].width,
-            "height": geometry.cells[0][ny + 1].height,
-            "flags": (True, False, False, True),
-        },
-        {
-            "enabled": right_on and bottom_on,
-            "ix": nx + 1,
-            "iy": 0,
-            "width": geometry.cells[nx + 1][0].width,
-            "height": geometry.cells[nx + 1][0].height,
-            "flags": (False, True, True, False),
-        },
-        {
-            "enabled": right_on and top_on,
-            "ix": nx + 1,
-            "iy": ny + 1,
-            "width": geometry.cells[nx + 1][ny + 1].width,
-            "height": geometry.cells[nx + 1][ny + 1].height,
-            "flags": (False, True, False, True),
-        },
-    ]
-
-    for spec in corner_specs:
-        if not spec["enabled"]:
-            continue
-        t_corner = time.perf_counter() if timing_on else 0.0
-        leftmost, rightmost, bottommost, topmost = spec["flags"]  # type: ignore[misc]
-        t0 = time.perf_counter() if timing_on else 0.0
-        corner_result = proto(
-            float(spec["width"]),  # type: ignore[arg-type]
-            float(spec["height"]),  # type: ignore[arg-type]
-            cell_meta=geometry.cells[spec["ix"]][spec["iy"]],  # type: ignore[index]
-        )
-        if timing_on:
-            t_proto += time.perf_counter() - t0
-        corner = corner_result.shape.copy()
-        t1 = time.perf_counter() if timing_on else 0.0
-        corner.translate(center(int(spec["ix"]), int(spec["iy"])))
-        if timing_on:
-            t_translate += time.perf_counter() - t1
-            t_corners += time.perf_counter() - t_corner
-        pieces.append(corner)
-        geometry.cells[spec["ix"]][spec["iy"]].is_tiny = corner_result.is_tiny
+            # Translate cell to its position
+            center_x, center_y = geometry.cell_center(ix, iy)
+            cell_shape.translate(fc.Vector(center_x, center_y, 0))
+            pieces.append(cell_shape)
 
     if not pieces:
-        raise ValueError("No filler pieces generated")
-    t_fuse = time.perf_counter() if timing_on else 0.0
-    out = utils.multi_fuse(pieces)
-    if timing_on:
-        _timing_print("filler_strips.proto_total", t_proto)
-        _timing_print("filler_strips.translate_total", t_translate)
-        _timing_print("filler_strips.sides_total", t_sides)
-        _timing_print("filler_strips.corners_total", t_corners)
-        _timing_print("filler_strips.fuse_total", time.perf_counter() - t_fuse)
-        _timing_print("filler_strips.total", time.perf_counter() - t_total)
-    return out
+        return Part.Shape()
+    if len(pieces) == 1:
+        return pieces[0]
+    return utils.multi_fuse(pieces)
 
 
 def _apply_layout_corner_roundover(
@@ -647,32 +480,6 @@ def make_post_replication_cutter(
     return cutters[0].multiFuse(cutters[1:]) if len(cutters) > 1 else cutters[0]
 
 
-def apply_snap_springs(
-    shape: Part.Shape,
-    params: CombinedBaseplateParamsData,
-) -> Part.Shape:
-    """Apply snap spring slots to the baseplate shape."""
-    if not params.click_springs.enabled:
-        return shape
-    negative_slots = click_springs.make_click_spring_prototype_negative(
-        params.fundamentals,
-        params.click_springs,
-    )
-    positive_slots = click_springs.make_click_spring_prototype_positive(
-        params.fundamentals,
-        params.click_springs,
-    )
-    return click_springs.apply_click_spring_slots_to_cell(
-        shape,
-        params.fundamentals,
-        params.baseplate_core,
-        params.click_springs,
-        negative_slots,
-        positive_slots,
-        click_springs.SpringSlotMask.all_true(),
-    )
-
-
 def build_simple_baseplate_from_params_cached(
     params: CombinedBaseplateParamsData,
     *,
@@ -714,7 +521,10 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
     *,
     preview: bool = False,
 ) -> Part.Shape:
-    """Build a simple baseplate from params."""
+    """Build a simple baseplate from params.
+
+    Uses geometry-based building where each cell gets its correct spring mask.
+    """
     layout = _derive_layout_from_params(params)
     timing_on = _timing_enabled()
     t_total = time.perf_counter() if timing_on else 0.0
@@ -734,92 +544,46 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
     if ny == 0 and not (top_fill_present or bottom_fill_present):
         raise ValueError("Y grid units = 0 requires Top or Bottom filler")
 
-    if nx == 0 or ny == 0:
-        empty_shape = Part.Shape()
-        t_fill_only = time.perf_counter() if timing_on else 0.0
-        shape, geometry = add_filler_strips(empty_shape, params, layout, preview=preview)
-        if timing_on:
-            _timing_print(
-                "baseplate.filler_only.add_filler_strips",
-                time.perf_counter() - t_fill_only,
-            )
-        if shape.isNull():
-            raise ValueError("No core cells and no fillers to build")
-        if not preview:
-            t_crop = time.perf_counter() if timing_on else 0.0
-            shape = baseplate_cell_top_crop(shape, params)
-            if timing_on:
-                _timing_print("baseplate.filler_only.top_crop", time.perf_counter() - t_crop)
-            t_round = time.perf_counter() if timing_on else 0.0
-            shape = _apply_layout_corner_roundover(
-                shape,
-                params,
-                geometry,
-            )
-            if timing_on:
-                _timing_print("baseplate.filler_only.roundover", time.perf_counter() - t_round)
-        if timing_on:
-            _timing_print("baseplate.total", time.perf_counter() - t_total)
-        return shape
-
-    t_core = time.perf_counter() if timing_on else 0.0
-    core_result = build_single_cell_baseplate_core_cached(params, preview=preview)
+    # Build geometry with spring masks
+    t_geom = time.perf_counter() if timing_on else 0.0
+    geometry = baseplate_full_layout.build_full_layout(
+        params,
+        layout,
+        include_spring_masks=(not preview and params.click_springs.enabled),
+    )
     if timing_on:
-        _timing_print("baseplate.core_build", time.perf_counter() - t_core)
-    shape = core_result.shape
-    if not preview and not core_result.is_tiny:
-        t_springs = time.perf_counter() if timing_on else 0.0
-        shape = apply_snap_springs(shape, params)
-        if timing_on:
-            _timing_print("baseplate.snap_springs", time.perf_counter() - t_springs)
-    if not preview:
-        t_crop = time.perf_counter() if timing_on else 0.0
-        shape = baseplate_cell_top_crop(shape, params)
-        if timing_on:
-            _timing_print("baseplate.top_crop", time.perf_counter() - t_crop)
+        _timing_print("baseplate.build_geometry", time.perf_counter() - t_geom)
 
-    t_repl = time.perf_counter() if timing_on else 0.0
-    shape = replicate_layout(shape, params, layout)
+    # Build all cells from geometry
+    t_cells = time.perf_counter() if timing_on else 0.0
+    shape = build_cells_from_geometry(params, geometry, preview=preview)
     if timing_on:
-        _timing_print("baseplate.replicate_layout", time.perf_counter() - t_repl)
+        _timing_print("baseplate.build_cells", time.perf_counter() - t_cells)
 
-    t_fill = time.perf_counter() if timing_on else 0.0
-    shape, geometry = add_filler_strips(shape, params, layout, preview=preview)
-    if timing_on:
-        _timing_print("baseplate.add_filler_strips", time.perf_counter() - t_fill)
-    geometry_nx, geometry_ny = geometry.size()
-    x_offset = 1 if geometry_nx == nx + 2 else 0
-    y_offset = 1 if geometry_ny == ny + 2 else 0
-    for ix in range(nx):
-        for iy in range(ny):
-            gx = ix + x_offset
-            gy = iy + y_offset
-            if geometry.cells[gx][gy].exists:
-                geometry.cells[gx][gy].is_tiny = core_result.is_tiny
+    if shape.isNull():
+        raise ValueError("No cells to build")
 
+    # Apply corner roundover (non-preview only)
     if not preview:
         t_round = time.perf_counter() if timing_on else 0.0
-        shape = _apply_layout_corner_roundover(
-            shape,
-            params,
-            geometry,
-        )
+        shape = _apply_layout_corner_roundover(shape, params, geometry)
         if timing_on:
             _timing_print("baseplate.roundover", time.perf_counter() - t_round)
+
+    # Handle preview translation
     if preview:
-        # Translate shape so bounding box starts at origin (0, 0)
-        # Must bake translation into geometry (not just Placement)
         min_x, min_y = _layout_min_indices(layout)
         if min_x > 0 or min_y > 0:
             grid_size = float(params.fundamentals.grid_size)
             shape.translate(fc.Vector(-min_x * grid_size, -min_y * grid_size, 0))
-            # Bake Placement: reset first, then transformGeometry to avoid double-apply
             placement = shape.Placement
             shape.Placement = fc.Placement()
             shape = shape.transformGeometry(placement.toMatrix())
         if timing_on:
             _timing_print("baseplate.total", time.perf_counter() - t_total)
         return shape
+
+    # Apply post-replication cutter (junction screws, connecting clips)
     t_post = time.perf_counter() if timing_on else 0.0
     top_z = (
         max(v.Z for v in shape.Vertexes) * fc.Units.Quantity("1 mm")
@@ -833,13 +597,10 @@ def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
         _timing_print("baseplate.post_cutter", time.perf_counter() - t_post)
 
     # Translate shape so bounding box starts at origin (0, 0)
-    # Must bake translation into geometry (not just Placement)
-    # because fp.Shape assignment strips Placement
     min_x, min_y = _layout_min_indices(layout)
     if min_x > 0 or min_y > 0:
         grid_size = float(params.fundamentals.grid_size)
         shape.translate(fc.Vector(-min_x * grid_size, -min_y * grid_size, 0))
-        # Bake Placement: reset first, then transformGeometry to avoid double-apply
         placement = shape.Placement
         shape.Placement = fc.Placement()
         shape = shape.transformGeometry(placement.toMatrix())
