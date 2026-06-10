@@ -193,6 +193,34 @@ def _base_apex_height(params: CombinedBaseplateParamsData) -> fc.Units.Quantity:
     return params.fundamentals.main_height + params.fundamentals.main_half_width
 
 
+def compute_stacking_z_step(data: CombinedBaseplateParamsData) -> float:
+    """Compute vertical spacing between stacked baseplates from params.
+
+    This computes the z-offset for stacking without building the full support shape.
+    The z_step equals the top of the support layer (z_start + loft_height).
+    """
+    import math
+
+    main_half_width = float(data.fundamentals.main_half_width)
+    top_crop = float(data.baseplate_core.top_crop)
+    click_offset = float(data.click_springs.click_offset)
+    overhang_angle = float(data.stacking.support.overhang_angle)
+
+    # Run is the horizontal distance the support spans
+    run = main_half_width + click_offset - top_crop
+    if run <= 0:
+        msg = "Invalid support geometry: main_half_width + click_offset must be > top_crop"
+        raise ValueError(msg)
+
+    # Loft height from overhang angle
+    loft_height = run / math.tan(math.radians(overhang_angle))
+
+    # z_start is where support begins (top of baseplate)
+    z_start = float(data.fundamentals.main_height) + main_half_width - top_crop
+
+    return z_start + loft_height
+
+
 def baseplate_cell_top_crop(
     shape: Part.Shape,
     params: CombinedBaseplateParamsData,
