@@ -994,15 +994,6 @@ def _build_stacked_baseplates_core_shape(data: CombinedBaseplateParamsData) -> P
     return shapes[0].multiFuse(shapes[1:])
 
 
-def _build_stacked_baseplates_shape(data: CombinedBaseplateParamsData) -> Part.Shape:
-    """Build complete stacked baseplates shape with corner stitching."""
-    stacked_baseplates = _build_stacked_baseplates_core_shape(data)
-    stitching_shape = _build_corner_stitching_shape(data, stacked_baseplates.BoundBox)
-    if stitching_shape is None:
-        return stacked_baseplates
-    return stacked_baseplates.fuse(stitching_shape)
-
-
 def _build_stacked_support_shape(data: CombinedBaseplateParamsData) -> Part.Shape:
     """Build stacked support shape from params data."""
     support_shape = _stacked_support_prototype(data)
