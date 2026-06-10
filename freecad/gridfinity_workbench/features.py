@@ -39,6 +39,7 @@ from .param import (
     BaseplateSizeParams,
     ClickSpringsParams,
     CombinedBaseplateParams,
+    CombinedBaseplateParamsData,
     CombinedConnectingClipsParams,
     CombinedDrawerBaseplateParams,
     CombinedDrawerBaseplateParamsData,
@@ -393,7 +394,7 @@ class Baseplate(FoundationGridfinity):
         data = params.data()
 
         if data.stacking.enabled:
-            return _build_stacked_baseplates_shape(obj)
+            return _build_stacked_baseplates_shape(data)
 
         return baseplate_builder.build_simple_baseplate_from_params(data, preview=False)
 
@@ -889,22 +890,20 @@ class BaseplateSupport(FoundationGridfinity):
         source = getattr(obj, "SourceBaseplate", None)
         if source is None:
             return Part.Shape()
-        return _build_stacked_support_shape(source)
+        params = CombinedBaseplateParams().from_obj(source)
+        data = params.data()
+        return _build_stacked_support_shape(data)
 
 
-def _stacked_support_prototype(obj: fc.DocumentObject) -> Part.Shape:
+def _stacked_support_prototype(data: CombinedBaseplateParamsData) -> Part.Shape:
     """Build a single support layer for stacked baseplates."""
-    params = CombinedBaseplateParams().from_obj(obj)
-    data = params.data()
     return baseplate_builder.build_baseplate_support_cached(data)
 
 
 def _build_corner_stitching_shape(
-    obj: fc.DocumentObject,
+    data: CombinedBaseplateParamsData,
     baseplates_bbox: object,  # Part.BoundBox
 ) -> Part.Shape | None:
-    params = CombinedBaseplateParams().from_obj(obj)
-    data = params.data()
     stitching_thickness = float(data.stacking.stitching_thickness)
     if not data.stacking.corner_stitching or stitching_thickness <= 0:
         return None
@@ -981,12 +980,10 @@ def _build_corner_stitching_shape(
     return stitching_shape
 
 
-def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
-    # Build a single baseplate using params
-    params = CombinedBaseplateParams().from_obj(obj)
-    data = params.data()
+def _build_stacked_baseplates_core_shape(data: CombinedBaseplateParamsData) -> Part.Shape:
+    """Build stacked baseplates core shape from params data."""
     baseplate_shape = baseplate_builder.build_simple_baseplate_from_params(data, preview=False)
-    support_shape = _stacked_support_prototype(obj)
+    support_shape = _stacked_support_prototype(data)
     instance_count = max(1, data.stacking.instance_count)
     z_step = support_shape.BoundBox.ZMax
 
@@ -1001,18 +998,18 @@ def _build_stacked_baseplates_core_shape(obj: fc.DocumentObject) -> Part.Shape:
     return shapes[0].multiFuse(shapes[1:])
 
 
-def _build_stacked_baseplates_shape(obj: fc.DocumentObject) -> Part.Shape:
-    stacked_baseplates = _build_stacked_baseplates_core_shape(obj)
-    stitching_shape = _build_corner_stitching_shape(obj, stacked_baseplates.BoundBox)
+def _build_stacked_baseplates_shape(data: CombinedBaseplateParamsData) -> Part.Shape:
+    """Build complete stacked baseplates shape with corner stitching."""
+    stacked_baseplates = _build_stacked_baseplates_core_shape(data)
+    stitching_shape = _build_corner_stitching_shape(data, stacked_baseplates.BoundBox)
     if stitching_shape is None:
         return stacked_baseplates
     return stacked_baseplates.fuse(stitching_shape)
 
 
-def _build_stacked_support_shape(obj: fc.DocumentObject) -> Part.Shape:
-    params = CombinedBaseplateParams().from_obj(obj)
-    data = params.data()
-    support_shape = _stacked_support_prototype(obj)
+def _build_stacked_support_shape(data: CombinedBaseplateParamsData) -> Part.Shape:
+    """Build stacked support shape from params data."""
+    support_shape = _stacked_support_prototype(data)
     instance_count = max(1, data.stacking.instance_count)
     support_count = max(1, instance_count - 1)
     if support_count == 0:
@@ -1027,8 +1024,8 @@ def _build_stacked_support_shape(obj: fc.DocumentObject) -> Part.Shape:
         shapes.append(shape)
     stacked_supports = shapes[0] if len(shapes) == 1 else shapes[0].multiFuse(shapes[1:])
 
-    baseplates_bbox = _build_stacked_baseplates_core_shape(obj).BoundBox
-    stitching_shape = _build_corner_stitching_shape(obj, baseplates_bbox)
+    baseplates_bbox = _build_stacked_baseplates_core_shape(data).BoundBox
+    stitching_shape = _build_corner_stitching_shape(data, baseplates_bbox)
     if stitching_shape is None:
         return stacked_supports
     return stacked_supports.cut(stitching_shape)
