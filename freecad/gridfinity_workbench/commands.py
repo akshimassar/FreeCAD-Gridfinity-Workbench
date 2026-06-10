@@ -132,6 +132,32 @@ class ViewProviderGridfinity:
             return True
         return False
 
+    def onDelete(
+        self,
+        vobj: fcg.ViewProviderDocumentObject,
+        subelements: object,  # noqa: ARG002
+    ) -> bool:
+        """Handle deletion of objects with children.
+
+        For DrawerBaseplateGroup, automatically deletes all child baseplates
+        when the group is deleted. This is necessary because we use a custom
+        group implementation (Part::FeaturePython with PropertyLinkListHidden)
+        instead of App::DocumentObjectGroupPython to prevent automatic
+        dependency building - children would otherwise be orphaned on deletion.
+        """
+        obj = getattr(vobj, "Object", None)
+        if obj is None:
+            return True
+
+        # Delete children for DrawerBaseplateGroup
+        if hasattr(obj, "Children") and obj.Children:
+            doc = obj.Document
+            for child in list(obj.Children):
+                doc.removeObject(child.Name)
+            obj.Children = []
+
+        return True
+
 
 class BaseCommand:
     """Base for gridfinity workbench command.

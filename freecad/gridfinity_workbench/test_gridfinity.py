@@ -610,6 +610,60 @@ class TestDrawerBaseplateTaskPanel(TestWithDocument):
             "DrawerBaseplateGroup should NOT recompute when child changes",
         )
 
+    def test_drawer_group_deletion_removes_children(self) -> None:
+        """Test that deleting DrawerBaseplateGroup also deletes its children.
+
+        This verifies the onDelete() method in ViewProviderGridfinity works correctly:
+        - When group is deleted via ViewProvider, children are also removed
+        - This is necessary because we use a custom group (Part::FeaturePython with
+          PropertyLinkListHidden) instead of App::DocumentObjectGroupPython to prevent
+          automatic dependency building - without onDelete, children would be orphaned.
+
+        Uses 50x50 drawer (single small piece) for fast execution.
+        """
+        from .commands import ICONDIR, CreateDrawerBaseplateTaskPanel
+
+        # Create small 50x50 drawer baseplate (single piece, fast)
+        panel = CreateDrawerBaseplateTaskPanel(ICONDIR / "drawer-baseplate.svg")
+        fcg.Control.showDialog(panel)
+        panel.drawer__drawer_width.setValue(50)
+        panel.drawer__drawer_depth.setValue(50)
+        panel.junction_screws__enabled.setChecked(False)
+        panel.connecting_clips__enabled.setChecked(False)
+        panel.click_springs__enabled.setChecked(False)
+        panel._preview_timer.stop()  # noqa: SLF001
+        panel.accept()
+
+        group = self.doc.getObject("DrawerBaseplates")
+        self.assertIsNotNone(group)
+        assert group is not None
+
+        children = group.Children
+        self.assertGreater(len(children), 0)
+        child_names = [c.Name for c in children]
+        self.log(f"Group has {len(children)} children: {child_names}")
+
+        # Verify children exist in document
+        for name in child_names:
+            self.assertIsNotNone(self.doc.getObject(name))
+
+        # Delete the group via ViewProvider.onDelete (simulates user deletion)
+        vobj = group.ViewObject
+        vp_proxy = vobj.Proxy
+        result = vp_proxy.onDelete(vobj, [])
+        self.assertTrue(result, "onDelete should return True to allow deletion")
+
+        # After onDelete, children should be removed from document
+        for name in child_names:
+            self.assertIsNone(
+                self.doc.getObject(name),
+                f"Child {name} should be deleted when group is deleted",
+            )
+
+        # Now actually remove the group object
+        self.doc.removeObject(group.Name)
+        self.assertIsNone(self.doc.getObject("DrawerBaseplates"))
+
     def test_drawer_stacking_creates_supports_in_group(self) -> None:
         """Test that stacking creates support companions inside the drawer group.
 
