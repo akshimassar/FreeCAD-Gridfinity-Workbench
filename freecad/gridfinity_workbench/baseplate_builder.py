@@ -221,6 +221,57 @@ def compute_stacking_z_step(data: CombinedBaseplateParamsData) -> float:
     return z_start + loft_height
 
 
+def build_complex_baseplate_from_params(
+    data: CombinedBaseplateParamsData,
+    *,
+    preview: bool = False,
+) -> Part.Shape:
+    """Build baseplate with optional stacking.
+
+    If stacking not enabled, returns single baseplate.
+    If stacking enabled, returns stacked baseplates.
+
+    In preview mode:
+    - No corner stitching
+    - No screw stubs
+    - No support baseplates
+    - Just replicated baseplates at correct z-spacing
+
+    In non-preview mode:
+    - Includes corner stitching if enabled
+    """
+    if not data.stacking.enabled:
+        return build_single_baseplate_from_params(data, preview=preview)
+
+    # Build single baseplate
+    baseplate_shape = build_single_baseplate_from_params(data, preview=preview)
+
+    # Compute z_step from params
+    z_step = compute_stacking_z_step(data)
+    instance_count = max(1, data.stacking.instance_count)
+
+    # Replicate baseplates
+    shapes = []
+    for idx in range(instance_count):
+        shape = baseplate_shape.copy()
+        if idx:
+            shape.translate(fc.Vector(0, 0, idx * z_step))
+        shapes.append(shape)
+
+    stacked = shapes[0] if len(shapes) == 1 else shapes[0].multiFuse(shapes[1:])
+
+    # Corner stitching only for non-preview
+    if not preview:
+        # Import the corner stitching function from features
+        from . import features
+
+        stitching = features._build_corner_stitching_shape(data, stacked.BoundBox)  # noqa: SLF001
+        if stitching is not None:
+            stacked = stacked.fuse(stitching)
+
+    return stacked
+
+
 def baseplate_cell_top_crop(
     shape: Part.Shape,
     params: CombinedBaseplateParamsData,
