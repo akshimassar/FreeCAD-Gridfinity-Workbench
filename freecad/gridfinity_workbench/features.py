@@ -392,11 +392,7 @@ class Baseplate(FoundationGridfinity):
     def generate_gridfinity_shape(self, obj: fc.DocumentObject) -> Part.Shape:
         params = CombinedBaseplateParams().from_obj(obj)
         data = params.data()
-
-        if data.stacking.enabled:
-            return _build_stacked_baseplates_shape(data)
-
-        return baseplate_builder.build_single_baseplate_from_params(data, preview=False)
+        return baseplate_builder.build_complex_baseplate_from_params(data, preview=False)
 
 
 class DrawerBaseplateGroup:
@@ -772,7 +768,7 @@ def build_drawer_baseplate_preview_shape(
         baseplate_params = _build_baseplate_params_for_chunk(params, x_chunk, y_chunk)
 
         # Build preview shape (simplified, no screws/clips/springs)
-        shape = baseplate_builder.build_single_baseplate_from_params_cached(
+        shape = baseplate_builder.build_complex_baseplate_from_params(
             baseplate_params.data(),
             preview=True,
         )
