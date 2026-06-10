@@ -976,24 +976,6 @@ def _build_corner_stitching_shape(
     return stitching_shape
 
 
-def _build_stacked_baseplates_core_shape(data: CombinedBaseplateParamsData) -> Part.Shape:
-    """Build stacked baseplates core shape from params data."""
-    baseplate_shape = baseplate_builder.build_single_baseplate_from_params(data, preview=False)
-    support_shape = _stacked_support_prototype(data)
-    instance_count = max(1, data.stacking.instance_count)
-    z_step = support_shape.BoundBox.ZMax
-
-    shapes = []
-    for idx in range(instance_count):
-        shape = baseplate_shape.copy()
-        if idx:
-            shape.translate(fc.Vector(0, 0, idx * z_step))
-        shapes.append(shape)
-    if len(shapes) == 1:
-        return shapes[0]
-    return shapes[0].multiFuse(shapes[1:])
-
-
 def _build_stacked_support_shape(data: CombinedBaseplateParamsData) -> Part.Shape:
     """Build stacked support shape from params data."""
     support_shape = _stacked_support_prototype(data)
@@ -1011,7 +993,8 @@ def _build_stacked_support_shape(data: CombinedBaseplateParamsData) -> Part.Shap
         shapes.append(shape)
     stacked_supports = shapes[0] if len(shapes) == 1 else shapes[0].multiFuse(shapes[1:])
 
-    baseplates_bbox = _build_stacked_baseplates_core_shape(data).BoundBox
+    preview_shape = baseplate_builder.build_complex_baseplate_from_params(data, preview=True)
+    baseplates_bbox = preview_shape.BoundBox
     stitching_shape = _build_corner_stitching_shape(data, baseplates_bbox)
     if stitching_shape is None:
         return stacked_supports
