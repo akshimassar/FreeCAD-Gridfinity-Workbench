@@ -116,7 +116,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 ClickSpringsParams, JunctionScrewsParams, ConnectingClipsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
+                build_single_baseplate_from_params,
             )
 
             def build_case(click_springs: bool) -> dict[str, float | int | bool]:
@@ -133,7 +133,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     junction_screws=JunctionScrewsParams(enabled=False),
                     connecting_clips=ConnectingClipsParams(enabled=False),
                 )
-                shape = build_simple_baseplate_from_params(params.data())
+                shape = build_single_baseplate_from_params(params.data())
                 return {{
                     "volume": float(shape.Volume),
                     "solids": int(len(shape.Solids)),
@@ -196,7 +196,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 CombinedBaseplateParams, BaseplateSizeParams, ClickSpringsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
+                build_single_baseplate_from_params,
             )
 
             def build_case(click_springs: bool) -> dict[str, float | int | str | bool]:
@@ -210,7 +210,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     ),
                     click_springs=ClickSpringsParams(enabled=click_springs),
                 )
-                shape = build_simple_baseplate_from_params(params.data())
+                shape = build_single_baseplate_from_params(params.data())
                 bbox = shape.BoundBox
                 return {{
                     "volume": float(shape.Volume),
@@ -498,14 +498,14 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
 
             from gridfinity_workbench.param import CombinedBaseplateParams, BaseplateSizeParams
             from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
+                build_single_baseplate_from_params,
             )
 
             # 2x2 baseplate with all features enabled (defaults), no fillers
             params = CombinedBaseplateParams(
                 baseplate_size=BaseplateSizeParams(x_grid_count=2, y_grid_count=2),
             )
-            shape = build_simple_baseplate_from_params(params.data())
+            shape = build_single_baseplate_from_params(params.data())
             bbox = shape.BoundBox
             payload = {{
                 "volume": float(shape.Volume),
@@ -582,7 +582,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 ClickSpringsParams, JunctionScrewsParams, ConnectingClipsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
+                build_single_baseplate_from_params,
             )
 
             # 0x2 baseplate with right filler only, no features
@@ -595,7 +595,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 junction_screws=JunctionScrewsParams(enabled=False),
                 connecting_clips=ConnectingClipsParams(enabled=False),
             )
-            shape = build_simple_baseplate_from_params(params.data())
+            shape = build_single_baseplate_from_params(params.data())
             bbox = shape.BoundBox
             payload = {{
                 "solids": int(len(shape.Solids)),
@@ -819,7 +819,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 CombinedBaseplateParams, FundamentalsParams, ClickSpringsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
+                build_single_baseplate_from_params,
             )
 
             # ClickThickness >= MainHalfWidth should be rejected by validation
@@ -832,7 +832,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
             if "click_springs.click_thickness" in errors:
                 print("Invalid click spring geometry: ClickThickness", file=sys.stderr)
             else:
-                shape = build_simple_baseplate_from_params(params.data())
+                shape = build_single_baseplate_from_params(params.data())
             """,
         ).format(module_root=repr(freecad_module_root))
 
@@ -894,7 +894,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 CombinedBaseplateParams, BaseplateSizeParams, ConnectingClipsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
+                build_single_baseplate_from_params,
             )
 
             def build_case(with_right_filler: bool) -> dict[str, float | int | bool]:
@@ -907,7 +907,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                     ),
                     connecting_clips=ConnectingClipsParams(enabled=False),
                 )
-                shape = build_simple_baseplate_from_params(params.data())
+                shape = build_single_baseplate_from_params(params.data())
                 data = params.data()
                 h = float(data.fundamentals.main_height)
                 w = float(data.fundamentals.main_half_width)
@@ -1273,7 +1273,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 CombinedBaseplateParams, BaseplateSizeParams, ConnectingClipsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
+                build_single_baseplate_from_params,
             )
 
             params = CombinedBaseplateParams(
@@ -1284,7 +1284,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 ),
                 connecting_clips=ConnectingClipsParams(enabled=False),
             )
-            shape = build_simple_baseplate_from_params(params.data())
+            shape = build_single_baseplate_from_params(params.data())
             result = {{
                 "volume": float(shape.Volume),
                 "solids": int(len(shape.Solids)),
@@ -1334,7 +1334,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 CombinedBaseplateParams, BaseplateSizeParams, ConnectingClipsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
+                build_single_baseplate_from_params,
             )
 
             params = CombinedBaseplateParams(
@@ -1345,7 +1345,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 ),
                 connecting_clips=ConnectingClipsParams(enabled=False),
             )
-            shape = build_simple_baseplate_from_params(params.data())
+            shape = build_single_baseplate_from_params(params.data())
             result = {{
                 "volume": float(shape.Volume),
                 "solids": int(len(shape.Solids)),
@@ -1395,7 +1395,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 CombinedBaseplateParams, BaseplateSizeParams, ConnectingClipsParams,
             )
             from gridfinity_workbench.baseplate_builder import (
-                build_simple_baseplate_from_params,
+                build_single_baseplate_from_params,
             )
 
             params = CombinedBaseplateParams(
@@ -1406,7 +1406,7 @@ class FreeCADCmdIntegrationTest(unittest.TestCase):
                 ),
                 connecting_clips=ConnectingClipsParams(enabled=False),
             )
-            shape = build_simple_baseplate_from_params(params.data())
+            shape = build_single_baseplate_from_params(params.data())
             result = {{
                 "volume": float(shape.Volume),
                 "solids": int(len(shape.Solids)),

@@ -480,21 +480,21 @@ def make_post_replication_cutter(
     return cutters[0].multiFuse(cutters[1:]) if len(cutters) > 1 else cutters[0]
 
 
-def build_simple_baseplate_from_params_cached(
+def build_single_baseplate_from_params_cached(
     params: CombinedBaseplateParamsData,
     *,
     preview: bool = False,
 ) -> Part.Shape:
     """Build a simple baseplate from params with caching."""
     if _BASEPLATE_SHAPE_CACHE_MAX <= 0:
-        return build_simple_baseplate_from_params(params, preview=preview)
+        return build_single_baseplate_from_params(params, preview=preview)
 
     key = _baseplate_cache_key(params, preview=preview)
     cached_shape = _BASEPLATE_SHAPE_CACHE.get(key)
     if cached_shape is not None:
         _BASEPLATE_SHAPE_CACHE.move_to_end(key)
         return cached_shape.copy()
-    shape = build_simple_baseplate_from_params(params, preview=preview)
+    shape = build_single_baseplate_from_params(params, preview=preview)
     _BASEPLATE_SHAPE_CACHE[key] = shape
     _BASEPLATE_SHAPE_CACHE.move_to_end(key)
     while len(_BASEPLATE_SHAPE_CACHE) > _BASEPLATE_SHAPE_CACHE_MAX:
@@ -516,7 +516,7 @@ def _derive_layout_from_params(
     return [[True] * size.y_grid_count for _ in range(size.x_grid_count)]
 
 
-def build_simple_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
+def build_single_baseplate_from_params(  # noqa: C901, PLR0912, PLR0915
     params: CombinedBaseplateParamsData,
     *,
     preview: bool = False,

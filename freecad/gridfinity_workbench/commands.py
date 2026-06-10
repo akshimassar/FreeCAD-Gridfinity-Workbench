@@ -548,7 +548,7 @@ class CreateBaseplateTaskPanel(SingleFeatureTaskPanel):
 
     def _build_preview_shape(self, params: CombinedParams) -> Part.Shape:
         data = params.data()
-        return baseplate_builder.build_simple_baseplate_from_params(data, preview=True)
+        return baseplate_builder.build_single_baseplate_from_params(data, preview=True)
 
     def _format_label(self, params: CombinedParams) -> str:
         data = params.data()

@@ -396,7 +396,7 @@ class Baseplate(FoundationGridfinity):
         if data.stacking.enabled:
             return _build_stacked_baseplates_shape(data)
 
-        return baseplate_builder.build_simple_baseplate_from_params(data, preview=False)
+        return baseplate_builder.build_single_baseplate_from_params(data, preview=False)
 
 
 class DrawerBaseplateGroup:
@@ -772,7 +772,7 @@ def build_drawer_baseplate_preview_shape(
         baseplate_params = _build_baseplate_params_for_chunk(params, x_chunk, y_chunk)
 
         # Build preview shape (simplified, no screws/clips/springs)
-        shape = baseplate_builder.build_simple_baseplate_from_params_cached(
+        shape = baseplate_builder.build_single_baseplate_from_params_cached(
             baseplate_params.data(),
             preview=True,
         )
@@ -982,7 +982,7 @@ def _build_corner_stitching_shape(
 
 def _build_stacked_baseplates_core_shape(data: CombinedBaseplateParamsData) -> Part.Shape:
     """Build stacked baseplates core shape from params data."""
-    baseplate_shape = baseplate_builder.build_simple_baseplate_from_params(data, preview=False)
+    baseplate_shape = baseplate_builder.build_single_baseplate_from_params(data, preview=False)
     support_shape = _stacked_support_prototype(data)
     instance_count = max(1, data.stacking.instance_count)
     z_step = support_shape.BoundBox.ZMax
