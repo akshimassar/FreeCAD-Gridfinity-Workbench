@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import contextlib
 from abc import abstractmethod
+from dataclasses import dataclass
 
 import FreeCAD as fc  # noqa: N813
 import Part
@@ -52,6 +53,27 @@ from .param import (
 from .version import __version__
 
 unitmm = fc.Units.Quantity("1 mm")
+
+
+@dataclass
+class BaseplateMatrixCell:
+    """Everything needed to build and position a baseplate piece."""
+
+    piece_name: str
+    x_cells: int
+    y_cells: int
+    x_low_fill_mm: float
+    x_high_fill_mm: float
+    y_low_fill_mm: float
+    y_high_fill_mm: float
+    instance_count: int
+
+
+@dataclass
+class BaseplateMatrix:
+    """Matrix of baseplate pieces for a drawer."""
+
+    cells: list[list[BaseplateMatrixCell]]  # [row][col]
 
 
 def format_axis_with_filler(cells: int, *, low_fill: bool, high_fill: bool) -> str:
@@ -443,18 +465,24 @@ class DrawerBaseplateGroup:
 
     def execute(self, obj: fc.DocumentObject) -> None:
         """Create/update/remove child Baseplate objects."""
-        x_chunks, y_chunks_for_rows, grid_mm, full_data = _compute_drawer_splits_from_obj(obj)
+        x_chunks, y_chunks, grid_mm, full_data = _compute_drawer_splits_from_obj(obj)
         if x_chunks is None:
             return
 
         # Extract support companions before processing (keyed by baseplate)
         supports_by_baseplate = self._extract_supports(obj)
 
-        required_pieces = _build_required_pieces(x_chunks, y_chunks_for_rows)
+        # Get base instance count from stacking params
+        combined_params: CombinedDrawerBaseplateParams = (
+            CombinedDrawerBaseplateParams().from_obj(obj)  # type: ignore[assignment]
+        )
+        base_instance_count = combined_params.stacking.get_value("instance_count")
+
+        matrix = _build_baseplate_matrix(x_chunks, y_chunks, base_instance_count)
         existing_children = self._get_existing_children(obj)
-        self._remove_stale_children(obj, existing_children, required_pieces)
+        self._remove_stale_children(obj, existing_children, matrix)
         baseplate_names = self._create_or_update_children(
-            obj, x_chunks, y_chunks_for_rows, grid_mm, full_data, required_pieces, existing_children
+            obj, grid_mm, full_data, matrix, existing_children
         )
         obj.PieceNames = baseplate_names
 
@@ -480,13 +508,16 @@ class DrawerBaseplateGroup:
         self,
         obj: fc.DocumentObject,
         existing_children: dict[str, fc.DocumentObject],
-        required_pieces: dict[str, tuple[int, int]],
+        matrix: BaseplateMatrix,
     ) -> None:
         """Remove children that are no longer needed."""
+        # Build set of required piece names from matrix
+        required_names = {cell.piece_name for row in matrix.cells for cell in row}
+
         doc = obj.Document
         children_to_keep = []
         for piece_key, child in list(existing_children.items()):
-            if piece_key not in required_pieces:
+            if piece_key not in required_names:
                 doc.removeObject(child.Name)
             else:
                 children_to_keep.append(child)
@@ -494,14 +525,12 @@ class DrawerBaseplateGroup:
         # (new children will be added in _create_or_update_children)
         obj.Children = children_to_keep
 
-    def _create_or_update_children(  # noqa: PLR0913
+    def _create_or_update_children(
         self,
         obj: fc.DocumentObject,
-        x_chunks: list,
-        y_chunks_for_rows: list,
         grid_mm: float,
         full_data: object,
-        required_pieces: dict[str, tuple[int, int]],
+        matrix: BaseplateMatrix,
         existing_children: dict[str, fc.DocumentObject],
     ) -> list[str]:
         """Create or update child Baseplate objects with full parameters."""
@@ -514,7 +543,7 @@ class DrawerBaseplateGroup:
         combined_params: CombinedDrawerBaseplateParams = (
             CombinedDrawerBaseplateParams().from_obj(obj)  # type: ignore[assignment]
         )
-        total_pieces = len(required_pieces)
+        total_pieces = sum(len(row) for row in matrix.cells)
         baseplate_names: list[str] = []
 
         # Tile positioning parameters
@@ -522,62 +551,65 @@ class DrawerBaseplateGroup:
         bed_d = float(full_data.printer.bed_depth)
         plate_gap_x = 42.0
         plate_gap_y = 42.0
-        y_chunk_count = len(y_chunks_for_rows)
+        row_count = len(matrix.cells)
 
-        for built_count, (piece_key, (row_index, column_index)) in enumerate(
-            required_pieces.items(), start=1
-        ):
-            x_chunk = x_chunks[column_index]
-            y_chunk = y_chunks_for_rows[row_index]
-            width_mm = x_chunk.cells * grid_mm + x_chunk.low_fill_mm + x_chunk.high_fill_mm
-            depth_mm = y_chunk.cells * grid_mm + y_chunk.low_fill_mm + y_chunk.high_fill_mm
-            x_str = format_axis_with_filler(
-                x_chunk.cells, low_fill=x_chunk.low_fill_mm > 0, high_fill=x_chunk.high_fill_mm > 0
-            )
-            y_str = format_axis_with_filler(
-                y_chunk.cells, low_fill=y_chunk.low_fill_mm > 0, high_fill=y_chunk.high_fill_mm > 0
-            )
-            baseplate_name = (
-                f"Drawer Baseplate {x_str} x {y_str} ({column_index + 1}, {row_index + 1})"
-            )
-            baseplate_names.append(baseplate_name)
-
-            # Compute placement
-            tile_center_x = (column_index * (bed_w + plate_gap_x)) + (0.5 * bed_w)
-            tile_center_y = (y_chunk_count - 1 - row_index) * (bed_d + plate_gap_y) + 0.5 * bed_d
-            placement_x = tile_center_x - (width_mm / 2)
-            placement_y = tile_center_y - (depth_mm / 2)
-
-            # Build full CombinedBaseplateParams for this chunk
-            baseplate_params = _build_baseplate_params_for_chunk(combined_params, x_chunk, y_chunk)
-
-            if piece_key in existing_children:
-                child = existing_children[piece_key]
-                # Update existing child's params
-                baseplate_params.to_obj(child)
-                child.Label = baseplate_name
-                child.Placement.Base = fc.Vector(placement_x, placement_y, 0)
-                child.touch()
-                child.recompute()
-            else:
-                self._create_child_baseplate(
-                    obj,
-                    doc,
-                    piece_key,
-                    row_index,
-                    column_index,
-                    baseplate_name,
-                    placement_x,
-                    placement_y,
-                    baseplate_params,
+        built_count = 0
+        for row_idx, row in enumerate(matrix.cells):
+            for col_idx, cell in enumerate(row):
+                built_count += 1
+                width_mm = cell.x_cells * grid_mm + cell.x_low_fill_mm + cell.x_high_fill_mm
+                depth_mm = cell.y_cells * grid_mm + cell.y_low_fill_mm + cell.y_high_fill_mm
+                x_str = format_axis_with_filler(
+                    cell.x_cells,
+                    low_fill=cell.x_low_fill_mm > 0,
+                    high_fill=cell.x_high_fill_mm > 0,
                 )
-
-            if status_bar is not None:
-                status_bar.showMessage(
-                    f"Drawer baseplates: {built_count}/{total_pieces} ({baseplate_name})"
+                y_str = format_axis_with_filler(
+                    cell.y_cells,
+                    low_fill=cell.y_low_fill_mm > 0,
+                    high_fill=cell.y_high_fill_mm > 0,
                 )
-                with contextlib.suppress(Exception):
-                    status_bar.repaint()
+                baseplate_name = (
+                    f"Drawer Baseplate {x_str} x {y_str} ({col_idx + 1}, {row_idx + 1})"
+                )
+                baseplate_names.append(baseplate_name)
+
+                # Compute placement
+                tile_center_x = (col_idx * (bed_w + plate_gap_x)) + (0.5 * bed_w)
+                tile_center_y = (row_count - 1 - row_idx) * (bed_d + plate_gap_y) + 0.5 * bed_d
+                placement_x = tile_center_x - (width_mm / 2)
+                placement_y = tile_center_y - (depth_mm / 2)
+
+                # Build full CombinedBaseplateParams for this cell
+                baseplate_params = _build_baseplate_params_for_cell(combined_params, cell)
+
+                if cell.piece_name in existing_children:
+                    child = existing_children[cell.piece_name]
+                    # Update existing child's params
+                    baseplate_params.to_obj(child)
+                    child.Label = baseplate_name
+                    child.Placement.Base = fc.Vector(placement_x, placement_y, 0)
+                    child.touch()
+                    child.recompute()
+                else:
+                    self._create_child_baseplate(
+                        obj,
+                        doc,
+                        cell.piece_name,
+                        row_idx,
+                        col_idx,
+                        baseplate_name,
+                        placement_x,
+                        placement_y,
+                        baseplate_params,
+                    )
+
+                if status_bar is not None:
+                    status_bar.showMessage(
+                        f"Drawer baseplates: {built_count}/{total_pieces} ({baseplate_name})"
+                    )
+                    with contextlib.suppress(Exception):
+                        status_bar.repaint()
 
         if status_bar is not None:
             status_bar.showMessage(f"Drawer baseplates: {total_pieces} pieces ready", 2500)
@@ -677,7 +709,7 @@ def _compute_drawer_splits_from_data(
 ) -> tuple[list | None, list | None, float | None]:
     """Compute drawer split chunks from params data.
 
-    Returns (x_chunks, y_chunks_for_rows, grid_mm) or (None, None, None) if invalid.
+    Returns (x_chunks, y_chunks, grid_mm) or (None, None, None) if invalid.
     """
     grid_mm = float(full_data.fundamentals.grid_size)
     algo = full_data.drawer.split_algorithm
@@ -713,24 +745,42 @@ def _compute_drawer_splits_from_data(
 def _compute_drawer_splits_from_obj(obj: fc.DocumentObject) -> tuple:
     """Compute drawer split chunks from group object params.
 
-    Returns (x_chunks, y_chunks_for_rows, grid_mm, full_data) or (None, None, None, None).
+    Returns (x_chunks, y_chunks, grid_mm, full_data) or (None, None, None, None).
     """
     combined_params = CombinedDrawerBaseplateParams().from_obj(obj)
     full_data = combined_params.data()
-    x_chunks, y_chunks_for_rows, grid_mm = _compute_drawer_splits_from_data(full_data)
+    x_chunks, y_chunks, grid_mm = _compute_drawer_splits_from_data(full_data)
     if x_chunks is None:
         return None, None, None, None
-    return x_chunks, y_chunks_for_rows, grid_mm, full_data
+    return x_chunks, y_chunks, grid_mm, full_data
 
 
-def _build_required_pieces(x_chunks: list, y_chunks_for_rows: list) -> dict[str, tuple[int, int]]:
-    """Build dict of required piece keys to (row, col) indices."""
-    required: dict[str, tuple[int, int]] = {}
-    for row_index, y_chunk in enumerate(y_chunks_for_rows):
-        for col_index, x_chunk in enumerate(x_chunks):
-            if x_chunk.cells >= 1 and y_chunk.cells >= 1:
-                required[f"Piece_{row_index}_{col_index}"] = (row_index, col_index)
-    return required
+def _build_baseplate_matrix(
+    x_chunks: list[PrintableAxisChunk],
+    y_chunks: list[PrintableAxisChunk],
+    base_instance_count: int,
+) -> BaseplateMatrix:
+    """Build matrix from axis chunks.
+
+    Every cell is valid. instance_count starts at base_instance_count for all cells.
+    """
+    rows = []
+    for row_idx, y_chunk in enumerate(y_chunks):
+        row = []
+        for col_idx, x_chunk in enumerate(x_chunks):
+            cell = BaseplateMatrixCell(
+                piece_name=f"Piece_{row_idx}_{col_idx}",
+                x_cells=x_chunk.cells,
+                y_cells=y_chunk.cells,
+                x_low_fill_mm=x_chunk.low_fill_mm,
+                x_high_fill_mm=x_chunk.high_fill_mm,
+                y_low_fill_mm=y_chunk.low_fill_mm,
+                y_high_fill_mm=y_chunk.high_fill_mm,
+                instance_count=base_instance_count,
+            )
+            row.append(cell)
+        rows.append(row)
+    return BaseplateMatrix(cells=rows)
 
 
 def build_drawer_baseplate_preview_shape(
@@ -745,46 +795,46 @@ def build_drawer_baseplate_preview_shape(
     creating a DrawerBaseplateGroup object.
     """
     full_data = params.data()
-    x_chunks, y_chunks_for_rows, grid_mm = _compute_drawer_splits_from_data(full_data)
-    if x_chunks is None or y_chunks_for_rows is None or grid_mm is None:
+    x_chunks, y_chunks, grid_mm = _compute_drawer_splits_from_data(full_data)
+    if x_chunks is None or y_chunks is None or grid_mm is None:
         return Part.Shape()
 
-    required_pieces = _build_required_pieces(x_chunks, y_chunks_for_rows)
+    # Get base instance count from params (default to 1 for preview)
+    base_instance_count = params.stacking.get_value("instance_count")
+    matrix = _build_baseplate_matrix(x_chunks, y_chunks, base_instance_count)
 
     # Tile positioning parameters
     bed_w = float(full_data.printer.bed_width)
     bed_d = float(full_data.printer.bed_depth)
     plate_gap_x = 42.0
     plate_gap_y = 42.0
-    y_chunk_count = len(y_chunks_for_rows)
+    row_count = len(matrix.cells)
 
     shapes: list[Part.Shape] = []
 
-    for row_index, column_index in required_pieces.values():
-        x_chunk = x_chunks[column_index]
-        y_chunk = y_chunks_for_rows[row_index]
+    for row_idx, row in enumerate(matrix.cells):
+        for col_idx, cell in enumerate(row):
+            # Build params for this cell
+            baseplate_params = _build_baseplate_params_for_cell(params, cell)
 
-        # Build params for this chunk
-        baseplate_params = _build_baseplate_params_for_chunk(params, x_chunk, y_chunk)
+            # Build preview shape (simplified, no screws/clips/springs)
+            shape = baseplate_builder.build_complex_baseplate_from_params(
+                baseplate_params.data(),
+                preview=True,
+            )
 
-        # Build preview shape (simplified, no screws/clips/springs)
-        shape = baseplate_builder.build_complex_baseplate_from_params(
-            baseplate_params.data(),
-            preview=True,
-        )
+            # Compute placement
+            width_mm = cell.x_cells * grid_mm + cell.x_low_fill_mm + cell.x_high_fill_mm
+            depth_mm = cell.y_cells * grid_mm + cell.y_low_fill_mm + cell.y_high_fill_mm
+            tile_center_x = (col_idx * (bed_w + plate_gap_x)) + (0.5 * bed_w)
+            tile_center_y = (row_count - 1 - row_idx) * (bed_d + plate_gap_y) + 0.5 * bed_d
+            placement_x = tile_center_x - (width_mm / 2)
+            placement_y = tile_center_y - (depth_mm / 2)
 
-        # Compute placement
-        width_mm = x_chunk.cells * grid_mm + x_chunk.low_fill_mm + x_chunk.high_fill_mm
-        depth_mm = y_chunk.cells * grid_mm + y_chunk.low_fill_mm + y_chunk.high_fill_mm
-        tile_center_x = (column_index * (bed_w + plate_gap_x)) + (0.5 * bed_w)
-        tile_center_y = (y_chunk_count - 1 - row_index) * (bed_d + plate_gap_y) + 0.5 * bed_d
-        placement_x = tile_center_x - (width_mm / 2)
-        placement_y = tile_center_y - (depth_mm / 2)
-
-        # Translate shape to tile position
-        shape = shape.copy()
-        shape.translate(fc.Vector(placement_x, placement_y, 0))
-        shapes.append(shape)
+            # Translate shape to tile position
+            shape = shape.copy()
+            shape.translate(fc.Vector(placement_x, placement_y, 0))
+            shapes.append(shape)
 
     return Part.makeCompound(shapes) if shapes else Part.Shape()
 
@@ -796,34 +846,33 @@ def _copy_stacking_params(source: StackingParams) -> StackingParams:
     return result
 
 
-def _build_baseplate_params_for_chunk(
+def _build_baseplate_params_for_cell(
     group_params: CombinedDrawerBaseplateParams,
-    x_chunk: PrintableAxisChunk,
-    y_chunk: PrintableAxisChunk,
+    cell: BaseplateMatrixCell,
 ) -> CombinedBaseplateParams:
-    """Build complete CombinedBaseplateParams for a specific chunk.
+    """Build complete CombinedBaseplateParams for a matrix cell.
 
     Copies fundamentals, core, clicks, screws, clips, stacking from group params.
-    Computes size params (grid counts + fillers) from chunk data.
+    Computes size params (grid counts + fillers) from cell data.
     Uses factory defaults for filler widths - only overrides when filler is enabled.
     """
     size_kwargs: dict = {
-        "x_grid_count": x_chunk.cells,
-        "y_grid_count": y_chunk.cells,
-        "filler_left_enabled": x_chunk.low_fill_mm > 0,
-        "filler_right_enabled": x_chunk.high_fill_mm > 0,
-        "filler_bottom_enabled": y_chunk.low_fill_mm > 0,
-        "filler_top_enabled": y_chunk.high_fill_mm > 0,
+        "x_grid_count": cell.x_cells,
+        "y_grid_count": cell.y_cells,
+        "filler_left_enabled": cell.x_low_fill_mm > 0,
+        "filler_right_enabled": cell.x_high_fill_mm > 0,
+        "filler_bottom_enabled": cell.y_low_fill_mm > 0,
+        "filler_top_enabled": cell.y_high_fill_mm > 0,
         "custom_layout_enabled": False,
     }
-    if x_chunk.low_fill_mm > 0:
-        size_kwargs["filler_left_width"] = fc.Units.Quantity(f"{x_chunk.low_fill_mm} mm")
-    if x_chunk.high_fill_mm > 0:
-        size_kwargs["filler_right_width"] = fc.Units.Quantity(f"{x_chunk.high_fill_mm} mm")
-    if y_chunk.low_fill_mm > 0:
-        size_kwargs["filler_bottom_width"] = fc.Units.Quantity(f"{y_chunk.low_fill_mm} mm")
-    if y_chunk.high_fill_mm > 0:
-        size_kwargs["filler_top_width"] = fc.Units.Quantity(f"{y_chunk.high_fill_mm} mm")
+    if cell.x_low_fill_mm > 0:
+        size_kwargs["filler_left_width"] = fc.Units.Quantity(f"{cell.x_low_fill_mm} mm")
+    if cell.x_high_fill_mm > 0:
+        size_kwargs["filler_right_width"] = fc.Units.Quantity(f"{cell.x_high_fill_mm} mm")
+    if cell.y_low_fill_mm > 0:
+        size_kwargs["filler_bottom_width"] = fc.Units.Quantity(f"{cell.y_low_fill_mm} mm")
+    if cell.y_high_fill_mm > 0:
+        size_kwargs["filler_top_width"] = fc.Units.Quantity(f"{cell.y_high_fill_mm} mm")
 
     return CombinedBaseplateParams(
         baseplate_size=BaseplateSizeParams(use_factory_defaults=True, **size_kwargs),
