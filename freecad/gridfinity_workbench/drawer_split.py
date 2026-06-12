@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 @dataclass(frozen=True)
@@ -12,6 +16,7 @@ class PrintableAxisChunk:
     cells: int
     low_fill_mm: float
     high_fill_mm: float
+    count: int = 1
 
 
 def _build_balanced_chunk_cell_counts(total: int, pieces: int) -> list[int]:
@@ -145,3 +150,46 @@ def split_axis_into_printable_chunks(  # noqa: C901, PLR0912, PLR0915
         pieces.append(piece)
 
     return pieces
+
+
+def collapse_adjacent_chunks(chunks: list[PrintableAxisChunk]) -> list[PrintableAxisChunk]:
+    """Run-length encode adjacent identical chunks.
+
+    Adjacent chunks with same (cells, low_fill_mm, high_fill_mm) are merged
+    into one chunk with count = sum of their counts.
+    """
+    if not chunks:
+        return []
+
+    def _collapse() -> Iterable[PrintableAxisChunk]:
+        current = chunks[0]
+        accumulated_count = current.count
+
+        for chunk in chunks[1:]:
+            if (
+                chunk.cells == current.cells
+                and chunk.low_fill_mm == current.low_fill_mm
+                and chunk.high_fill_mm == current.high_fill_mm
+            ):
+                # Same size - accumulate count
+                accumulated_count += chunk.count
+            else:
+                # Different size - yield accumulated and start new
+                yield PrintableAxisChunk(
+                    cells=current.cells,
+                    low_fill_mm=current.low_fill_mm,
+                    high_fill_mm=current.high_fill_mm,
+                    count=accumulated_count,
+                )
+                current = chunk
+                accumulated_count = chunk.count
+
+        # Yield final chunk
+        yield PrintableAxisChunk(
+            cells=current.cells,
+            low_fill_mm=current.low_fill_mm,
+            high_fill_mm=current.high_fill_mm,
+            count=accumulated_count,
+        )
+
+    return list(_collapse())

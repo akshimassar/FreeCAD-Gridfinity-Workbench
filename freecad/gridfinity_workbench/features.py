@@ -34,7 +34,11 @@ from .custom_shape_features import (
     vertical_edge_fillet,
     vertical_edge_fillet_with_concave_edges,
 )
-from .drawer_split import PrintableAxisChunk, split_axis_into_printable_chunks
+from .drawer_split import (
+    PrintableAxisChunk,
+    collapse_adjacent_chunks,
+    split_axis_into_printable_chunks,
+)
 from .param import (
     BaseplateCoreParams,
     BaseplateSizeParams,
@@ -509,6 +513,11 @@ class DrawerBaseplateGroup:
         )
         base_instance_count = combined_params.stacking.get_value("instance_count")
 
+        # Apply chunk collapsing if stack_same_size is enabled
+        if full_data.drawer.stack_same_size:
+            x_chunks = collapse_adjacent_chunks(x_chunks)
+            y_chunks = collapse_adjacent_chunks(y_chunks)
+
         matrix = _build_baseplate_matrix(
             x_chunks, y_chunks, base_instance_count, full_data.fundamentals, full_data.printer
         )
@@ -781,12 +790,13 @@ def _build_baseplate_matrix(
 ) -> BaseplateMatrix:
     """Build matrix from axis chunks.
 
-    Every cell is valid. instance_count starts at base_instance_count for all cells.
+    Every cell is valid. instance_count = x_chunk.count * y_chunk.count * base_instance_count.
     """
     rows = []
     for row_idx, y_chunk in enumerate(y_chunks):
         row = []
         for col_idx, x_chunk in enumerate(x_chunks):
+            instance_count = x_chunk.count * y_chunk.count * base_instance_count
             cell = BaseplateMatrixCell(
                 piece_name=f"Piece_{row_idx}_{col_idx}",
                 x_cells=x_chunk.cells,
@@ -795,7 +805,7 @@ def _build_baseplate_matrix(
                 x_high_fill_mm=x_chunk.high_fill_mm,
                 y_low_fill_mm=y_chunk.low_fill_mm,
                 y_high_fill_mm=y_chunk.high_fill_mm,
-                instance_count=base_instance_count,
+                instance_count=instance_count,
             )
             row.append(cell)
         rows.append(row)
@@ -817,6 +827,11 @@ def build_drawer_baseplate_preview_shape(
     x_chunks, y_chunks, _ = _compute_drawer_splits_from_data(full_data)
     if x_chunks is None or y_chunks is None:
         return Part.Shape()
+
+    # Apply chunk collapsing if stack_same_size is enabled
+    if full_data.drawer.stack_same_size:
+        x_chunks = collapse_adjacent_chunks(x_chunks)
+        y_chunks = collapse_adjacent_chunks(y_chunks)
 
     # Get base instance count from params (default to 1 for preview)
     base_instance_count = params.stacking.get_value("instance_count")

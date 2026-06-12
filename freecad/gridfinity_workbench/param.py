@@ -990,6 +990,7 @@ class DrawerParamsData:
     width_filler_alignment: str
     depth_filler_alignment: str
     split_algorithm: str
+    stack_same_size: bool
 
 
 @dataclass(frozen=True)
@@ -1057,6 +1058,13 @@ class DrawerParams(ParameterGroup):
                 "Balanced",
                 choices=["Balanced", "Greedy"],
             ),
+            BooleanParam(
+                "stack_same_size",
+                "Stack Same Size",
+                default_value=False,
+                tooltip_text="Stack baseplates of the same size into single stack "
+                "instead of having multiple identical stacks.",
+            ),
         ]
 
         super().__init__(parameters)
@@ -1070,6 +1078,7 @@ class DrawerParams(ParameterGroup):
             width_filler_alignment=self.get_value("width_filler_alignment"),
             depth_filler_alignment=self.get_value("depth_filler_alignment"),
             split_algorithm=self.get_value("split_algorithm"),
+            stack_same_size=self.get_value("stack_same_size"),
         )
 
 
