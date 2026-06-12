@@ -47,6 +47,7 @@ from .param import (
     CombinedSupportBaseplateParams,
     ConnectingClipsParams,
     FundamentalsParams,
+    FundamentalsParamsData,
     JunctionScrewsParams,
     StackingParams,
 )
@@ -74,6 +75,33 @@ class BaseplateMatrix:
     """Matrix of baseplate pieces for a drawer."""
 
     cells: list[list[BaseplateMatrixCell]]  # [row][col]
+    fundamentals: FundamentalsParamsData
+
+    def compute_placement(  # noqa: PLR0913
+        self,
+        row_idx: int,
+        col_idx: int,
+        cell: BaseplateMatrixCell,
+        bed_width: float,
+        bed_depth: float,
+        plate_gap_x: float = 42.0,
+        plate_gap_y: float = 42.0,
+    ) -> tuple[float, float]:
+        """Compute (x, y) placement for a cell.
+
+        Returns bottom-left corner position for the baseplate.
+        """
+        grid_mm = float(self.fundamentals.grid_size)
+        width_mm = cell.x_cells * grid_mm + cell.x_low_fill_mm + cell.x_high_fill_mm
+        depth_mm = cell.y_cells * grid_mm + cell.y_low_fill_mm + cell.y_high_fill_mm
+        row_count = len(self.cells)
+
+        tile_center_x = (col_idx * (bed_width + plate_gap_x)) + (0.5 * bed_width)
+        tile_center_y = (row_count - 1 - row_idx) * (bed_depth + plate_gap_y) + 0.5 * bed_depth
+        placement_x = tile_center_x - (width_mm / 2)
+        placement_y = tile_center_y - (depth_mm / 2)
+
+        return placement_x, placement_y
 
 
 def format_axis_with_filler(cells: int, *, low_fill: bool, high_fill: bool) -> str:
@@ -478,12 +506,12 @@ class DrawerBaseplateGroup:
         )
         base_instance_count = combined_params.stacking.get_value("instance_count")
 
-        matrix = _build_baseplate_matrix(x_chunks, y_chunks, base_instance_count)
+        matrix = _build_baseplate_matrix(
+            x_chunks, y_chunks, base_instance_count, full_data.fundamentals
+        )
         existing_children = self._get_existing_children(obj)
         self._remove_stale_children(obj, existing_children, matrix)
-        baseplate_names = self._create_or_update_children(
-            obj, grid_mm, full_data, matrix, existing_children
-        )
+        baseplate_names = self._create_or_update_children(obj, full_data, matrix, existing_children)
         obj.PieceNames = baseplate_names
 
         # Re-insert supports after their baseplates
@@ -528,8 +556,7 @@ class DrawerBaseplateGroup:
     def _create_or_update_children(
         self,
         obj: fc.DocumentObject,
-        grid_mm: float,
-        full_data: object,
+        full_data: CombinedDrawerBaseplateParamsData,
         matrix: BaseplateMatrix,
         existing_children: dict[str, fc.DocumentObject],
     ) -> list[str]:
@@ -549,16 +576,11 @@ class DrawerBaseplateGroup:
         # Tile positioning parameters
         bed_w = float(full_data.printer.bed_width)
         bed_d = float(full_data.printer.bed_depth)
-        plate_gap_x = 42.0
-        plate_gap_y = 42.0
-        row_count = len(matrix.cells)
 
         built_count = 0
         for row_idx, row in enumerate(matrix.cells):
             for col_idx, cell in enumerate(row):
                 built_count += 1
-                width_mm = cell.x_cells * grid_mm + cell.x_low_fill_mm + cell.x_high_fill_mm
-                depth_mm = cell.y_cells * grid_mm + cell.y_low_fill_mm + cell.y_high_fill_mm
                 x_str = format_axis_with_filler(
                     cell.x_cells,
                     low_fill=cell.x_low_fill_mm > 0,
@@ -574,11 +596,10 @@ class DrawerBaseplateGroup:
                 )
                 baseplate_names.append(baseplate_name)
 
-                # Compute placement
-                tile_center_x = (col_idx * (bed_w + plate_gap_x)) + (0.5 * bed_w)
-                tile_center_y = (row_count - 1 - row_idx) * (bed_d + plate_gap_y) + 0.5 * bed_d
-                placement_x = tile_center_x - (width_mm / 2)
-                placement_y = tile_center_y - (depth_mm / 2)
+                # Compute placement using matrix method
+                placement_x, placement_y = matrix.compute_placement(
+                    row_idx, col_idx, cell, bed_w, bed_d
+                )
 
                 # Build full CombinedBaseplateParams for this cell
                 baseplate_params = _build_baseplate_params_for_cell(combined_params, cell)
@@ -759,6 +780,7 @@ def _build_baseplate_matrix(
     x_chunks: list[PrintableAxisChunk],
     y_chunks: list[PrintableAxisChunk],
     base_instance_count: int,
+    fundamentals: FundamentalsParamsData,
 ) -> BaseplateMatrix:
     """Build matrix from axis chunks.
 
@@ -780,7 +802,7 @@ def _build_baseplate_matrix(
             )
             row.append(cell)
         rows.append(row)
-    return BaseplateMatrix(cells=rows)
+    return BaseplateMatrix(cells=rows, fundamentals=fundamentals)
 
 
 def build_drawer_baseplate_preview_shape(
@@ -795,20 +817,19 @@ def build_drawer_baseplate_preview_shape(
     creating a DrawerBaseplateGroup object.
     """
     full_data = params.data()
-    x_chunks, y_chunks, grid_mm = _compute_drawer_splits_from_data(full_data)
-    if x_chunks is None or y_chunks is None or grid_mm is None:
+    x_chunks, y_chunks, _ = _compute_drawer_splits_from_data(full_data)
+    if x_chunks is None or y_chunks is None:
         return Part.Shape()
 
     # Get base instance count from params (default to 1 for preview)
     base_instance_count = params.stacking.get_value("instance_count")
-    matrix = _build_baseplate_matrix(x_chunks, y_chunks, base_instance_count)
+    matrix = _build_baseplate_matrix(
+        x_chunks, y_chunks, base_instance_count, full_data.fundamentals
+    )
 
     # Tile positioning parameters
     bed_w = float(full_data.printer.bed_width)
     bed_d = float(full_data.printer.bed_depth)
-    plate_gap_x = 42.0
-    plate_gap_y = 42.0
-    row_count = len(matrix.cells)
 
     shapes: list[Part.Shape] = []
 
@@ -823,13 +844,10 @@ def build_drawer_baseplate_preview_shape(
                 preview=True,
             )
 
-            # Compute placement
-            width_mm = cell.x_cells * grid_mm + cell.x_low_fill_mm + cell.x_high_fill_mm
-            depth_mm = cell.y_cells * grid_mm + cell.y_low_fill_mm + cell.y_high_fill_mm
-            tile_center_x = (col_idx * (bed_w + plate_gap_x)) + (0.5 * bed_w)
-            tile_center_y = (row_count - 1 - row_idx) * (bed_d + plate_gap_y) + 0.5 * bed_d
-            placement_x = tile_center_x - (width_mm / 2)
-            placement_y = tile_center_y - (depth_mm / 2)
+            # Compute placement using matrix method
+            placement_x, placement_y = matrix.compute_placement(
+                row_idx, col_idx, cell, bed_w, bed_d
+            )
 
             # Translate shape to tile position
             shape = shape.copy()
