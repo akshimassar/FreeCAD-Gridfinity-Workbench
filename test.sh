@@ -128,7 +128,7 @@ ensure_plugin_symlink() {
   mod_dir="$(get_freecad_mod_dir "$version")"
   mkdir -p "$mod_dir"
   local plugin_link="$mod_dir/Gridfinity"
-  if [[ ! -L "$plugin_link" ]] || [[ "$(readlink -f "$plugin_link")" != "$ROOT_DIR" ]]; then
+  if [[ "$(readlink -f "$plugin_link")" != "$ROOT_DIR" ]]; then
     rm -rf "$plugin_link"
     ln -s "$ROOT_DIR" "$plugin_link"
     echo "Symlinked plugin to $plugin_link"
