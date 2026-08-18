@@ -121,8 +121,8 @@ get_versions_to_test() {
   esac
 }
 
-# Ensure plugin is symlinked for a FreeCAD version
-ensure_plugin_symlink() {
+# Ensure plugin is available to FreeCAD (symlink or direct placement)
+setup_plugin_path() {
   local version="$1"
   local mod_dir
   mod_dir="$(get_freecad_mod_dir "$version")"
@@ -170,7 +170,7 @@ if [[ "$RUN_GUI" == "true" ]]; then
       continue
     fi
 
-    ensure_plugin_symlink "$version"
+    setup_plugin_path "$version"
     # Capture FreeCAD console output for warning detection
     GUI_OUTPUT_FILE=$(mktemp)
     export FREECAD_GUI_OUTPUT_LOG="$GUI_OUTPUT_FILE"
